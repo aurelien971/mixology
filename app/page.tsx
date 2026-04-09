@@ -1,65 +1,217 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { useEffect, useState } from 'react'
+import { format } from 'date-fns'
+import Header from '@/components/layout/Header'
+import StatCard from '@/components/ui/StatCard'
+import Badge, { orderStatusBadge, paymentStatusBadge } from '@/components/ui/Badge'
+import Button from '@/components/ui/Button'
+import { getOrders } from '@/lib/firestore/orders'
+import { getPayments } from '@/lib/firestore/payments'
+import { Order, Payment } from '@/types'
+import Link from 'next/link'
+
+export default function DashboardPage() {
+  const [orders, setOrders] = useState<Order[]>([])
+  const [payments, setPayments] = useState<Payment[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [o, p] = await Promise.all([getOrders(20), getPayments()])
+        setOrders(o)
+        setPayments(p)
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [])
+
+  const now = new Date()
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  const revenueMTD = orders
+    .filter((o) => o.createdAt >= startOfMonth && o.status !== 'cancelled')
+    .reduce((sum, o) => sum + o.total, 0)
+
+  const outstanding = payments
+    .filter((p) => p.status === 'pending' || p.status === 'overdue')
+    .reduce((sum, p) => sum + p.amount, 0)
+
+  const ordersThisMonth = orders.filter(
+    (o) => o.createdAt >= startOfMonth
+  ).length
+
+  const overdueCount = payments.filter((p) => p.status === 'overdue').length
+
+  const recentOrders = orders.slice(0, 8)
+
+  const overduePayments = payments
+    .filter((p) => p.status === 'overdue')
+    .slice(0, 5)
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-sm text-gray-400">Loading...</p>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div>
+      <Header
+        title="Dashboard"
+        subtitle={format(now, 'MMMM yyyy')}
+        action={
+          <Link href="/orders/new">
+            <Button size="sm">+ New order</Button>
+          </Link>
+        }
+      />
+
+      <div className="grid grid-cols-4 gap-4 mb-8">
+        <StatCard
+          label="Revenue MTD"
+          value={`£${revenueMTD.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          sub="This month"
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+        <StatCard
+          label="Outstanding"
+          value={`£${outstanding.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          sub="Pending + overdue"
+          highlight={outstanding > 0}
+        />
+        <StatCard
+          label="Orders this month"
+          value={String(ordersThisMonth)}
+        />
+        <StatCard
+          label="Overdue invoices"
+          value={String(overdueCount)}
+          highlight={overdueCount > 0}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-900">Recent orders</h3>
+            <Link href="/orders" className="text-xs text-gray-400 hover:text-gray-700">
+              View all
+            </Link>
+          </div>
+          {recentOrders.length === 0 ? (
+            <div className="px-5 py-8 text-center">
+              <p className="text-sm text-gray-400">No orders yet</p>
+              <Link href="/orders/new">
+                <Button variant="secondary" size="sm" className="mt-3">
+                  Create first order
+                </Button>
+              </Link>
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="text-xs text-gray-400 border-b border-gray-50">
+                  <th className="text-left px-5 py-2.5 font-medium">Order</th>
+                  <th className="text-left px-5 py-2.5 font-medium">Account</th>
+                  <th className="text-left px-5 py-2.5 font-medium">Status</th>
+                  <th className="text-right px-5 py-2.5 font-medium">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentOrders.map((order) => {
+                  const badge = orderStatusBadge(order.status)
+                  return (
+                    <tr
+                      key={order.id}
+                      className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
+                    >
+                      <td className="px-5 py-3">
+                        <Link
+                          href={`/orders/${order.id}`}
+                          className="text-sm font-medium text-gray-900 hover:underline"
+                        >
+                          {order.orderNumber}
+                        </Link>
+                        <p className="text-xs text-gray-400">
+                          {format(order.createdAt, 'd MMM')}
+                        </p>
+                      </td>
+                      <td className="px-5 py-3 text-sm text-gray-600">
+                        {order.accountName}
+                      </td>
+                      <td className="px-5 py-3">
+                        <Badge label={badge.label} variant={badge.variant} />
+                      </td>
+                      <td className="px-5 py-3 text-sm text-right font-medium text-gray-900">
+                        £{order.total.toFixed(2)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-900">Overdue payments</h3>
+            <Link href="/payments" className="text-xs text-gray-400 hover:text-gray-700">
+              View all
+            </Link>
+          </div>
+          {overduePayments.length === 0 ? (
+            <div className="px-5 py-8 text-center">
+              <p className="text-sm text-gray-400">No overdue payments</p>
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="text-xs text-gray-400 border-b border-gray-50">
+                  <th className="text-left px-5 py-2.5 font-medium">Invoice</th>
+                  <th className="text-left px-5 py-2.5 font-medium">Account</th>
+                  <th className="text-left px-5 py-2.5 font-medium">Due</th>
+                  <th className="text-right px-5 py-2.5 font-medium">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {overduePayments.map((payment) => {
+                  const badge = paymentStatusBadge(payment.status)
+                  return (
+                    <tr
+                      key={payment.id}
+                      className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
+                    >
+                      <td className="px-5 py-3">
+                        <p className="text-sm font-medium text-gray-900">
+                          {payment.invoiceNumber}
+                        </p>
+                        <Badge label={badge.label} variant={badge.variant} />
+                      </td>
+                      <td className="px-5 py-3 text-sm text-gray-600">
+                        {payment.accountName}
+                      </td>
+                      <td className="px-5 py-3 text-sm text-red-600 font-medium">
+                        {format(payment.dueDate, 'd MMM yyyy')}
+                      </td>
+                      <td className="px-5 py-3 text-sm text-right font-semibold text-red-700">
+                        £{payment.amount.toFixed(2)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
-      </main>
+      </div>
     </div>
-  );
+  )
 }
