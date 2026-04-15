@@ -31,7 +31,7 @@ export async function GET() {
 
     // Find highest existing code number to continue from
     let maxCode = 100000
-    for (const p of alreadyHasCodes) {
+    for (const p of alreadyHasCodes as any[]) {
       const num = parseInt((p.productCode as string).replace('FL-', ''), 10)
       if (!isNaN(num) && num > maxCode) maxCode = num
     }
