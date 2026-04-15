@@ -9,6 +9,26 @@ import {
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 
+interface RawProduct {
+  id: string
+  name: string
+  productCode?: string
+  [key: string]: unknown
+}
+
+interface RawOrder {
+  id: string
+  orderNumber?: string
+  lineItems?: RawLineItem[]
+  [key: string]: unknown
+}
+
+interface RawLineItem {
+  productId?: string
+  productCode?: string
+  [key: string]: unknown
+}
+
 export async function GET() {
   const results = {
     products: { updated: 0, alreadyHadCode: 0 },
@@ -19,19 +39,20 @@ export async function GET() {
   try {
     // ── 1. Fix products missing productCode ──────────────────────────────────
     const productsSnap = await getDocs(collection(db, 'products'))
-    const products = productsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, any>) }))
+    const products: RawProduct[] = productsSnap.docs.map((d) => ({
+      id: d.id,
+      ...(d.data() as Omit<RawProduct, 'id'>),
+    }))
 
-    // Sort by name so codes are assigned alphabetically (consistent re-runs)
     const needsCodes = products
-      .filter((p: any) => !p.productCode)
-      .sort((a: any, b: any) => a.name.localeCompare(b.name))
+      .filter((p) => !p.productCode)
+      .sort((a, b) => a.name.localeCompare(b.name))
 
-    const alreadyHasCodes = products.filter((p: any) => p.productCode)
+    const alreadyHasCodes = products.filter((p) => !!p.productCode)
     results.products.alreadyHadCode = alreadyHasCodes.length
 
-    // Find highest existing code number to continue from
     let maxCode = 100000
-    for (const p of alreadyHasCodes as any[]) {
+    for (const p of alreadyHasCodes) {
       const num = parseInt((p.productCode as string).replace('FL-', ''), 10)
       if (!isNaN(num) && num > maxCode) maxCode = num
     }
@@ -52,12 +73,11 @@ export async function GET() {
       await batch.commit()
     }
 
-    // ── 2. Build productId → code map for order backfill ─────────────────────
-    // Re-fetch products now that codes are assigned
+    // ── 2. Build productId → code map ────────────────────────────────────────
     const updatedProductsSnap = await getDocs(collection(db, 'products'))
     const productCodeMap: Record<string, string> = {}
     for (const d of updatedProductsSnap.docs) {
-      const data = d.data() as Record<string, any>
+      const data = d.data() as RawProduct
       if (data.productCode) productCodeMap[d.id] = data.productCode
     }
 
@@ -65,8 +85,8 @@ export async function GET() {
     const ordersSnap = await getDocs(collection(db, 'orders'))
 
     for (const orderDoc of ordersSnap.docs) {
-      const data = orderDoc.data() as Record<string, any>
-      const lineItems: any[] = data.lineItems ?? []
+      const data = orderDoc.data() as RawOrder
+      const lineItems: RawLineItem[] = data.lineItems ?? []
 
       const needsUpdate = lineItems.some((l) => !l.productCode)
       if (!needsUpdate) {
@@ -76,14 +96,14 @@ export async function GET() {
 
       const updatedLines = lineItems.map((l) => ({
         ...l,
-        productCode: l.productCode || productCodeMap[l.productId] || 'FL-UNKNOWN',
+        productCode: l.productCode ?? productCodeMap[l.productId ?? ''] ?? 'FL-UNKNOWN',
       }))
 
       await updateDoc(doc(db, 'orders', orderDoc.id), {
         lineItems: updatedLines,
         updatedAt: Timestamp.now(),
       })
-      results.log.push(`Order ${data.orderNumber}: backfilled ${updatedLines.length} line item codes`)
+      results.log.push(`Order ${data.orderNumber ?? orderDoc.id}: backfilled ${updatedLines.length} line item codes`)
       results.orders.updated++
     }
 
