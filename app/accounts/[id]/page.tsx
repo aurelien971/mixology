@@ -244,6 +244,7 @@ export default function AccountDetailPage() {
             <div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
                 <DownloadPriceListButton
+                  mode="account"
                   account={{ tradingName: account.tradingName, legalName: account.legalName }}
                   pricing={pricing}
                 />
