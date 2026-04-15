@@ -167,7 +167,7 @@ export default function TrackOrderPage() {
               order.expectedDeliveryDate ? ['Expected delivery', format(order.expectedDeliveryDate, 'd MMM yyyy')] : null,
               order.deliveryDate ? ['Delivered', format(order.deliveryDate, 'd MMM yyyy')] : null,
               order.invoiceNumber ? ['Invoice', order.invoiceNumber] : null,
-            ].filter(Boolean).map(([l, v]) => (
+            ].filter((x): x is [string, string] => x !== null).map(([l, v]) => (
               <div key={String(l)}>
                 <p style={{ fontSize: '11px', color: '#9ca3af', margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{l}</p>
                 <p style={{ fontSize: '13px', fontWeight: 500, color: '#111827', margin: 0 }}>{v}</p>

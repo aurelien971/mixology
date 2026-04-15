@@ -410,7 +410,7 @@ export default function OrderDetailPage() {
                 order.poReference ? ['PO ref', order.poReference] : null,
                 order.invoiceNumber ? ['Invoice', order.invoiceNumber] : null,
                 order.deliveryDate ? ['Delivered', format(order.deliveryDate, 'd MMM yyyy')] : null,
-              ].filter(Boolean).map(([l, v]) => (
+              ].filter((x): x is [string, string] => x !== null).map(([l, v]) => (
                 <div key={String(l)} style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <dt style={{ color: '#9ca3af' }}>{l}</dt>
                   <dd style={{ color: '#374151', margin: 0 }}>{v}</dd>

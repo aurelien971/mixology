@@ -1,4 +1,5 @@
 import { ButtonHTMLAttributes } from 'react'
+import React from 'react'
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost'
 type Size = 'sm' | 'md'
@@ -19,6 +20,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant
   size?: Size
   loading?: boolean
+  className?: string
+  children?: React.ReactNode
+  disabled?: boolean
 }
 
 export default function Button({

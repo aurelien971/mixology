@@ -19,7 +19,7 @@ function fromFirestore(id: string, data: Record<string, unknown>): Payment {
     ...data,
     id,
     dueDate: (data.dueDate as Timestamp)?.toDate(),
-    paidAt: data.paidAt ? (data.paidAt as Timestamp).toDate() : undefined,
+    paidDate: data.paidAt ? (data.paidAt as Timestamp).toDate() : undefined,
     createdAt: (data.createdAt as Timestamp)?.toDate(),
   } as Payment
 }

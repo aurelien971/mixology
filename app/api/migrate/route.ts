@@ -19,14 +19,14 @@ export async function GET() {
   try {
     // ── 1. Fix products missing productCode ──────────────────────────────────
     const productsSnap = await getDocs(collection(db, 'products'))
-    const products = productsSnap.docs.map((d) => ({ id: d.id, ...d.data() as Record<string, any> }))
+    const products = productsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, any>) }))
 
     // Sort by name so codes are assigned alphabetically (consistent re-runs)
     const needsCodes = products
-      .filter((p) => !p.productCode)
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .filter((p: any) => !p.productCode)
+      .sort((a: any, b: any) => a.name.localeCompare(b.name))
 
-    const alreadyHasCodes = products.filter((p) => p.productCode)
+    const alreadyHasCodes = products.filter((p: any) => p.productCode)
     results.products.alreadyHadCode = alreadyHasCodes.length
 
     // Find highest existing code number to continue from
