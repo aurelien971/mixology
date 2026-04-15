@@ -51,3 +51,14 @@ export async function markPaymentPaid(id: string): Promise<void> {
 export async function updatePaymentStatus(id: string, status: PaymentStatus): Promise<void> {
   await updateDoc(doc(db, COL, id), { status })
 }
+
+export async function getPaymentByOrder(orderId: string): Promise<Payment | null> {
+  const q = query(collection(db, COL), where('orderId', '==', orderId))
+  const snap = await getDocs(q)
+  if (snap.empty) return null
+  return fromFirestore(snap.docs[0].id, snap.docs[0].data())
+}
+
+export async function updatePaymentDueDate(id: string, dueDate: Date): Promise<void> {
+  await updateDoc(doc(db, COL, id), { dueDate: Timestamp.fromDate(dueDate) })
+}

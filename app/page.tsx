@@ -15,6 +15,7 @@ export default function DashboardPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
+  const [hidden, setHidden] = useState(true)
 
   useEffect(() => {
     async function load() {
@@ -68,9 +69,32 @@ export default function DashboardPage() {
         title="Dashboard"
         subtitle={format(now, 'MMMM yyyy')}
         action={
-          <Link href="/orders/new">
-            <Button size="sm">+ New order</Button>
-          </Link>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              onClick={() => setHidden(h => !h)}
+              title={hidden ? 'Show amounts' : 'Hide amounts'}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: '34px', height: '34px', borderRadius: '8px',
+                border: '1px solid #e5e7eb', background: '#fff',
+                cursor: 'pointer', color: '#9ca3af', transition: 'color 0.15s',
+              }}
+            >
+              {hidden ? (
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                  <path d="M3 3l14 14M8.5 8.6A3 3 0 0011.4 11.5M6.5 6.6C4.8 7.7 3.5 9 2 10c2 2.7 5 5 8 5a8 8 0 003.5-.8M9 5.1A8 8 0 0118 10c-.7 1-1.6 1.9-2.6 2.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                  <ellipse cx="10" cy="10" rx="8" ry="5" stroke="currentColor" strokeWidth="1.5"/>
+                  <circle cx="10" cy="10" r="2.5" stroke="currentColor" strokeWidth="1.5"/>
+                </svg>
+              )}
+            </button>
+            <Link href="/orders/new">
+              <Button size="sm">+ New order</Button>
+            </Link>
+          </div>
         }
       />
 
@@ -79,12 +103,14 @@ export default function DashboardPage() {
           label="Revenue MTD"
           value={`£${revenueMTD.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           sub="This month"
+          hidden={hidden}
         />
         <StatCard
           label="Outstanding"
           value={`£${outstanding.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           sub="Pending + overdue"
           highlight={outstanding > 0}
+          hidden={hidden}
         />
         <StatCard
           label="Orders this month"
@@ -150,7 +176,9 @@ export default function DashboardPage() {
                         <Badge label={badge.label} variant={badge.variant} />
                       </td>
                       <td className="px-5 py-3 text-sm text-right font-medium text-gray-900">
-                        £{order.total.toFixed(2)}
+                        <span style={hidden ? { filter: 'blur(6px)', userSelect: 'none', display: 'inline-block' } : {}}>
+                          £{order.total.toFixed(2)}
+                        </span>
                       </td>
                     </tr>
                   )

@@ -7,6 +7,7 @@ import {
   updateDoc,
   deleteDoc,
   query,
+  where,
   orderBy,
   Timestamp,
 } from 'firebase/firestore'
@@ -26,6 +27,16 @@ function fromFirestore(id: string, data: Record<string, unknown>): Account {
 
 export async function getAccounts(): Promise<Account[]> {
   const q = query(collection(db, COL), orderBy('legalName'))
+  const snap = await getDocs(q)
+  return snap.docs.map((d) => fromFirestore(d.id, d.data()))
+}
+
+export async function getAccountsByGroup(groupId: string): Promise<Account[]> {
+  const q = query(
+    collection(db, COL),
+    where('groupId', '==', groupId),
+    orderBy('tradingName')
+  )
   const snap = await getDocs(q)
   return snap.docs.map((d) => fromFirestore(d.id, d.data()))
 }

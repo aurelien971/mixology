@@ -18,12 +18,15 @@ const COLLECTION = 'orders'
 
 function fromFirestore(id: string, data: Record<string, unknown>): Order {
   return {
-    ...(data as Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'deliveryDate'>),
+    ...(data as Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'deliveryDate' | 'expectedDeliveryDate'>),
     id,
     createdAt: (data.createdAt as Timestamp)?.toDate(),
     updatedAt: (data.updatedAt as Timestamp)?.toDate(),
     deliveryDate: data.deliveryDate
       ? (data.deliveryDate as Timestamp).toDate()
+      : undefined,
+    expectedDeliveryDate: data.expectedDeliveryDate
+      ? (data.expectedDeliveryDate as Timestamp).toDate()
       : undefined,
   }
 }

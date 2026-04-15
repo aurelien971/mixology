@@ -1,28 +1,49 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import Link from 'next/link'
 import Header from '@/components/layout/Header'
 import Badge, { orderStatusBadge, paymentStatusBadge } from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
-import { getAccount } from '@/lib/firestore/accounts'
+import PricingManager from '@/components/accounts/PricingManager'
+import DownloadPriceListButton from '@/components/accounts/DownloadPriceListButton'
+import EditAccountModal from '@/components/accounts/EditAccountModal'
+import { getAccount, deleteAccount } from '@/lib/firestore/accounts'
 import { getOrdersByAccount } from '@/lib/firestore/orders'
 import { getPaymentsByAccount } from '@/lib/firestore/payments'
 import { getPricingForAccount } from '@/lib/firestore/catalog'
-import { Account, Order, Payment, AccountPricing } from '@/types'
+import { Account, Order, Payment, AccountPricing, PAYMENT_TERMS_LABELS } from '@/types'
+import toast from 'react-hot-toast'
 
 type Tab = 'orders' | 'payments' | 'pricing'
 
 export default function AccountDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const router = useRouter()
   const [account, setAccount] = useState<Account | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
   const [pricing, setPricing] = useState<AccountPricing[]>([])
+  const [pricingCount, setPricingCount] = useState(0)
   const [tab, setTab] = useState<Tab>('orders')
   const [loading, setLoading] = useState(true)
+  const [showEdit, setShowEdit] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  async function handleDelete() {
+    if (!confirm(`Delete ${account?.tradingName}? This cannot be undone.`)) return
+    setDeleting(true)
+    try {
+      await deleteAccount(id)
+      toast.success('Account deleted')
+      router.push('/accounts')
+    } catch {
+      toast.error('Failed to delete')
+      setDeleting(false)
+    }
+  }
 
   useEffect(() => {
     async function load() {
@@ -36,6 +57,7 @@ export default function AccountDetailPage() {
       setOrders(ords)
       setPayments(pays)
       setPricing(price)
+      setPricingCount(price.length)
       setLoading(false)
     }
     load()
@@ -52,18 +74,40 @@ export default function AccountDetailPage() {
     .filter((p) => p.status === 'pending' || p.status === 'overdue')
     .reduce((s, p) => s + p.amount, 0)
 
+  const paymentTermsLabel = account.paymentTerms
+    ? PAYMENT_TERMS_LABELS[account.paymentTerms]
+    : `${(account as any).paymentTermsDays ?? 30} days`
+
   const tabs: { key: Tab; label: string; count?: number }[] = [
     { key: 'orders', label: 'Orders', count: orders.length },
     { key: 'payments', label: 'Payments', count: payments.length },
-    { key: 'pricing', label: 'Pricing', count: pricing.length },
+    { key: 'pricing', label: 'Pricing', count: pricingCount },
   ]
 
   return (
     <div>
+      {showEdit && (
+        <EditAccountModal
+          account={account}
+          onClose={() => setShowEdit(false)}
+          onSaved={async () => {
+            const updated = await getAccount(id)
+            if (updated) setAccount(updated)
+          }}
+        />
+      )}
       <Header
         title={account.tradingName}
         subtitle={account.legalName}
-        action={<Button size="sm" variant="secondary">Edit account</Button>}
+        action={
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Button size="sm" variant="secondary" onClick={() => setShowEdit(true)}>Edit account</Button>
+            <Button size="sm" variant="secondary" onClick={handleDelete} loading={deleting}
+              style={{ color: '#dc2626', borderColor: '#fecaca' }}>
+              Delete
+            </Button>
+          </div>
+        }
       />
 
       <div className="flex gap-4 mb-6">
@@ -83,7 +127,7 @@ export default function AccountDetailPage() {
         </div>
         <div className="bg-gray-50 border border-gray-100 rounded-xl px-5 py-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Payment terms</p>
-          <p className="text-xl font-semibold text-gray-900">{account.paymentTermsDays} days</p>
+          <p className="text-sm font-semibold text-gray-900">{paymentTermsLabel}</p>
         </div>
         <div className="bg-gray-50 border border-gray-100 rounded-xl px-5 py-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Type</p>
@@ -197,36 +241,18 @@ export default function AccountDetailPage() {
           )}
 
           {tab === 'pricing' && (
-            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-              {pricing.length === 0 ? (
-                <div className="p-10 text-center">
-                  <p className="text-sm text-gray-400 mb-3">No pricing set up</p>
-                  <Button size="sm">Add pricing</Button>
-                </div>
-              ) : (
-                <table className="w-full">
-                  <thead>
-                    <tr className="text-xs text-gray-400 border-b border-gray-50 bg-gray-50">
-                      <th className="text-left px-5 py-3 font-medium">Cocktail</th>
-                      <th className="text-right px-5 py-3 font-medium">Price / unit</th>
-                      <th className="text-right px-5 py-3 font-medium">RRP</th>
-                      <th className="text-right px-5 py-3 font-medium">GP%</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pricing.map((p) => (
-                      <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50">
-                        <td className="px-5 py-3 text-sm font-medium text-gray-900">{p.productName}</td>
-                        <td className="px-5 py-3 text-sm text-right text-gray-700">£{p.pricePerUnit.toFixed(2)}</td>
-                        <td className="px-5 py-3 text-sm text-right text-gray-500">£{p.rrp.toFixed(2)}</td>
-                        <td className={`px-5 py-3 text-sm text-right font-semibold ${p.gpPercent >= 75 ? 'text-green-600' : 'text-amber-600'}`}>
-                          {p.gpPercent.toFixed(1)}%
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+                <DownloadPriceListButton
+                  account={{ tradingName: account.tradingName, legalName: account.legalName }}
+                  pricing={pricing}
+                />
+              </div>
+              <PricingManager
+                accountId={id}
+                accountName={account.tradingName}
+                onPricingChange={setPricing}
+              />
             </div>
           )}
         </div>
@@ -268,6 +294,19 @@ export default function AccountDetailPage() {
               <p className="text-sm text-amber-900">{account.notes}</p>
             </div>
           )}
+
+          <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
+              Quick actions
+            </h3>
+            <div className="space-y-2">
+              <Link href={`/orders/new?accountId=${id}`} className="block">
+                <Button variant="secondary" size="sm" className="w-full justify-center">
+                  + New order
+                </Button>
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     </div>

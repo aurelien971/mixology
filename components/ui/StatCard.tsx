@@ -3,9 +3,10 @@ interface StatCardProps {
   value: string
   sub?: string
   highlight?: boolean
+  hidden?: boolean
 }
 
-export default function StatCard({ label, value, sub, highlight }: StatCardProps) {
+export default function StatCard({ label, value, sub, highlight, hidden }: StatCardProps) {
   return (
     <div
       className={`rounded-xl p-5 ${
@@ -17,7 +18,10 @@ export default function StatCard({ label, value, sub, highlight }: StatCardProps
       <p className={`text-xs font-medium uppercase tracking-wide mb-2 ${highlight ? 'text-red-500' : 'text-gray-400'}`}>
         {label}
       </p>
-      <p className={`text-2xl font-semibold ${highlight ? 'text-red-700' : 'text-gray-900'}`}>
+      <p
+        className={`text-2xl font-semibold transition-all duration-200 ${highlight ? 'text-red-700' : 'text-gray-900'}`}
+        style={hidden ? { filter: 'blur(8px)', userSelect: 'none', pointerEvents: 'none' } : {}}
+      >
         {value}
       </p>
       {sub && (

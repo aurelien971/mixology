@@ -32,11 +32,13 @@ export default function Badge({ label, variant = 'gray' }: BadgeProps) {
 
 export function orderStatusBadge(status: string) {
   const map: Record<string, { label: string; variant: BadgeVariant }> = {
-    received: { label: 'Received', variant: 'blue' },
-    picking: { label: 'Picking', variant: 'purple' },
+    received:   { label: 'Received',   variant: 'blue' },
+    production: { label: 'Production', variant: 'purple' },
     dispatched: { label: 'Dispatched', variant: 'amber' },
-    delivered: { label: 'Delivered', variant: 'green' },
-    cancelled: { label: 'Cancelled', variant: 'gray' },
+    delivered:  { label: 'Delivered',  variant: 'green' },
+    cancelled:  { label: 'Cancelled',  variant: 'gray' },
+    // legacy
+    picking:    { label: 'Picking',    variant: 'purple' },
   }
   return map[status] ?? { label: status, variant: 'gray' }
 }
