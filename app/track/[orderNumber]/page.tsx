@@ -86,11 +86,11 @@ export default function TrackOrderPage() {
         blob = await pdf(React.createElement(DeliveryNotePDF, {
           order: { ...order, deliveryNoteNumber: dnNumber },
           legalName: order.accountName,
-        })).toBlob()
+        }) as any).toBlob()
         filename = `${dnNumber}.pdf`
       } else {
         const { InvoicePDF } = await import('@/lib/pdf/invoice')
-        blob = await pdf(React.createElement(InvoicePDF, { order })).toBlob()
+        blob = await pdf(React.createElement(InvoicePDF, { order }) as any).toBlob()
         filename = `${order.invoiceNumber ?? order.orderNumber}-Invoice.pdf`
       }
 

@@ -60,7 +60,7 @@ export default function DownloadPriceListButton(props: Props) {
             account: props.account,
             pricing: props.pricing,
             columns,
-          })
+          }) as any
         ).toBlob()
         filename = `${props.account.tradingName.replace(/\s+/g, '-')}-Price-List.pdf`
       } else {
@@ -80,7 +80,7 @@ export default function DownloadPriceListButton(props: Props) {
             groupPricing,
             accountLegalNames,
             columns,
-          })
+          }) as any
         ).toBlob()
         filename = `${props.groupName.replace(/\s+/g, '-')}-Group-Price-List.pdf`
       }

@@ -133,7 +133,7 @@ export default function OrderDetailPage() {
         supplierName:    settings.supplierName,
         supplierAddress: settings.supplierAddress,
         supplierPhone:   settings.supplierPhone,
-      })).toBlob()
+      }) as any).toBlob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a'); a.href = url; a.download = `${dnNumber}.pdf`; a.click()
       URL.revokeObjectURL(url)
@@ -167,7 +167,7 @@ export default function OrderDetailPage() {
           accountNumber: settings.bankAccountNumber,
           reference:     settings.bankReference || order.invoiceNumber || order.orderNumber,
         } : undefined,
-      })).toBlob()
+      }) as any).toBlob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a'); a.href = url; a.download = `${order.invoiceNumber ?? 'Invoice'}.pdf`; a.click()
       URL.revokeObjectURL(url)
