@@ -6,6 +6,7 @@ import { format } from 'date-fns'
 import Header from '@/components/layout/Header'
 import Badge, { orderStatusBadge } from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
+import ParseOrderModal from '@/components/orders/ParseOrderModal'
 import { getOrders } from '@/lib/firestore/orders'
 import { Order, OrderStatus } from '@/types'
 
@@ -23,12 +24,13 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<OrderStatus | 'all'>('all')
   const [search, setSearch] = useState('')
+  const [showParseModal, setShowParseModal] = useState(false)
 
-  useEffect(() => {
-    getOrders()
-      .then(setOrders)
-      .finally(() => setLoading(false))
-  }, [])
+  function load() {
+    getOrders().then(setOrders).finally(() => setLoading(false))
+  }
+
+  useEffect(() => { load() }, [])
 
   const filtered = orders.filter((o) => {
     const matchStatus = filter === 'all' || o.status === filter
@@ -40,14 +42,25 @@ export default function OrdersPage() {
   })
 
   return (
-    <div>
+    <div style={{ position: 'relative' }}>
+      {showParseModal && (
+        <ParseOrderModal
+          onClose={() => setShowParseModal(false)}
+          onSaved={() => load()}
+        />
+      )}
       <Header
         title="Orders"
         subtitle="All orders across accounts"
         action={
-          <Link href="/orders/new">
-            <Button size="sm">+ New order</Button>
-          </Link>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Button size="sm" variant="secondary" onClick={() => setShowParseModal(true)}>
+              Parse with AI
+            </Button>
+            <Link href="/orders/new">
+              <Button size="sm">+ New order</Button>
+            </Link>
+          </div>
         }
       />
 

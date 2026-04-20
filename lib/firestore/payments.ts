@@ -36,7 +36,7 @@ export async function getPaymentsByAccount(accountId: string): Promise<Payment[]
   return snap.docs.map((d) => fromFirestore(d.id, d.data()))
 }
 
-export async function createPayment(data: Omit<Payment, 'id' | 'createdAt'>): Promise<string> {
+export async function createPayment(data: Omit<Payment, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
   const ref = await addDoc(collection(db, COL), { ...data, createdAt: Timestamp.now() })
   return ref.id
 }
