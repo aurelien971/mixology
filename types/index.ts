@@ -128,6 +128,7 @@ export interface Order {
   expectedDeliveryDate?: Date
   deliveryNoteNumber?: string
   deliveryNoteUrl?: string
+  signedDeliveryNoteUrl?: string   // uploaded by Foodlab after client signs
   invoiceNumber?: string
   invoiceUrl?: string
   deliveryDate?: Date

@@ -11,6 +11,8 @@ import { getOrder, updateOrderStatus, updateOrder } from '@/lib/firestore/orders
 import { getPaymentByOrder, markPaymentPaid, updatePaymentStatus, updatePaymentDueDate } from '@/lib/firestore/payments'
 import { getAccount } from '@/lib/firestore/accounts'
 import { getCompanySettings } from '@/lib/firestore/settings'
+import { downloadXeroCSV } from '@/lib/xeroExport'
+import { uploadSignedDeliveryNote, deleteSignedDeliveryNote } from '@/lib/storage'
 import { Order, OrderStatus, Payment, Account, PAYMENT_TERMS_LABELS } from '@/types'
 import toast from 'react-hot-toast'
 
@@ -46,6 +48,8 @@ export default function OrderDetailPage() {
   const [updating, setUpdating] = useState(false)
   const [genDN,  setGenDN]   = useState(false)
   const [genINV, setGenINV]  = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [editDue,  setEditDue]  = useState(false)
   const [newDue,   setNewDue]   = useState('')
   const [editEDD,  setEditEDD]  = useState(false)
@@ -113,6 +117,42 @@ export default function OrderDetailPage() {
     catch { toast.error('Failed') } finally { setUpdating(false) }
   }
 
+  async function handleUploadSignedDN(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !order) return
+    setUploading(true)
+    setUploadProgress(0)
+    try {
+      const url = await uploadSignedDeliveryNote(id, file, setUploadProgress)
+      await updateOrder(id, { signedDeliveryNoteUrl: url })
+      toast.success('Signed delivery note uploaded')
+      load()
+    } catch (err) {
+      console.error(err)
+      toast.error('Upload failed')
+    } finally {
+      setUploading(false)
+      setUploadProgress(0)
+      e.target.value = ''  // reset input so same file can be re-uploaded
+    }
+  }
+
+  async function handleDeleteSignedDN() {
+    if (!order || !confirm('Remove the signed delivery note?')) return
+    setUpdating(true)
+    try {
+      await deleteSignedDeliveryNote(id)
+      await updateOrder(id, { signedDeliveryNoteUrl: undefined })
+      toast.success('Signed delivery note removed')
+      load()
+    } catch (err) {
+      console.error(err)
+      toast.error('Failed to remove')
+    } finally {
+      setUpdating(false)
+    }
+  }
+
   async function generateDeliveryNote() {
     if (!order) return
     setGenDN(true)
@@ -158,6 +198,9 @@ export default function OrderDetailPage() {
         : 30
       const blob = await pdf(React.createElement(InvoicePDF, {
         order,
+        legalName:    account?.legalName,
+        tradingName:  account?.tradingName,
+        billingAddress: account?.address,
         paymentTermsDays: termsDays,
         supplierName:    settings.supplierName,
         supplierAddress: settings.supplierAddress,
@@ -165,7 +208,7 @@ export default function OrderDetailPage() {
           accountName:   settings.bankAccountName,
           sortCode:      settings.bankSortCode,
           accountNumber: settings.bankAccountNumber,
-          reference:     settings.bankReference || order.invoiceNumber || order.orderNumber,
+          reference:     order.invoiceNumber ?? order.orderNumber,
         } : undefined,
       }) as any).toBlob()
       const url = URL.createObjectURL(blob)
@@ -468,7 +511,108 @@ export default function OrderDetailPage() {
                   {l ? 'Generating...' : label}
                 </button>
               ))}
+
+              {/* Xero CSV export */}
+              <button
+                onClick={() => {
+                  if (!order) return
+                  downloadXeroCSV({
+                    order,
+                    legalName:    account?.legalName,
+                    email:        account?.billingEmail ?? account?.email,
+                    addressLine1: account?.address?.line1,
+                    addressLine2: account?.address?.line2,
+                    city:         account?.address?.city,
+                    postcode:     account?.address?.postcode,
+                    paymentTermsDays: account?.paymentTerms
+                      ? ({ net_14:14, net_30:30, net_60:60, upfront:0, split_50:30 } as Record<string, number>)[account.paymentTerms] ?? 30
+                      : 30,
+                  })
+                }}
+                disabled={cancelled}
+                style={{
+                  width: '100%', padding: '9px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
+                  border: '1px solid #d1fae5', background: '#f0fdf4', cursor: cancelled ? 'not-allowed' : 'pointer',
+                  color: cancelled ? '#9ca3af' : '#065f46', textAlign: 'left' as const, opacity: cancelled ? 0.5 : 1,
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.3" fill="none"/>
+                  <path d="M5 8.5l2 2 4-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Export Xero invoice (CSV)
+              </button>
             </div>
+
+            {/* Signed delivery note */}
+            {!cancelled && (
+              <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #f3f4f6' }}>
+                <p style={{ fontSize: '11px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
+                  Signed delivery note
+                </p>
+
+                {order.signedDeliveryNoteUrl ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <a
+                      href={order.signedDeliveryNoteUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        padding: '9px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
+                        border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#166534',
+                        textDecoration: 'none',
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                        <path d="M2 2h8l4 4v8H2V2z" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinejoin="round"/>
+                        <path d="M10 2v4h4" stroke="currentColor" strokeWidth="1.3"/>
+                        <path d="M5 9h6M5 11.5h4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+                      </svg>
+                      View signed note
+                    </a>
+                    <button
+                      onClick={handleDeleteSignedDN}
+                      disabled={updating}
+                      style={{
+                        padding: '7px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 500,
+                        border: '1px solid #fecaca', background: 'transparent', color: '#dc2626',
+                        cursor: 'pointer', textAlign: 'left' as const,
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <label style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '9px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
+                    border: '1px dashed #d1d5db', background: '#fafafa',
+                    color: uploading ? '#9ca3af' : '#374151',
+                    cursor: uploading ? 'not-allowed' : 'pointer',
+                  }}>
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <path d="M8 10V2M5 5l3-3 3 3M3 13h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    {uploading ? `Uploading… ${uploadProgress}%` : 'Upload signed note'}
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={handleUploadSignedDN}
+                      disabled={uploading}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                )}
+
+                {uploading && (
+                  <div style={{ marginTop: '6px', height: '3px', background: '#e5e7eb', borderRadius: '2px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${uploadProgress}%`, background: '#111827', borderRadius: '2px', transition: 'width 0.2s' }} />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div style={{ textAlign: 'center' }}>
