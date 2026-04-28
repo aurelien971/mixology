@@ -13,6 +13,7 @@ import { getAccount } from '@/lib/firestore/accounts'
 import { getCompanySettings } from '@/lib/firestore/settings'
 import { downloadXeroCSV } from '@/lib/xeroExport'
 import { uploadSignedDeliveryNote, deleteSignedDeliveryNote } from '@/lib/storage'
+import EditOrderModal from '@/components/orders/EditOrderModal'
 import { Order, OrderStatus, Payment, Account, PAYMENT_TERMS_LABELS } from '@/types'
 import toast from 'react-hot-toast'
 
@@ -54,6 +55,7 @@ export default function OrderDetailPage() {
   const [newDue,   setNewDue]   = useState('')
   const [editEDD,  setEditEDD]  = useState(false)
   const [newEDD,   setNewEDD]   = useState('')
+  const [editingOrder, setEditingOrder] = useState(false)
 
   async function load() {
     try {
@@ -242,6 +244,13 @@ export default function OrderDetailPage() {
 
   return (
     <div>
+      {editingOrder && (
+        <EditOrderModal
+          order={order}
+          onClose={() => setEditingOrder(false)}
+          onSaved={() => load()}
+        />
+      )}
       <Header
         title={order.orderNumber}
         subtitle={`${account ? `${account.legalName} (${account.tradingName})` : order.accountName} · ${format(order.createdAt, 'd MMM yyyy')}`}
@@ -249,6 +258,9 @@ export default function OrderDetailPage() {
           <div style={{ display: 'flex', gap: '8px' }}>
             {!cancelled && order.status !== 'delivered' && (
               <Button variant="secondary" size="sm" onClick={cancelOrder} loading={updating}>Cancel</Button>
+            )}
+            {!cancelled && (
+              <Button variant="secondary" size="sm" onClick={() => setEditingOrder(true)}>Edit order</Button>
             )}
             {canAdvance && (
               <Button size="sm" onClick={advanceStatus} loading={updating}>

@@ -88,16 +88,25 @@ export default function AddProductModal({ onClose, onSaved }: Props) {
       const num = (code: string) => parseInt(code.replace('FL-', ''), 10)
 
       for (const p of parsed) {
-        await createProduct({
-          productCode: nextCode,
-          name: p.name.trim(),
-          category: p.category,
-          recommendedServingG: Number(p.recommendedServingG),
-          costToMake: Number(p.costToMake),
-          isNonAlcoholic: p.isNonAlcoholic,
-          servingNotes: p.servingNotes || undefined,
-          isActive: true,
-        })
+        const servingG     = Number(p.recommendedServingG)
+        const costPerLitre = Number(p.costToMake)
+        // Convert per-litre input to per-serving for storage
+        const costToMake   = costPerLitre > 0 && servingG > 0
+          ? Math.round((costPerLitre * (servingG / 1000)) * 10000) / 10000
+          : 0
+        const cleanData: Parameters<typeof createProduct>[0] = {
+          productCode:         nextCode,
+          name:                p.name.trim(),
+          category:            p.category,
+          recommendedServingG: servingG,
+          costToMake,
+          costMissing:         costToMake === 0,
+          isNonAlcoholic:      p.isNonAlcoholic,
+          isCoreRange:         false,
+          isActive:            true,
+        }
+        if (p.servingNotes) cleanData.servingNotes = p.servingNotes
+        await createProduct(cleanData)
         nextCode = `FL-${num(nextCode) + 1}`
       }
       toast.success(`${parsed.length} product${parsed.length > 1 ? 's' : ''} added`)
@@ -214,9 +223,10 @@ export default function AddProductModal({ onClose, onSaved }: Props) {
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 500, color: '#6b7280', marginBottom: '5px' }}>Cost to make (£)</label>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 500, color: '#6b7280', marginBottom: '5px' }}>Cost per litre (£/L)</label>
                       <input
                         type="number" min={0} step={0.01}
+                        placeholder="e.g. 9.20"
                         value={p.costToMake}
                         onChange={e => updateField(i, 'costToMake', e.target.value)}
                         style={{ width: '100%', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
@@ -250,7 +260,7 @@ export default function AddProductModal({ onClose, onSaved }: Props) {
                   {/* Live preview */}
                   {p.costToMake > 0 && p.recommendedServingG > 0 && (
                     <div style={{ marginTop: '12px', padding: '10px 12px', background: '#f9fafb', borderRadius: '8px', display: 'flex', gap: '20px', fontSize: '12px', color: '#6b7280' }}>
-                      <span>Cost / litre: <strong style={{ color: '#111' }}>£{((Number(p.costToMake) / Number(p.recommendedServingG)) * 1000).toFixed(2)}</strong></span>
+                      <span>Cost / serve: <strong style={{ color: '#111' }}>£{((Number(p.costToMake) * Number(p.recommendedServingG)) / 1000).toFixed(4)}</strong></span>
                       <span>Servings / litre: <strong style={{ color: '#111' }}>{(1000 / Number(p.recommendedServingG)).toFixed(1)}</strong></span>
                     </div>
                   )}

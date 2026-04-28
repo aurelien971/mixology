@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Header from '@/components/layout/Header'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import AddProductModal from '@/components/catalog/AddProductModal'
 import EditProductModal from '@/components/catalog/EditProductModal'
-import { getProducts } from '@/lib/firestore/catalog'
-import { Product } from '@/types'
+import { getProducts, getAllPricing } from '@/lib/firestore/catalog'
+import { Product, AccountPricing } from '@/types'
 
 const CATEGORIES = [
   'All', 'Highball', 'Martini', 'Sour', 'Negroni', 'Margarita',
@@ -16,6 +17,7 @@ const CATEGORIES = [
 ]
 
 export default function CatalogPage() {
+  const searchParams = useSearchParams()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -23,10 +25,12 @@ export default function CatalogPage() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [hidden, setHidden] = useState(true)
+  const [missingOnly, setMissingOnly] = useState(searchParams.get('missing') === '1')
+  const [allPricing, setAllPricing] = useState<AccountPricing[]>([])
 
   function load() {
-    getProducts()
-      .then(setProducts)
+    Promise.all([getProducts(), getAllPricing()])
+      .then(([prods, pricing]) => { setProducts(prods); setAllPricing(pricing) })
       .finally(() => setLoading(false))
   }
 
@@ -37,8 +41,11 @@ export default function CatalogPage() {
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.productCode.toLowerCase().includes(search.toLowerCase())
     const matchCat = categoryFilter === 'All' || p.category === categoryFilter
-    return matchSearch && matchCat
+    const matchMissing = !missingOnly || p.costMissing
+    return matchSearch && matchCat && matchMissing
   })
+
+  const missingTotal = products.filter(p => p.costMissing).length
 
   // servings per litre = 1000 / serving size in ml (ml ≈ g for these drinks)
   // price per litre = (cost / serving size) * 1000
@@ -69,7 +76,7 @@ export default function CatalogPage() {
       )}
       <Header
         title="Catalog"
-        subtitle="Master product list — costs and serve sizes"
+        subtitle={`Master product list — costs and serve sizes${filtered.filter(p => p.costMissing).length > 0 ? ` · ⚠ ${filtered.filter(p => p.costMissing).length} missing costs` : ''}`}
         action={
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <button
@@ -97,6 +104,20 @@ export default function CatalogPage() {
           </div>
         }
       />
+
+      {missingOnly && missingTotal > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '10px', marginBottom: '16px' }}>
+          <span style={{ fontSize: '13px', fontWeight: 500, color: '#92400e' }}>
+            ⚠ Showing {missingTotal} product{missingTotal !== 1 ? 's' : ''} with missing costs — click <strong>+ Add cost</strong> on each row to fix
+          </span>
+          <button
+            onClick={() => setMissingOnly(false)}
+            style={{ fontSize: '12px', color: '#92400e', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            Show all
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <input
@@ -152,7 +173,7 @@ export default function CatalogPage() {
               {filtered.map((product) => (
                 <tr
                   key={product.id}
-                  className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
+                  className={`border-b border-gray-50 transition-colors ${product.costMissing ? 'bg-amber-50 hover:bg-amber-50' : 'hover:bg-gray-50'}`}
                 >
                   <td className="px-5 py-3 text-xs text-gray-400 font-mono">
                     {product.productCode}
@@ -162,6 +183,25 @@ export default function CatalogPage() {
                     {product.servingNotes && (
                       <p className="text-xs text-gray-400">{product.servingNotes}</p>
                     )}
+                    {product.costMissing && (
+                      <p className="text-xs font-medium" style={{ color: '#92400e' }}>⚠ Cost missing — profit calculations affected</p>
+                    )}
+                    {(() => {
+                      const accounts = [...new Set(
+                        allPricing
+                          .filter(p => p.productId === product.id)
+                          .map(p => p.accountName)
+                      )]
+                      return accounts.length > 0 ? (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '4px' }}>
+                          {accounts.map(name => (
+                            <span key={name} style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '20px', background: '#E1F5EE', color: '#0F6E56', fontWeight: 500 }}>
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null
+                    })()}
                   </td>
                   <td className="px-5 py-3 text-sm text-gray-500">
                     {product.category ?? '—'}
@@ -174,23 +214,41 @@ export default function CatalogPage() {
                   </td>
                   <td className="px-5 py-3 text-sm text-right font-medium text-gray-900">
                     <span style={hidden ? { filter: 'blur(6px)', userSelect: 'none', display: 'inline-block' } : {}}>
-                      £{((product.costToMake ?? (product as any).costPerUnit) ?? 0).toFixed(2)}
+                      {product.costMissing
+                        ? <span style={{ color: '#92400e', fontSize: '11px', fontWeight: 600 }}>not set</span>
+                        : `£${((product.costToMake ?? (product as any).costPerUnit) ?? 0).toFixed(2)}`
+                      }
                     </span>
                   </td>
                   <td className="px-5 py-3 text-sm text-right font-medium text-gray-700">
                     <span style={hidden ? { filter: 'blur(6px)', userSelect: 'none', display: 'inline-block' } : {}}>
-                      {pricePerLitre(product.costToMake ?? (product as any).costPerUnit ?? 0, product.recommendedServingG)}
+                      {product.costMissing ? '—' : pricePerLitre(product.costToMake ?? (product as any).costPerUnit ?? 0, product.recommendedServingG)}
                     </span>
                   </td>
                   <td className="px-5 py-3">
                     {product.isNonAlcoholic ? (
                       <Badge label="N/A" variant="green" />
+                    ) : product.isCoreRange ? (
+                      <Badge label="Core" variant="blue" />
                     ) : (
-                      <Badge label="Alcoholic" variant="gray" />
+                      <Badge label="Venue" variant="gray" />
                     )}
                   </td>
                   <td className="px-5 py-3 text-right">
-                    <Button variant="ghost" size="sm" onClick={() => setEditingProduct(product)}>Edit</Button>
+                    {product.costMissing ? (
+                      <button
+                        onClick={() => setEditingProduct(product)}
+                        style={{
+                          padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                          background: '#92400e', color: '#fff', border: 'none', cursor: 'pointer',
+                          whiteSpace: 'nowrap' as const,
+                        }}
+                      >
+                        + Add cost
+                      </button>
+                    ) : (
+                      <Button variant="ghost" size="sm" onClick={() => setEditingProduct(product)}>Edit</Button>
+                    )}
                   </td>
                 </tr>
               ))}

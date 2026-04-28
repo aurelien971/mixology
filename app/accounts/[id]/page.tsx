@@ -252,6 +252,8 @@ export default function AccountDetailPage() {
               <PricingManager
                 accountId={id}
                 accountName={account.tradingName}
+                groupId={account.groupId}
+                groupName={account.groupName}
                 onPricingChange={setPricing}
               />
             </div>

@@ -23,8 +23,10 @@ export default function EditProductModal({ product, onClose, onSaved }: Props) {
     name:                product.name,
     category:            product.category ?? 'Other',
     recommendedServingG: product.recommendedServingG,
-    costToMake:          product.costToMake,
-    costMissing:         product.costMissing ?? false,
+    // Store and display as per-litre — convert to per-serving on save
+    costPerLitre:        product.costMissing || product.costToMake === 0
+      ? 0
+      : Number(((product.costToMake / product.recommendedServingG) * 1000).toFixed(4)),
     isNonAlcoholic:      product.isNonAlcoholic,
     isCoreRange:         product.isCoreRange ?? false,
     defaultPricePerLitre:product.defaultPricePerLitre ?? 0,
@@ -37,10 +39,7 @@ export default function EditProductModal({ product, onClose, onSaved }: Props) {
     setForm(f => ({ ...f, [field]: value }))
   }
 
-  const costPerLitre = form.recommendedServingG > 0 && form.costToMake > 0
-    ? ((form.costToMake / form.recommendedServingG) * 1000).toFixed(2)
-    : null
-
+  const costPerLitre = form.costPerLitre > 0 ? form.costPerLitre.toFixed(2) : null
   const servingsPerLitre = form.recommendedServingG > 0
     ? (1000 / form.recommendedServingG).toFixed(1)
     : null
@@ -50,12 +49,18 @@ export default function EditProductModal({ product, onClose, onSaved }: Props) {
     if (form.recommendedServingG <= 0) return toast.error('Serving size must be greater than 0')
     setSaving(true)
     try {
+      const servingG    = Number(form.recommendedServingG)
+      const costPerL    = Number(form.costPerLitre)
+      // Convert per-litre back to per-serving for storage
+      const costToMake  = costPerL > 0 ? Math.round((costPerL * (servingG / 1000)) * 10000) / 10000 : 0
+      const costMissing = costPerL === 0
+
       const updates: Partial<Product> = {
         name:                form.name.trim(),
         category:            form.category,
-        recommendedServingG: Number(form.recommendedServingG),
-        costToMake:          Number(form.costToMake),
-        costMissing:         form.costMissing || form.costToMake === 0,
+        recommendedServingG: servingG,
+        costToMake,
+        costMissing,
         isNonAlcoholic:      form.isNonAlcoholic,
         isCoreRange:         form.isCoreRange,
         isActive:            form.isActive,
@@ -135,20 +140,26 @@ export default function EditProductModal({ product, onClose, onSaved }: Props) {
               />
             </div>
 
-            {/* Cost to make */}
+            {/* Cost per litre */}
             <div>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: 500, color: '#6b7280', marginBottom: '5px' }}>
-                Cost to make (£)
-                {form.costMissing && (
+                Cost per litre (£/L)
+                {form.costPerLitre === 0 && (
                   <span style={{ marginLeft: '6px', fontSize: '10px', background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: '4px' }}>missing</span>
                 )}
               </label>
               <input
                 type="number" min={0} step={0.01}
-                value={form.costToMake}
-                onChange={e => set('costToMake', Number(e.target.value))}
-                style={{ width: '100%', padding: '8px 10px', border: `1px solid ${form.costMissing ? '#fcd34d' : '#e5e7eb'}`, borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                placeholder="e.g. 9.20"
+                value={form.costPerLitre || ''}
+                onChange={e => set('costPerLitre', Number(e.target.value))}
+                style={{ width: '100%', padding: '8px 10px', border: `1px solid ${form.costPerLitre === 0 ? '#fcd34d' : '#e5e7eb'}`, borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
               />
+              {form.costPerLitre > 0 && form.recommendedServingG > 0 && (
+                <p style={{ fontSize: '11px', color: '#6b7280', margin: '4px 0 0' }}>
+                  = £{((form.costPerLitre * form.recommendedServingG) / 1000).toFixed(4)} per {form.recommendedServingG}ml serve
+                </p>
+              )}
             </div>
 
             {/* Serving notes */}
@@ -204,9 +215,9 @@ export default function EditProductModal({ product, onClose, onSaved }: Props) {
               {costPerLitre && (
                 <span>Cost / litre: <strong style={{ color: '#111' }}>£{costPerLitre}</strong></span>
               )}
-              {form.isCoreRange && form.defaultPricePerLitre > 0 && form.costToMake > 0 && (
+              {form.isCoreRange && form.defaultPricePerLitre > 0 && form.costPerLitre > 0 && (
                 <span>Foodlab GP (core): <strong style={{ color: '#166534' }}>
-                  {(((form.defaultPricePerLitre - (form.costToMake / form.recommendedServingG * 1000)) / form.defaultPricePerLitre) * 100).toFixed(1)}%
+                  {(((form.defaultPricePerLitre - form.costPerLitre) / form.defaultPricePerLitre) * 100).toFixed(1)}%
                 </strong></span>
               )}
             </div>

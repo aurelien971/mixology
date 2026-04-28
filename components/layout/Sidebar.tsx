@@ -65,13 +65,12 @@ const nav = [
     ),
   },
   {
-    label: 'Payments',
-    href: '/payments',
+    label: 'Finances',
+    href: '/finances',
     icon: (
       <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
-        <rect x="2" y="5" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none" opacity=".9" />
-        <line x1="2" y1="9" x2="16" y2="9" stroke="currentColor" strokeWidth="1.5" />
-        <circle cx="5.5" cy="12" r="1" fill="currentColor" opacity=".7" />
+        <path d="M2 13l4-4 3 3 4-5 3 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <rect x="2" y="2" width="14" height="13" rx="2" stroke="currentColor" strokeWidth="1.4" fill="none" opacity=".4"/>
       </svg>
     ),
   },

@@ -81,6 +81,11 @@ export async function getPricingForAccount(accountId: string): Promise<AccountPr
   return snap.docs.map((d) => pricingFromFirestore(d.id, d.data()))
 }
 
+export async function getAllPricing(): Promise<AccountPricing[]> {
+  const snap = await getDocs(collection(db, PRICING))
+  return snap.docs.map((d) => pricingFromFirestore(d.id, d.data()))
+}
+
 export async function getPricingByGroup(groupId: string): Promise<AccountPricing[]> {
   const q = query(
     collection(db, PRICING),
@@ -104,7 +109,11 @@ export async function upsertAccountPricing(
     ? Math.round(((rrpExVat - pricing.pricePerUnit) / rrpExVat) * 10000) / 100
     : pricing.venueGpPercent
 
-  const data = { ...pricing, pricePerLitre, venueGpPercent }
+  // Strip undefined fields — Firestore rejects them on addDoc
+  const clean: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(data)) {
+    if (v !== undefined) clean[k] = v
+  }
 
   const q = query(
     collection(db, PRICING),
@@ -114,13 +123,13 @@ export async function upsertAccountPricing(
   const snap = await getDocs(q)
   if (snap.empty) {
     await addDoc(collection(db, PRICING), {
-      ...data,
+      ...clean,
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
     })
   } else {
     await updateDoc(snap.docs[0].ref, {
-      ...data,
+      ...clean,
       updatedAt: Timestamp.now(),
     })
   }
