@@ -109,9 +109,15 @@ export async function upsertAccountPricing(
     ? Math.round(((rrpExVat - pricing.pricePerUnit) / rrpExVat) * 10000) / 100
     : pricing.venueGpPercent
 
+  const enriched = {
+    ...pricing,
+    pricePerLitre,
+    venueGpPercent,
+  }
+
   // Strip undefined fields — Firestore rejects them on addDoc
   const clean: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(data)) {
+  for (const [k, v] of Object.entries(enriched)) {
     if (v !== undefined) clean[k] = v
   }
 
