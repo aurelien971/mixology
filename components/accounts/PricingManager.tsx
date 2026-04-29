@@ -115,7 +115,7 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
       await upsertAccountPricing(entry)
       toast.success('Pricing saved')
       setAddingProduct(null)
-      setForm({ pricePerLitre: '', servingG: '', rrp: '' })
+      setForm({ pricePerLitre: '', servingG: '', rrp: '', volumeLitres: '5' })
       load()
     } catch {
       toast.error('Failed to save')
