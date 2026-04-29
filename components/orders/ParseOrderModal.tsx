@@ -181,6 +181,7 @@ export default function ParseOrderModal({ onClose, onSaved }: Props) {
         productId: l.matchedProductId!,
         productCode: l.matchedProductCode!,
         productName: l.productName,
+        volumeLitres: 5,
         quantity: l.quantity,
         unitPrice: l.matchedUnitPrice!,
         lineTotal: l.quantity * l.matchedUnitPrice!,
