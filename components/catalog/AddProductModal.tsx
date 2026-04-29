@@ -96,9 +96,11 @@ export default function AddProductModal({ onClose, onSaved }: Props) {
           : 0
         const cleanData: Parameters<typeof createProduct>[0] = {
           productCode:         nextCode,
+          baseCode:            nextCode,   // single volume — code is its own base
           name:                p.name.trim(),
           category:            p.category,
           recommendedServingG: servingG,
+          volumeLitres:        5,          // new products default to 5L
           costToMake,
           costMissing:         costToMake === 0,
           isNonAlcoholic:      p.isNonAlcoholic,
