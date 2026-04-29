@@ -13,7 +13,6 @@ import { getAccount } from '@/lib/firestore/accounts'
 import { getCompanySettings } from '@/lib/firestore/settings'
 import { downloadXeroCSV } from '@/lib/xeroExport'
 import { uploadSignedDeliveryNote, deleteSignedDeliveryNote } from '@/lib/storage'
-import EditOrderModal from '@/components/orders/EditOrderModal'
 import { Order, OrderStatus, Payment, Account, PAYMENT_TERMS_LABELS } from '@/types'
 import toast from 'react-hot-toast'
 
@@ -55,7 +54,6 @@ export default function OrderDetailPage() {
   const [newDue,   setNewDue]   = useState('')
   const [editEDD,  setEditEDD]  = useState(false)
   const [newEDD,   setNewEDD]   = useState('')
-  const [editingOrder, setEditingOrder] = useState(false)
 
   async function load() {
     try {
@@ -244,13 +242,6 @@ export default function OrderDetailPage() {
 
   return (
     <div>
-      {editingOrder && (
-        <EditOrderModal
-          order={order}
-          onClose={() => setEditingOrder(false)}
-          onSaved={() => load()}
-        />
-      )}
       <Header
         title={order.orderNumber}
         subtitle={`${account ? `${account.legalName} (${account.tradingName})` : order.accountName} · ${format(order.createdAt, 'd MMM yyyy')}`}
@@ -258,9 +249,6 @@ export default function OrderDetailPage() {
           <div style={{ display: 'flex', gap: '8px' }}>
             {!cancelled && order.status !== 'delivered' && (
               <Button variant="secondary" size="sm" onClick={cancelOrder} loading={updating}>Cancel</Button>
-            )}
-            {!cancelled && (
-              <Button variant="secondary" size="sm" onClick={() => setEditingOrder(true)}>Edit order</Button>
             )}
             {canAdvance && (
               <Button size="sm" onClick={advanceStatus} loading={updating}>
@@ -319,12 +307,14 @@ export default function OrderDetailPage() {
           <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', overflow: 'hidden' }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between' }}>
               <h3 style={{ fontSize: '14px', fontWeight: 600, margin: 0 }}>Order lines</h3>
-              <span style={{ fontSize: '12px', color: '#9ca3af' }}>{order.lineItems.length} product{order.lineItems.length !== 1 ? 's' : ''}</span>
+              <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+                {order.lineItems.length} product{order.lineItems.length !== 1 ? 's' : ''} · {order.lineItems.reduce((s, l) => s + l.quantity * (l.volumeLitres ?? 5), 0)}L total
+              </span>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
                 <tr style={{ background: '#f9fafb', color: '#9ca3af', fontSize: '11px' }}>
-                  {['Product', 'Price / L', 'Litres', 'Total'].map((h, hi) => (
+                  {['Product', 'Price / bag', 'Volume', 'Qty', 'Total'].map((h, hi) => (
                     <th key={h} style={{ padding: '8px 20px', fontWeight: 500, textAlign: hi === 0 ? 'left' : 'right' }}>{h}</th>
                   ))}
                 </tr>
@@ -337,7 +327,12 @@ export default function OrderDetailPage() {
                       <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0', fontFamily: 'monospace' }}>{item.productCode}</p>
                     </td>
                     <td style={{ padding: '10px 20px', textAlign: 'right', color: '#6b7280' }}>£{item.unitPrice.toFixed(2)}</td>
-                    <td style={{ padding: '10px 20px', textAlign: 'right', color: '#6b7280' }}>{item.quantity}L</td>
+                    <td style={{ padding: '10px 20px', textAlign: 'right', color: '#6b7280' }}>
+                      <span style={{ background: '#f3f4f6', padding: '2px 7px', borderRadius: '5px', fontSize: '12px', fontWeight: 500 }}>
+                        {item.volumeLitres ?? 5}L
+                      </span>
+                    </td>
+                    <td style={{ padding: '10px 20px', textAlign: 'right', color: '#6b7280' }}>×{item.quantity}</td>
                     <td style={{ padding: '10px 20px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>£{item.lineTotal.toFixed(2)}</td>
                   </tr>
                 ))}

@@ -75,6 +75,17 @@ const nav = [
     ),
   },
   {
+    label: 'Production',
+    href: '/production',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+        <rect x="2" y="3" width="14" height="12" rx="2" stroke="currentColor" strokeWidth="1.4" fill="none"/>
+        <path d="M5 7.5l2 2 4-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+        <line x1="5" y1="12" x2="11" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity=".5"/>
+      </svg>
+    ),
+  },
+  {
     label: 'Settings',
     href: '/settings',
     icon: (
