@@ -16,11 +16,12 @@ interface Props {
 
 function r2(n: number) { return Math.round(n * 100) / 100 }
 
-// GP uses ex-VAT RRP — real margin after handing 20% VAT to HMRC
-function venueGp(rrp: number, pricePerUnit: number) {
-  if (!rrp) return 0
-  const rrpExVat = rrp / 1.2
-  return r2(((rrpExVat - pricePerUnit) / rrpExVat) * 100)
+// RRP is per serving. Scale up to per-bag revenue first, then compare against pricePerUnit.
+function venueGp(rrp: number, pricePerUnit: number, volumeLitres: number, servingG: number) {
+  if (!rrp || !pricePerUnit || !servingG) return 0
+  const servingsPerBag  = (volumeLitres * 1000) / servingG
+  const bagRevenueExVat = (rrp / 1.2) * servingsPerBag
+  return r2(((bagRevenueExVat - pricePerUnit) / bagRevenueExVat) * 100)
 }
 
 function foodlabGp(pricePerUnit: number, cost: number) {
@@ -61,12 +62,11 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
 
   function openForm(product: Product) {
     setAddingProduct(product)
-    // Pre-fill serving size from the product if available
     setForm({
       pricePerLitre: '',
       servingG: product.recommendedServingG ? String(product.recommendedServingG) : '',
       rrp: '',
-      volumeLitres: '5',
+      volumeLitres: String(product.volumeLitres ?? 5),
     })
   }
 
@@ -84,7 +84,7 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
   const prevFoodlabGp = addingProduct && pricePerUnit > 0
     ? foodlabGp(pricePerUnit, addingProduct.costToMake)
     : 0
-  const prevVenueGp = pricePerUnit > 0 && rrp > 0 ? venueGp(rrp, pricePerUnit) : 0
+  const prevVenueGp = pricePerUnit > 0 && rrp > 0 ? venueGp(rrp, pricePerUnit, vol, sg) : 0
   const servingsPerL = sg > 0 ? r2(1000 / sg) : 0
 
   async function handleSave() {
@@ -106,7 +106,7 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
         pricePerLitre:       ppl,
         pricePerUnit,
         rrp,
-        venueGpPercent:    venueGp(rrp, pricePerUnit),
+        venueGpPercent:    venueGp(rrp, pricePerUnit, vol, sg),
         foodlabGpPercent:  foodlabGp(pricePerUnit, addingProduct.costToMake),
       }
       if (groupId)   entry.groupId   = groupId
@@ -260,9 +260,12 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
               <button
                 key={p.id}
                 onClick={() => openForm(p)}
-                style={{ padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 500, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', color: '#374151' }}
+                style={{ padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 500, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', color: '#374151', display: 'flex', alignItems: 'center', gap: '6px' }}
               >
                 {p.name}
+                <span style={{ background: '#f3f4f6', color: '#374151', fontSize: '10px', fontWeight: 600, padding: '1px 5px', borderRadius: '4px' }}>
+                  {p.volumeLitres ?? 5}L
+                </span>
               </button>
             ))}
           </div>
@@ -286,21 +289,23 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
             </thead>
             <tbody>
               {pricing.map(p => {
-                const ppl = p.pricePerLitre || (p.recommendedServingG > 0 ? r2((p.pricePerUnit / p.recommendedServingG) * 1000) : 0)
+                const vol2 = p.volumeLitres ?? 5
+                const ppl  = p.pricePerLitre > 0 ? p.pricePerLitre : r2(p.pricePerUnit / vol2)
+                const gp   = venueGp(p.rrp, p.pricePerUnit, vol2, p.recommendedServingG)
                 return (
                   <tr key={p.id} style={{ borderTop: '1px solid #f3f4f6' }}>
                     <td style={{ padding: '11px 14px', fontWeight: 500, color: '#111827' }}>{p.productName}</td>
                     <td style={{ padding: '11px 14px', color: '#9ca3af', fontFamily: 'monospace', fontSize: '11px' }}>{p.productCode}</td>
                     <td style={{ padding: '11px 14px', textAlign: 'right' }}>
                       <span style={{ background: '#f3f4f6', color: '#374151', fontSize: '11px', fontWeight: 600, padding: '2px 7px', borderRadius: '4px' }}>
-                        {(p.volumeLitres ?? 5)}L
+                        {vol2}L
                       </span>
                     </td>
                     <td style={{ padding: '11px 14px', textAlign: 'right', color: '#6b7280' }}>{p.recommendedServingG || '—'}</td>
                     <td style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>£{ppl.toFixed(2)}</td>
                     <td style={{ padding: '11px 14px', textAlign: 'right', color: '#6b7280' }}>£{p.pricePerUnit.toFixed(2)}</td>
                     <td style={{ padding: '11px 14px', textAlign: 'right', color: '#6b7280' }}>£{p.rrp.toFixed(2)}</td>
-                    <td style={{ padding: '11px 14px', textAlign: 'right' }}><GpPill value={p.venueGpPercent} /></td>
+                    <td style={{ padding: '11px 14px', textAlign: 'right' }}><GpPill value={gp} /></td>
                     <td style={{ padding: '11px 14px', textAlign: 'right' }}><GpPill value={p.foodlabGpPercent} /></td>
                     <td style={{ padding: '11px 14px', textAlign: 'right' }}>
                       <button
