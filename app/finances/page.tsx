@@ -32,12 +32,13 @@ function calcOrderProfit(order: Order, productMap: Map<string, Product>): OrderP
     if (!product || product.costMissing || product.costToMake === 0) {
       hasMissingCosts = true
       missingProducts.push(item.productName)
-      // Can't calculate profit without cost — mark as unknown
       continue
     }
-    // costToMake is per serving, quantity is in litres
-    // servings in this line = quantity (litres) × (1000 / recommendedServingG)
-    const servingsInOrder = item.quantity * (1000 / (product.recommendedServingG || 100))
+    // quantity = number of bags, volumeLitres = size per bag
+    // total litres in order = quantity × volumeLitres
+    const volPerBag   = item.volumeLitres ?? product.volumeLitres ?? 1
+    const totalLitres = item.quantity * volPerBag
+    const servingsInOrder = totalLitres * (1000 / (product.recommendedServingG || 100))
     cogs += r2(servingsInOrder * product.costToMake)
   }
 

@@ -72,9 +72,11 @@ export interface Product {
   description?: string
   category?: string
   servingNotes?: string
-  costToMake: number            // Foodlab production cost — internal only
+  costToMake: number            // Foodlab production cost — internal only, per serving
   costMissing: boolean          // true when cost data is not yet known
   recommendedServingG: number
+  volumeLitres: number          // bag/bottle size: 5, 10, or 19
+  baseCode: string              // groups variants of the same recipe e.g. "FL-100001"
   isNonAlcoholic: boolean
   isCoreRange: boolean          // available to any external client
   defaultPricePerLitre?: number // standard sell price/L for core range
@@ -92,8 +94,9 @@ export interface AccountPricing {
   productId: string
   productCode: string
   productName: string
+  volumeLitres: number          // 5, 10, or 19
   recommendedServingG: number
-  pricePerUnit: number
+  pricePerUnit: number          // = pricePerLitre × volumeLitres
   pricePerLitre: number
   rrp: number
   venueGpPercent: number
@@ -106,8 +109,9 @@ export interface OrderLineItem {
   productId: string
   productCode: string
   productName: string
-  quantity: number
-  unitPrice: number
+  volumeLitres: number          // bag/bottle size: 5, 10, or 19
+  quantity: number              // number of bags/bottles
+  unitPrice: number             // price per bag = pricePerLitre × volumeLitres
   lineTotal: number
   servingSizeG: number
 }

@@ -44,27 +44,23 @@ export default function NewOrderPage() {
 
   function addLineItem(p: AccountPricing) {
     if (lineItems.find((l) => l.productId === p.productId)) return
-    const ppl = p.pricePerLitre > 0
-      ? p.pricePerLitre
-      : p.recommendedServingG > 0
-        ? Math.round((p.pricePerUnit / p.recommendedServingG) * 1000 * 100) / 100
-        : p.pricePerUnit
     setLineItems((prev) => [
       ...prev,
       {
         productId:    p.productId,
         productCode:  p.productCode,
         productName:  p.productName,
-        quantity:     1,           // litres
-        unitPrice:    ppl,         // price per litre
-        lineTotal:    ppl,
+        volumeLitres: p.volumeLitres,
+        quantity:     1,              // number of bags/bottles
+        unitPrice:    p.pricePerUnit, // price per bag = pricePerLitre × volumeLitres
+        lineTotal:    p.pricePerUnit,
         servingSizeG: p.recommendedServingG,
       },
     ])
   }
 
   function updateQty(productId: string, qty: number) {
-    const q = Math.max(0.5, qty)
+    const q = Math.max(1, Math.round(qty))
     setLineItems((prev) =>
       prev.map((l) =>
         l.productId === productId
@@ -182,20 +178,17 @@ export default function NewOrderPage() {
         {selectedAccountId && (
           <div className="bg-white rounded-xl border border-gray-100 p-6">
             <h3 className="text-sm font-semibold text-gray-900 mb-1">Add products</h3>
-            <p className="text-xs text-gray-400 mb-4">Price shown per litre — adjust quantity in litres on the order line</p>
+            <p className="text-xs text-gray-400 mb-4">Each product is a specific bag size — price shown per bag</p>
             {loadingPricing ? (
               <p className="text-sm text-gray-400">Loading pricing...</p>
             ) : pricing.length === 0 ? (
               <p className="text-sm text-gray-400">No pricing set up for this account yet. Go to the account page → Pricing tab.</p>
             ) : (
               <div className="grid grid-cols-2 gap-2">
-                {pricing.map((p) => {
+                {pricing
+                  .sort((a, b) => a.productName.localeCompare(b.productName) || a.volumeLitres - b.volumeLitres)
+                  .map((p) => {
                   const added = lineItems.some((l) => l.productId === p.productId)
-                  const ppl = p.pricePerLitre > 0
-                    ? p.pricePerLitre
-                    : p.recommendedServingG > 0
-                      ? Math.round((p.pricePerUnit / p.recommendedServingG) * 1000 * 100) / 100
-                      : p.pricePerUnit
                   return (
                     <button
                       key={p.productId}
@@ -208,10 +201,15 @@ export default function NewOrderPage() {
                       }`}
                     >
                       <div className="min-w-0">
-                        <p className="font-medium text-gray-800 truncate">{p.productName}</p>
-                        <p className="text-xs text-gray-400">{p.productCode}</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <p className="font-medium text-gray-800 truncate">{p.productName}</p>
+                          <span style={{ background: '#e5e7eb', color: '#374151', fontSize: '10px', fontWeight: 600, padding: '1px 6px', borderRadius: '4px', flexShrink: 0 }}>
+                            {p.volumeLitres}L
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-400 font-mono">{p.productCode}</p>
                       </div>
-                      <span className="text-gray-600 shrink-0 ml-2 font-medium">£{ppl.toFixed(2)}<span className="text-gray-400 font-normal">/L</span></span>
+                      <span className="text-gray-600 shrink-0 ml-2 font-medium">£{p.pricePerUnit.toFixed(2)}</span>
                     </button>
                   )
                 })}
@@ -225,14 +223,15 @@ export default function NewOrderPage() {
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-900">Order lines</h3>
-              <span className="text-xs text-gray-400">All prices per litre · quantities in litres</span>
+              <span className="text-xs text-gray-400">Qty = number of bags · price per bag</span>
             </div>
             <table className="w-full">
               <thead>
                 <tr className="text-xs text-gray-400 border-b border-gray-50 bg-gray-50">
                   <th className="text-left px-6 py-2.5 font-medium">Product</th>
-                  <th className="text-right px-6 py-2.5 font-medium">Price / L</th>
-                  <th className="text-right px-6 py-2.5 font-medium">Litres</th>
+                  <th className="text-right px-6 py-2.5 font-medium">Volume</th>
+                  <th className="text-right px-6 py-2.5 font-medium">Price / bag</th>
+                  <th className="text-right px-6 py-2.5 font-medium">Qty</th>
                   <th className="text-right px-6 py-2.5 font-medium">Total</th>
                   <th className="px-6 py-2.5" />
                 </tr>
@@ -242,7 +241,12 @@ export default function NewOrderPage() {
                   <tr key={item.productId} className="border-b border-gray-50">
                     <td className="px-6 py-3">
                       <p className="text-sm font-medium text-gray-900">{item.productName}</p>
-                      <p className="text-xs text-gray-400">{item.productCode}</p>
+                      <p className="text-xs text-gray-400 font-mono">{item.productCode}</p>
+                    </td>
+                    <td className="px-6 py-3 text-sm text-right">
+                      <span style={{ background: '#f3f4f6', padding: '2px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 500 }}>
+                        {item.volumeLitres}L
+                      </span>
                     </td>
                     <td className="px-6 py-3 text-sm text-right text-gray-500">
                       £{item.unitPrice.toFixed(2)}
@@ -250,11 +254,11 @@ export default function NewOrderPage() {
                     <td className="px-6 py-3 text-right">
                       <input
                         type="number"
-                        min={0.5}
-                        step={0.5}
+                        min={1}
+                        step={1}
                         value={item.quantity}
-                        onChange={(e) => updateQty(item.productId, parseFloat(e.target.value) || 0.5)}
-                        className="w-20 px-2 py-1 text-sm text-right border border-gray-200 rounded-lg outline-none focus:border-gray-400"
+                        onChange={(e) => updateQty(item.productId, parseInt(e.target.value) || 1)}
+                        className="w-16 px-2 py-1 text-sm text-right border border-gray-200 rounded-lg outline-none focus:border-gray-400"
                       />
                     </td>
                     <td className="px-6 py-3 text-sm text-right font-semibold text-gray-900">

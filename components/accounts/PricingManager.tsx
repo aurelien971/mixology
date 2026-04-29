@@ -47,7 +47,7 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
   const [loading, setLoading]           = useState(true)
   const [addingProduct, setAddingProduct] = useState<Product | null>(null)
   const [saving, setSaving]             = useState(false)
-  const [form, setForm] = useState({ pricePerLitre: '', servingG: '', rrp: '' })
+  const [form, setForm] = useState({ pricePerLitre: '', servingG: '', rrp: '', volumeLitres: '5' })
 
   async function load() {
     const [p, pr] = await Promise.all([getProducts(), getPricingForAccount(accountId)])
@@ -66,6 +66,7 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
       pricePerLitre: '',
       servingG: product.recommendedServingG ? String(product.recommendedServingG) : '',
       rrp: '',
+      volumeLitres: '5',
     })
   }
 
@@ -76,7 +77,9 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
   const ppl  = parseFloat(form.pricePerLitre) || 0
   const sg   = parseFloat(form.servingG) || 0
   const rrp  = parseFloat(form.rrp) || 0
-  const pricePerUnit = sg > 0 ? r2(ppl * (sg / 1000)) : 0
+  const vol  = parseFloat(form.volumeLitres) || 5
+  // pricePerUnit = price per bag = pricePerLitre × volumeLitres
+  const pricePerUnit = ppl > 0 ? r2(ppl * vol) : 0
 
   const prevFoodlabGp = addingProduct && pricePerUnit > 0
     ? foodlabGp(pricePerUnit, addingProduct.costToMake)
@@ -99,6 +102,7 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
         productCode:         addingProduct.productCode,
         productName:         addingProduct.name,
         recommendedServingG: sg,
+        volumeLitres:        vol,
         pricePerLitre:       ppl,
         pricePerUnit,
         rrp,
@@ -141,7 +145,7 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
             <button onClick={() => setAddingProduct(null)} style={{ color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px' }}>×</button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px', marginBottom: '16px' }}>
             {/* Price per litre */}
             <div>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '5px' }}>
@@ -156,6 +160,30 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
                   onChange={e => setForm(f => ({ ...f, pricePerLitre: e.target.value }))}
                   style={{ width: '100%', padding: '8px 10px 8px 22px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
                 />
+              </div>
+            </div>
+
+            {/* Volume */}
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '5px' }}>
+                Volume *
+              </label>
+              <div style={{ display: 'flex', gap: '5px' }}>
+                {['5', '19'].map(v => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, volumeLitres: v }))}
+                    style={{
+                      flex: 1, padding: '8px 4px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, cursor: 'pointer',
+                      border: `1px solid ${form.volumeLitres === v ? '#111827' : '#d1d5db'}`,
+                      background: form.volumeLitres === v ? '#111827' : '#fff',
+                      color: form.volumeLitres === v ? '#fff' : '#374151',
+                    }}
+                  >
+                    {v}L
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -198,12 +226,12 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
           {ppl > 0 && sg > 0 && rrp > 0 && (
             <div style={{ display: 'flex', gap: '20px', padding: '12px 16px', background: '#fff', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '16px', flexWrap: 'wrap' }}>
               <div>
-                <p style={{ fontSize: '10px', color: '#9ca3af', margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Price / unit</p>
+                <p style={{ fontSize: '10px', color: '#9ca3af', margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Price / {vol}L bag</p>
                 <p style={{ fontSize: '14px', fontWeight: 700, color: '#111827', margin: 0 }}>£{pricePerUnit.toFixed(2)}</p>
               </div>
               <div>
-                <p style={{ fontSize: '10px', color: '#9ca3af', margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Servings / litre</p>
-                <p style={{ fontSize: '14px', fontWeight: 700, color: '#111827', margin: 0 }}>{servingsPerL}</p>
+                <p style={{ fontSize: '10px', color: '#9ca3af', margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Servings / bag</p>
+                <p style={{ fontSize: '14px', fontWeight: 700, color: '#111827', margin: 0 }}>{sg > 0 ? r2((vol * 1000) / sg) : '—'}</p>
               </div>
               <div>
                 <p style={{ fontSize: '10px', color: '#9ca3af', margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Venue GP (ex-VAT)</p>
@@ -251,7 +279,7 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr style={{ background: '#f9fafb', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                {['Product', 'Code', 'Serve (ml)', 'Price/L', 'Price/unit', 'RRP', 'Venue GP', 'Foodlab GP', ''].map((h, i) => (
+                {['Product', 'Code', 'Vol', 'Serve (ml)', 'Price/L', 'Price/bag', 'RRP', 'Venue GP', 'Foodlab GP', ''].map((h, i) => (
                   <th key={h+i} style={{ textAlign: i >= 2 && i <= 7 ? 'right' : 'left', padding: '10px 14px', fontWeight: 500, fontSize: '10px' }}>{h}</th>
                 ))}
               </tr>
@@ -263,6 +291,11 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
                   <tr key={p.id} style={{ borderTop: '1px solid #f3f4f6' }}>
                     <td style={{ padding: '11px 14px', fontWeight: 500, color: '#111827' }}>{p.productName}</td>
                     <td style={{ padding: '11px 14px', color: '#9ca3af', fontFamily: 'monospace', fontSize: '11px' }}>{p.productCode}</td>
+                    <td style={{ padding: '11px 14px', textAlign: 'right' }}>
+                      <span style={{ background: '#f3f4f6', color: '#374151', fontSize: '11px', fontWeight: 600, padding: '2px 7px', borderRadius: '4px' }}>
+                        {(p.volumeLitres ?? 5)}L
+                      </span>
+                    </td>
                     <td style={{ padding: '11px 14px', textAlign: 'right', color: '#6b7280' }}>{p.recommendedServingG || '—'}</td>
                     <td style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>£{ppl.toFixed(2)}</td>
                     <td style={{ padding: '11px 14px', textAlign: 'right', color: '#6b7280' }}>£{p.pricePerUnit.toFixed(2)}</td>

@@ -136,26 +136,34 @@ export default function GroupDetailPage() {
                     <th style={{ textAlign: 'left', padding: '8px 16px', fontWeight: 500 }}>Code</th>
                     <th style={{ textAlign: 'left', padding: '8px 16px', fontWeight: 500 }}>Cocktail</th>
                     <th style={{ textAlign: 'right', padding: '8px 16px', fontWeight: 500 }}>Serve</th>
-                    <th style={{ textAlign: 'right', padding: '8px 16px', fontWeight: 500 }}>Price/unit</th>
-                    <th style={{ textAlign: 'right', padding: '8px 16px', fontWeight: 500 }}>Price/L</th>
+                    <th style={{ textAlign: 'right', padding: '8px 16px', fontWeight: 500 }}>Price / bag</th>
+                    <th style={{ textAlign: 'right', padding: '8px 16px', fontWeight: 500 }}>Price / L</th>
                     <th style={{ textAlign: 'right', padding: '8px 16px', fontWeight: 500 }}>RRP</th>
                     <th style={{ textAlign: 'right', padding: '8px 16px', fontWeight: 500 }}>GP%</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row, i) => (
+                  {rows.map((row, i) => {
+                    const vol = (row as any).volumeLitres ?? 5
+                    return (
                     <tr key={row.id} style={{ borderBottom: '1px solid #f9fafb', background: i % 2 === 1 ? '#fafafa' : '#fff' }}>
                       <td style={{ padding: '8px 16px', fontFamily: 'monospace', color: '#9ca3af' }}>{row.productCode}</td>
-                      <td style={{ padding: '8px 16px', fontWeight: 500, color: '#111827' }}>{row.productName}</td>
+                      <td style={{ padding: '8px 16px', fontWeight: 500, color: '#111827' }}>
+                        {row.productName}
+                        <span style={{ marginLeft: '6px', fontSize: '10px', background: '#f3f4f6', color: '#374151', fontWeight: 600, padding: '1px 6px', borderRadius: '4px' }}>
+                          {vol}L
+                        </span>
+                      </td>
                       <td style={{ padding: '8px 16px', textAlign: 'right', color: '#6b7280' }}>{row.recommendedServingG}ml</td>
                       <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>£{row.pricePerUnit.toFixed(2)}</td>
-                      <td style={{ padding: '8px 16px', textAlign: 'right', color: '#6b7280' }}>£{(row.pricePerLitre || (row.pricePerUnit / row.recommendedServingG * 1000)).toFixed(2)}</td>
+                      <td style={{ padding: '8px 16px', textAlign: 'right', color: '#9ca3af', fontSize: '11px' }}>£{row.pricePerLitre > 0 ? row.pricePerLitre.toFixed(2) : '—'}</td>
                       <td style={{ padding: '8px 16px', textAlign: 'right', color: '#6b7280' }}>£{row.rrp.toFixed(2)}</td>
                       <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600, color: row.venueGpPercent >= 75 ? '#166534' : '#854d0e' }}>
                         {row.venueGpPercent.toFixed(1)}%
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

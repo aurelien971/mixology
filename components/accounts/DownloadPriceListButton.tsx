@@ -23,10 +23,10 @@ interface GroupProps {
 type Props = SingleAccountProps | GroupProps
 
 const COLUMN_OPTIONS: { key: keyof PriceListColumns; label: string; description: string }[] = [
-  { key: 'serveML',      label: 'Serve size (ml)',       description: 'Recommended serving size' },
-  { key: 'qtyPerL',      label: 'Servings per litre',    description: 'How many serves per litre' },
-  { key: 'pricePerUnit', label: 'Price per unit',        description: 'Your price per serving' },
-  { key: 'pricePerL',    label: 'Price per litre',       description: 'Your price per litre' },
+  { key: 'serveML',      label: 'Serve size (ml)',     description: 'Recommended pour size' },
+  { key: 'qtyPerL',      label: 'Servings per litre',  description: 'How many serves per litre' },
+  { key: 'pricePerUnit', label: 'Price per bag',        description: 'Price for a 5L or 19L batch' },
+  { key: 'pricePerL',    label: 'Price per litre',      description: 'Reference price per litre (internal)' },
   { key: 'rrp',          label: 'RRP',                   description: 'Recommended retail price' },
   { key: 'gpPercent',    label: 'GP %',                  description: "Venue's gross profit margin" },
 ]

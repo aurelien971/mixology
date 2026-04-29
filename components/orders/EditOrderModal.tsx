@@ -31,7 +31,7 @@ export default function EditOrderModal({ order, onClose, onSaved }: Props) {
   }, [order.accountId])
 
   function updateQty(productId: string, qty: number) {
-    const q = Math.max(0.5, qty)
+    const q = Math.max(1, Math.round(qty))
     setLineItems(prev =>
       prev.map(l => l.productId === productId
         ? { ...l, quantity: q, lineTotal: r2(q * l.unitPrice) }
@@ -46,18 +46,14 @@ export default function EditOrderModal({ order, onClose, onSaved }: Props) {
 
   function addProduct(p: AccountPricing) {
     if (lineItems.some(l => l.productId === p.productId)) return
-    const ppl = p.pricePerLitre > 0
-      ? p.pricePerLitre
-      : p.recommendedServingG > 0
-        ? r2((p.pricePerUnit / p.recommendedServingG) * 1000)
-        : p.pricePerUnit
     setLineItems(prev => [...prev, {
       productId:    p.productId,
       productCode:  p.productCode,
       productName:  p.productName,
+      volumeLitres: p.volumeLitres,
       quantity:     1,
-      unitPrice:    ppl,
-      lineTotal:    ppl,
+      unitPrice:    p.pricePerUnit,
+      lineTotal:    p.pricePerUnit,
       servingSizeG: p.recommendedServingG,
     }])
   }
@@ -133,8 +129,8 @@ export default function EditOrderModal({ order, onClose, onSaved }: Props) {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: '#f9fafb', fontSize: '11px', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  {['Product', 'Price / L', 'Litres', 'Total', ''].map((h, i) => (
-                    <th key={h+i} style={{ padding: '8px 16px', fontWeight: 500, textAlign: i >= 1 && i <= 3 ? 'right' : 'left' }}>{h}</th>
+                  {['Product', 'Vol', 'Price / bag', 'Qty', 'Total', ''].map((h, i) => (
+                    <th key={h+i} style={{ padding: '8px 16px', fontWeight: 500, textAlign: i >= 2 && i <= 4 ? 'right' : 'left' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -145,13 +141,18 @@ export default function EditOrderModal({ order, onClose, onSaved }: Props) {
                       <p style={{ fontWeight: 500, color: '#111827', margin: 0 }}>{item.productName}</p>
                       <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0', fontFamily: 'monospace' }}>{item.productCode}</p>
                     </td>
+                    <td style={cell()}>
+                      <span style={{ background: '#f3f4f6', color: '#374151', fontSize: '11px', fontWeight: 600, padding: '2px 7px', borderRadius: '4px' }}>
+                        {item.volumeLitres}L
+                      </span>
+                    </td>
                     <td style={cell({ textAlign: 'right', color: '#6b7280' })}>£{item.unitPrice.toFixed(2)}</td>
                     <td style={cell({ textAlign: 'right' })}>
                       <input
-                        type="number" min={0.5} step={0.5}
+                        type="number" min={1} step={1}
                         value={item.quantity}
-                        onChange={e => updateQty(item.productId, parseFloat(e.target.value) || 0.5)}
-                        style={{ width: '72px', padding: '5px 8px', border: '1px solid #e5e7eb', borderRadius: '6px', fontSize: '13px', textAlign: 'right', outline: 'none' }}
+                        onChange={e => updateQty(item.productId, parseInt(e.target.value) || 1)}
+                        style={{ width: '60px', padding: '5px 8px', border: '1px solid #e5e7eb', borderRadius: '6px', fontSize: '13px', textAlign: 'right', outline: 'none' }}
                       />
                     </td>
                     <td style={cell({ textAlign: 'right', fontWeight: 600, color: '#111827' })}>£{item.lineTotal.toFixed(2)}</td>
@@ -191,23 +192,21 @@ export default function EditOrderModal({ order, onClose, onSaved }: Props) {
             <div>
               <p style={{ fontSize: '12px', color: '#6b7280', margin: '0 0 8px', fontWeight: 500 }}>Add product:</p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {unaddedProducts.map(p => {
-                  const ppl = p.pricePerLitre > 0 ? p.pricePerLitre : r2((p.pricePerUnit / p.recommendedServingG) * 1000)
-                  return (
-                    <button
-                      key={p.productId}
-                      onClick={() => addProduct(p)}
-                      style={{
-                        padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 500,
-                        border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', color: '#374151',
-                        display: 'flex', alignItems: 'center', gap: '6px',
-                      }}
-                    >
-                      {p.productName}
-                      <span style={{ color: '#9ca3af', fontSize: '11px' }}>£{ppl.toFixed(2)}/L</span>
-                    </button>
-                  )
-                })}
+                {unaddedProducts.map(p => (
+                  <button
+                    key={p.productId}
+                    onClick={() => addProduct(p)}
+                    style={{
+                      padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 500,
+                      border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', color: '#374151',
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                    }}
+                  >
+                    {p.productName}
+                    <span style={{ background: '#e5e7eb', color: '#374151', fontSize: '10px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px' }}>{p.volumeLitres}L</span>
+                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>£{p.pricePerUnit.toFixed(2)}</span>
+                  </button>
+                ))}
               </div>
             </div>
           )}

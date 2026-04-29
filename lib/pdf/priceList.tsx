@@ -13,9 +13,9 @@ export interface PriceListColumns {
 
 export const DEFAULT_COLUMNS: PriceListColumns = {
   serveML:      true,
-  qtyPerL:      true,
+  qtyPerL:      false,
   pricePerUnit: true,
-  pricePerL:    true,
+  pricePerL:    false,
   rrp:          true,
   gpPercent:    true,
 }
@@ -70,8 +70,8 @@ function TableHeader({ cols }: { cols: PriceListColumns }) {
       <Text style={[C.thText, C.cName]}>Cocktail</Text>
       {cols.serveML      && <Text style={[C.thText, col(W.serveML)]}>Serve ml</Text>}
       {cols.qtyPerL      && <Text style={[C.thText, col(W.qtyPerL)]}>Qty/L</Text>}
-      {cols.pricePerUnit && <Text style={[C.thText, col(W.pricePerUnit)]}>Price/unit</Text>}
-      {cols.pricePerL    && <Text style={[C.thText, col(W.pricePerL)]}>Price/L</Text>}
+      {cols.pricePerUnit && <Text style={[C.thText, col(W.pricePerUnit)]}>Price / bag</Text>}
+      {cols.pricePerL    && <Text style={[C.thText, col(W.pricePerL)]}>Price / L</Text>}
       {cols.rrp          && <Text style={[C.thText, col(W.rrp)]}>RRP</Text>}
       {cols.gpPercent    && <Text style={[C.thText, { width: W.gpPercent, textAlign: 'right' as const }]}>GP% ex-VAT</Text>}
     </View>
@@ -86,20 +86,18 @@ function PricingRows({ rows, cols }: { rows: AccountPricing[]; cols: PriceListCo
   return (
     <>
       {rows.map((item, i) => {
+        const vol     = item.volumeLitres ?? 5
         const qtyPerL = item.recommendedServingG > 0
           ? (1000 / item.recommendedServingG).toFixed(1)
           : '—'
-        const priceL = item.pricePerLitre > 0
-          ? item.pricePerLitre
-          : item.recommendedServingG > 0
-            ? Math.round((item.pricePerUnit / item.recommendedServingG) * 1000 * 100) / 100
-            : 0
+        const priceL  = item.pricePerLitre > 0 ? item.pricePerLitre : 0
         const gpStyle = item.venueGpPercent >= 75 ? C.gpGood : C.gpOk
+        const displayName = `${item.productName} (${vol}L)`
 
         return (
           <View style={i % 2 === 0 ? C.tdRow : C.tdRowAlt} key={item.id}>
             <Text style={[C.codeVal, C.cCode]}>{item.productCode}</Text>
-            <Text style={[C.nameVal, C.cName]}>{item.productName}</Text>
+            <Text style={[C.nameVal, C.cName]}>{displayName}</Text>
             {cols.serveML      && <Text style={[C.numVal,   col(W.serveML)]}>{item.recommendedServingG}</Text>}
             {cols.qtyPerL      && <Text style={[C.numVal,   col(W.qtyPerL)]}>{qtyPerL}</Text>}
             {cols.pricePerUnit && <Text style={[C.priceVal, col(W.pricePerUnit)]}>£{item.pricePerUnit.toFixed(2)}</Text>}
