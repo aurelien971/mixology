@@ -83,7 +83,7 @@ export function DeliveryNotePDF({
 }: DeliveryNoteProps) {
   const noteNumber = order.deliveryNoteNumber ?? `DN-${order.orderNumber.replace('FL-', '')}`
   const noteDate   = order.deliveryDate ?? order.createdAt
-  const totalUnits = order.lineItems.reduce((sum, l) => sum + l.quantity, 0)
+  const totalUnits = order.lineItems.reduce((sum, l) => sum + l.quantity * (l.volumeLitres ?? 5), 0)
 
   // Use provided names or fall back to accountName
   const displayLegal   = legalName   ?? order.accountName
@@ -128,8 +128,8 @@ export function DeliveryNotePDF({
           </View>
           <View style={s.metaRowLast}>
             <View style={s.metaCell}>
-              <Text style={s.metaLabel}>Total units (litres)</Text>
-              <Text style={s.metaValue}>{totalUnits}</Text>
+              <Text style={s.metaLabel}>Total litres</Text>
+              <Text style={s.metaValue}>{totalUnits}L</Text>
             </View>
             <View style={s.metaCellR}>
               <Text style={s.metaLabel}>Items</Text>
@@ -163,18 +163,24 @@ export function DeliveryNotePDF({
         <View style={s.thRow}>
           <Text style={[s.thText, s.colCode]}>Product code</Text>
           <Text style={[s.thText, s.colName]}>Product name</Text>
-          <Text style={[s.thText, s.colQty]}>Qty (L)</Text>
+          <Text style={[s.thText, { width: 48, textAlign: 'right' as const }]}>Bags</Text>
+          <Text style={[s.thText, s.colQty]}>Total (L)</Text>
         </View>
-        {order.lineItems.map((item, i) => (
+        {order.lineItems.map((item, i) => {
+          const vol       = item.volumeLitres ?? 5
+          const totalL    = item.quantity * vol
+          return (
           <View style={s.tdRow} key={i}>
             <Text style={s.tdCode}>{item.productCode}</Text>
             <Text style={s.tdName}>{item.productName}</Text>
-            <Text style={s.tdQty}>{item.quantity}</Text>
+            <Text style={[s.tdQty, { width: 48 }]}>{item.quantity} × {vol}L</Text>
+            <Text style={s.tdQty}>{totalL}</Text>
           </View>
-        ))}
+          )
+        })}
         <View style={s.totRow}>
           <Text style={s.totLabel}>Total</Text>
-          <Text style={s.totVal}>{totalUnits}</Text>
+          <Text style={s.totVal}>{totalUnits}L</Text>
         </View>
 
         {/* Signatures — vertical stack, 2 per row */}
