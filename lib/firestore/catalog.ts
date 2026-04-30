@@ -99,9 +99,11 @@ export async function getPricingByGroup(groupId: string): Promise<AccountPricing
 export async function upsertAccountPricing(
   pricing: Omit<AccountPricing, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<void> {
-  const pricePerLitre = pricing.recommendedServingG > 0
-    ? Math.round((pricing.pricePerUnit / pricing.recommendedServingG) * 1000 * 100) / 100
-    : 0
+  // pricePerUnit = pricePerLitre × volumeLitres, so:
+  const volumeLitres  = pricing.volumeLitres ?? 5
+  const pricePerLitre = volumeLitres > 0
+    ? Math.round((pricing.pricePerUnit / volumeLitres) * 100) / 100
+    : pricing.pricePerLitre ?? 0
 
   // GP uses ex-VAT RRP — venue's real margin after handing 20% VAT to HMRC
   const rrpExVat = pricing.rrp / 1.2

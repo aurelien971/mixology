@@ -24,9 +24,11 @@ function venueGp(rrp: number, pricePerUnit: number, volumeLitres: number, servin
   return r2(((bagRevenueExVat - pricePerUnit) / bagRevenueExVat) * 100)
 }
 
-function foodlabGp(pricePerUnit: number, cost: number) {
-  if (!pricePerUnit || !cost) return 0
-  return r2(((pricePerUnit - cost) / pricePerUnit) * 100)
+function foodlabGp(pricePerUnit: number, costToMake: number, volumeLitres = 5, servingG = 100) {
+  if (!pricePerUnit || !costToMake || !servingG) return 0
+  const servingsPerBag = (volumeLitres * 1000) / servingG
+  const costPerBag     = costToMake * servingsPerBag
+  return r2(((pricePerUnit - costPerBag) / pricePerUnit) * 100)
 }
 
 function GpPill({ value }: { value: number }) {
@@ -47,8 +49,16 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
   const [pricing, setPricing]           = useState<AccountPricing[]>([])
   const [loading, setLoading]           = useState(true)
   const [addingProduct, setAddingProduct] = useState<Product | null>(null)
+  const [editingPricing, setEditingPricing] = useState<AccountPricing | null>(null)
   const [saving, setSaving]             = useState(false)
   const [form, setForm] = useState({ pricePerLitre: '', servingG: '', rrp: '', volumeLitres: '5' })
+  const [sortKey, setSortKey] = useState<string>('productName')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  function toggleSort(key: string) {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('asc') }
+  }
 
   async function load() {
     const [p, pr] = await Promise.all([getProducts(), getPricingForAccount(accountId)])
@@ -70,8 +80,22 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
     })
   }
 
-  const pricedIds = new Set(pricing.map(p => p.productId))
+  const productCostMap = new Map(products.map(p => [p.id, { costToMake: p.costToMake, servingG: p.recommendedServingG }]))
+  const pricedIds      = new Set(pricing.map(p => p.productId))
   const unpricedProducts = products.filter(p => !pricedIds.has(p.id))
+
+  function openEdit(p: AccountPricing) {
+    const vol = p.volumeLitres ?? 5
+    const ppl = vol > 0 ? r2(p.pricePerUnit / vol) : (p.pricePerLitre ?? 0)
+    setEditingPricing(p)
+    setAddingProduct(null)
+    setForm({
+      pricePerLitre: String(ppl),
+      servingG:      String(p.recommendedServingG),
+      rrp:           String(p.rrp),
+      volumeLitres:  String(vol),
+    })
+  }
 
   // Live preview calculations
   const ppl  = parseFloat(form.pricePerLitre) || 0
@@ -82,39 +106,43 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
   const pricePerUnit = ppl > 0 ? r2(ppl * vol) : 0
 
   const prevFoodlabGp = addingProduct && pricePerUnit > 0
-    ? foodlabGp(pricePerUnit, addingProduct.costToMake)
+    ? foodlabGp(pricePerUnit, addingProduct.costToMake, vol, sg)
     : 0
   const prevVenueGp = pricePerUnit > 0 && rrp > 0 ? venueGp(rrp, pricePerUnit, vol, sg) : 0
   const servingsPerL = sg > 0 ? r2(1000 / sg) : 0
 
   async function handleSave() {
-    if (!addingProduct) return
+    if (!addingProduct && !editingPricing) return
     if (ppl <= 0)  return toast.error('Enter a price per litre')
     if (sg <= 0)   return toast.error('Enter a serving size')
     if (rrp <= 0)  return toast.error('Enter a RRP')
 
     setSaving(true)
     try {
+      const product = addingProduct ?? products.find(p => p.id === editingPricing!.productId)
+      if (!product) return
+
       const entry: Omit<AccountPricing, 'id' | 'createdAt' | 'updatedAt'> = {
         accountId,
         accountName,
-        productId:           addingProduct.id,
-        productCode:         addingProduct.productCode,
-        productName:         addingProduct.name,
+        productId:           product.id,
+        productCode:         product.productCode,
+        productName:         product.name,
         recommendedServingG: sg,
         volumeLitres:        vol,
         pricePerLitre:       ppl,
         pricePerUnit,
         rrp,
         venueGpPercent:    venueGp(rrp, pricePerUnit, vol, sg),
-        foodlabGpPercent:  foodlabGp(pricePerUnit, addingProduct.costToMake),
+        foodlabGpPercent:  foodlabGp(pricePerUnit, product.costToMake, vol, sg),
       }
       if (groupId)   entry.groupId   = groupId
       if (groupName) entry.groupName = groupName
 
       await upsertAccountPricing(entry)
-      toast.success('Pricing saved')
+      toast.success(editingPricing ? 'Pricing updated' : 'Pricing saved')
       setAddingProduct(null)
+      setEditingPricing(null)
       setForm({ pricePerLitre: '', servingG: '', rrp: '', volumeLitres: '5' })
       load()
     } catch {
@@ -135,14 +163,18 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
   return (
     <div>
       {/* Add pricing form */}
-      {addingProduct && (
+      {(addingProduct || editingPricing) && (
         <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
             <div>
-              <p style={{ fontSize: '14px', fontWeight: 600, color: '#111827', margin: 0 }}>{addingProduct.name}</p>
-              <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0', fontFamily: 'monospace' }}>{addingProduct.productCode}</p>
+              <p style={{ fontSize: '14px', fontWeight: 600, color: '#111827', margin: 0 }}>
+                {editingPricing ? editingPricing.productName : addingProduct!.name}
+              </p>
+              <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0', fontFamily: 'monospace' }}>
+                {editingPricing ? editingPricing.productCode : addingProduct!.productCode}
+              </p>
             </div>
-            <button onClick={() => setAddingProduct(null)} style={{ color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px' }}>×</button>
+            <button onClick={() => { setAddingProduct(null); setEditingPricing(null) }} style={{ color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px' }}>×</button>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px', marginBottom: '16px' }}>
@@ -245,8 +277,8 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
           )}
 
           <div style={{ display: 'flex', gap: '8px' }}>
-            <Button size="sm" onClick={handleSave} loading={saving}>Save pricing</Button>
-            <Button size="sm" variant="secondary" onClick={() => setAddingProduct(null)}>Cancel</Button>
+            <Button size="sm" onClick={handleSave} loading={saving}>{editingPricing ? 'Update pricing' : 'Save pricing'}</Button>
+            <Button size="sm" variant="secondary" onClick={() => { setAddingProduct(null); setEditingPricing(null) }}>Cancel</Button>
           </div>
         </div>
       )}
@@ -282,16 +314,59 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr style={{ background: '#f9fafb', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                {['Product', 'Code', 'Vol', 'Serve (ml)', 'Price/L', 'Price/bag', 'RRP', 'Venue GP', 'Foodlab GP', ''].map((h, i) => (
-                  <th key={h+i} style={{ textAlign: i >= 2 && i <= 7 ? 'right' : 'left', padding: '10px 14px', fontWeight: 500, fontSize: '10px' }}>{h}</th>
+                {[
+                  { label: 'Product',    key: 'productName',       right: false },
+                  { label: 'Code',       key: 'productCode',       right: false },
+                  { label: 'Vol',        key: 'volumeLitres',      right: true  },
+                  { label: 'Serve (ml)', key: 'recommendedServingG', right: true },
+                  { label: 'Price/L',    key: 'pricePerLitre',     right: true  },
+                  { label: 'Price/bag',  key: 'pricePerUnit',      right: true  },
+                  { label: 'RRP',        key: 'rrp',               right: true  },
+                  { label: 'Venue GP',   key: 'venueGpPercent',    right: true  },
+                  { label: 'Foodlab GP', key: 'foodlabGpPercent',  right: true  },
+                  { label: '',           key: '',                   right: true  },
+                ].map(({ label, key, right }) => (
+                  <th
+                    key={label}
+                    onClick={() => key && toggleSort(key)}
+                    style={{
+                      textAlign: right ? 'right' : 'left',
+                      padding: '10px 14px', fontWeight: 500, fontSize: '10px',
+                      cursor: key ? 'pointer' : 'default',
+                      userSelect: 'none',
+                      color: sortKey === key ? '#374151' : '#9ca3af',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {label}
+                    {key && sortKey === key && (
+                      <span style={{ marginLeft: '3px', fontSize: '9px' }}>{sortDir === 'asc' ? '▲' : '▼'}</span>
+                    )}
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {pricing.map(p => {
-                const vol2 = p.volumeLitres ?? 5
-                const ppl  = p.pricePerLitre > 0 ? p.pricePerLitre : r2(p.pricePerUnit / vol2)
-                const gp   = venueGp(p.rrp, p.pricePerUnit, vol2, p.recommendedServingG)
+              {[...pricing].sort((a, b) => {
+                let av: any, bv: any
+                if (sortKey === 'pricePerLitre') {
+                  const va = a.volumeLitres ?? 5; const vb = b.volumeLitres ?? 5
+                  av = va > 0 ? a.pricePerUnit / va : 0
+                  bv = vb > 0 ? b.pricePerUnit / vb : 0
+                } else {
+                  av = (a as any)[sortKey] ?? 0
+                  bv = (b as any)[sortKey] ?? 0
+                }
+                if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
+                return sortDir === 'asc' ? av - bv : bv - av
+              }).map(p => {
+                const vol2   = p.volumeLitres ?? 5
+                const ppl    = vol2 > 0 ? r2(p.pricePerUnit / vol2) : (p.pricePerLitre ?? 0)
+                const gp     = venueGp(p.rrp, p.pricePerUnit, vol2, p.recommendedServingG)
+                const prod   = productCostMap.get(p.productId)
+                const fGp    = prod?.costToMake
+                  ? foodlabGp(p.pricePerUnit, prod.costToMake, vol2, prod.servingG || p.recommendedServingG)
+                  : p.foodlabGpPercent
                 return (
                   <tr key={p.id} style={{ borderTop: '1px solid #f3f4f6' }}>
                     <td style={{ padding: '11px 14px', fontWeight: 500, color: '#111827' }}>{p.productName}</td>
@@ -306,8 +381,14 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
                     <td style={{ padding: '11px 14px', textAlign: 'right', color: '#6b7280' }}>£{p.pricePerUnit.toFixed(2)}</td>
                     <td style={{ padding: '11px 14px', textAlign: 'right', color: '#6b7280' }}>£{p.rrp.toFixed(2)}</td>
                     <td style={{ padding: '11px 14px', textAlign: 'right' }}><GpPill value={gp} /></td>
-                    <td style={{ padding: '11px 14px', textAlign: 'right' }}><GpPill value={p.foodlabGpPercent} /></td>
-                    <td style={{ padding: '11px 14px', textAlign: 'right' }}>
+                    <td style={{ padding: '11px 14px', textAlign: 'right' }}><GpPill value={fGp} /></td>
+                    <td style={{ padding: '11px 14px', textAlign: 'right', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                      <button
+                        onClick={() => openEdit(p)}
+                        style={{ fontSize: '12px', color: '#374151', background: 'none', border: '1px solid #e5e7eb', borderRadius: '6px', cursor: 'pointer', padding: '3px 10px', fontWeight: 500 }}
+                      >
+                        Edit
+                      </button>
                       <button
                         onClick={() => handleDelete(p.id, p.productName)}
                         style={{ fontSize: '12px', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { format, isPast } from 'date-fns'
 import Link from 'next/link'
@@ -10,7 +10,7 @@ import Button from '@/components/ui/Button'
 import { getOrder, updateOrderStatus, updateOrder } from '@/lib/firestore/orders'
 import { getPaymentByOrder, markPaymentPaid, updatePaymentStatus, updatePaymentDueDate } from '@/lib/firestore/payments'
 import { getAccount } from '@/lib/firestore/accounts'
-import { getCompanySettings } from '@/lib/firestore/settings'
+import { getCompanySettings, CompanySettings } from '@/lib/firestore/settings'
 import { downloadXeroCSV } from '@/lib/xeroExport'
 import { uploadSignedDeliveryNote, deleteSignedDeliveryNote } from '@/lib/storage'
 import { Order, OrderStatus, Payment, Account, PAYMENT_TERMS_LABELS } from '@/types'
@@ -50,6 +50,8 @@ export default function OrderDetailPage() {
   const [genINV, setGenINV]  = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
+  const [showConfirmation, setShowConfirmation] = useState(false)
+  const [settings, setSettings] = useState<CompanySettings | null>(null)
   const [editDue,  setEditDue]  = useState(false)
   const [newDue,   setNewDue]   = useState('')
   const [editEDD,  setEditEDD]  = useState(false)
@@ -60,9 +62,10 @@ export default function OrderDetailPage() {
       const o = await getOrder(id)
       setOrder(o)
       if (o) {
-        const [p, a] = await Promise.all([getPaymentByOrder(id), getAccount(o.accountId)])
+        const [p, a, s] = await Promise.all([getPaymentByOrder(id), getAccount(o.accountId), getCompanySettings()])
         setPayment(p)
         setAccount(a)
+        setSettings(s)
       }
     } finally { setLoading(false) }
   }
@@ -242,6 +245,15 @@ export default function OrderDetailPage() {
 
   return (
     <div>
+      {showConfirmation && order && account && payment && settings && (
+        <ConfirmationModal
+          order={order}
+          account={account}
+          payment={payment}
+          settings={settings}
+          onClose={() => setShowConfirmation(false)}
+        />
+      )}
       <Header
         title={order.orderNumber}
         subtitle={`${account ? `${account.legalName} (${account.tradingName})` : order.accountName} · ${format(order.createdAt, 'd MMM yyyy')}`}
@@ -550,6 +562,24 @@ export default function OrderDetailPage() {
                 </svg>
                 Export Xero invoice (CSV)
               </button>
+
+              {/* Send confirmation */}
+              {!cancelled && (
+                <button
+                  onClick={() => setShowConfirmation(true)}
+                  style={{
+                    width: '100%', padding: '9px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
+                    border: '1px solid #e0e7ff', background: '#eef2ff', cursor: 'pointer',
+                    color: '#3730a3', textAlign: 'left' as const,
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                    <path d="M2 3h12l-6 5-6-5zM2 3v9a1 1 0 001 1h10a1 1 0 001-1V3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  Send order confirmation
+                </button>
+              )}
             </div>
 
             {/* Signed delivery note */}
@@ -625,6 +655,265 @@ export default function OrderDetailPage() {
           <div style={{ textAlign: 'center' }}>
             <Link href="/orders" style={{ fontSize: '12px', color: '#9ca3af', textDecoration: 'none' }}>← Back to orders</Link>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Order confirmation modal ─────────────────────────────────────────────────
+
+function ConfirmationModal({ order, account, payment, settings, onClose }: {
+  order: Order
+  account: Account
+  payment: Payment
+  settings: CompanySettings
+  onClose: () => void
+}) {
+  const [copied, setCopied] = useState(false)
+
+  const deliveryDate = order.expectedDeliveryDate ?? order.deliveryDate
+  const deliveryStr  = deliveryDate ? format(deliveryDate, 'd MMMM yyyy') : 'TBC'
+  const dueStr       = format(payment.dueDate, 'd MMMM yyyy')
+  const terms        = PAYMENT_TERMS_LABELS[account.paymentTerms ?? 'net_30'] ?? 'Net 30 days'
+  const invoiceNo    = order.invoiceNumber ?? `INV-${order.orderNumber.replace('FL-', '')}`
+
+  const hasBankDetails = !!(settings.bankAccountName && settings.bankSortCode && settings.bankAccountNumber)
+
+  const subject = `Order Confirmation – ${order.orderNumber}${order.poReference ? ` / ${order.poReference}` : ''}`
+
+  const body = `Hi ${account.tradingName},
+
+Thank you for your order. Here is your order confirmation and invoice details.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ORDER CONFIRMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Order number:       ${order.orderNumber}${order.poReference ? `\nPO reference:       ${order.poReference}` : ''}
+Invoice number:     ${invoiceNo}
+Expected delivery:  ${deliveryStr}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ORDER SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${order.lineItems.map(l => {
+  const vol = l.volumeLitres ?? 5
+  return `${l.productName} (${l.productCode})\n  ${l.quantity} × ${vol}L bag${l.quantity > 1 ? 's' : ''} = ${l.quantity * vol}L   £${l.lineTotal.toFixed(2)}`
+}).join('\n\n')}
+
+─────────────────────────────────────
+Subtotal (ex-VAT):  £${order.subtotal.toFixed(2)}
+VAT (20%):          £${order.vatAmount.toFixed(2)}
+Total:              £${order.total.toFixed(2)}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PAYMENT DETAILS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Amount due:         £${order.total.toFixed(2)}
+Payment terms:      ${terms}
+Due date:           ${dueStr}
+${hasBankDetails ? `
+Bank transfer:
+  Account name:     ${settings.bankAccountName}
+  Sort code:        ${settings.bankSortCode}
+  Account number:   ${settings.bankAccountNumber}
+  Reference:        ${invoiceNo}
+` : `Reference:          ${invoiceNo}
+`}
+${settings.bankReference ? settings.bankReference : 'Please quote the invoice number as your payment reference.'}
+
+If you have any questions, please don't hesitate to reach out.
+
+Warm regards,
+${settings.supplierName}${settings.supplierPhone ? `\n${settings.supplierPhone}` : ''}${settings.supplierEmail ? `\n${settings.supplierEmail}` : ''}`
+
+  function copy() {
+    navigator.clipboard.writeText(body)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2500)
+  }
+
+  const mailtoHref = `mailto:${account.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '40px', paddingBottom: '40px', zIndex: 100 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '580px', maxHeight: '88vh', overflow: 'hidden', margin: '0 20px', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+
+        {/* Header */}
+        <div style={{ padding: '20px 24px 18px', borderBottom: '1px solid #f3f4f6', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+            <div>
+              <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#111827', margin: '0 0 6px' }}>Order confirmation</h2>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '12px', background: '#f3f4f6', padding: '2px 8px', borderRadius: '6px', color: '#374151', fontFamily: 'monospace' }}>{order.orderNumber}</span>
+                {order.poReference && <span style={{ fontSize: '12px', background: '#eff6ff', padding: '2px 8px', borderRadius: '6px', color: '#1d4ed8', fontFamily: 'monospace' }}>{order.poReference}</span>}
+                <span style={{ fontSize: '12px', color: '#9ca3af' }}>→ {account.email}</span>
+              </div>
+            </div>
+            <button onClick={onClose} style={{ color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', lineHeight: 1, padding: '0 0 0 8px' }}>×</button>
+          </div>
+        </div>
+
+        {/* Styled email preview */}
+        <div style={{ flex: 1, overflow: 'auto', padding: '16px 24px' }}>
+          <div style={{
+            border: '1px solid #e5e7eb', borderRadius: '12px', overflow: 'hidden',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            fontSize: '14px', color: '#1f2937',
+          }}>
+            {/* Email header bar */}
+            <div style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '12px 20px', display: 'flex', gap: '16px', fontSize: '12px', color: '#6b7280' }}>
+              <span><strong style={{ color: '#374151' }}>To:</strong> {account.email}</span>
+              <span><strong style={{ color: '#374151' }}>Subject:</strong> {subject}</span>
+            </div>
+
+            {/* Email body */}
+            <div style={{ padding: '28px 28px 24px', background: '#fff' }}>
+              <p style={{ margin: '0 0 16px', lineHeight: 1.6 }}>Hi <strong>{account.tradingName}</strong>,</p>
+              <p style={{ margin: '0 0 24px', lineHeight: 1.6, color: '#4b5563' }}>Thank you for your order. Here is your order confirmation and invoice details.</p>
+
+              {/* Order info block */}
+              <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '16px 20px', marginBottom: '20px' }}>
+                <p style={{ fontSize: '11px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>Order confirmation</p>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <tbody>
+                  {[
+                    ['Order number', order.orderNumber],
+                    ...(order.poReference ? [['PO reference', order.poReference]] : []),
+                    ['Invoice number', invoiceNo],
+                    ['Expected delivery', deliveryStr],
+                  ].map(([k, v]) => (
+                    <tr key={k}>
+                      <td style={{ padding: '3px 0', color: '#6b7280', width: '140px' }}>{k}</td>
+                      <td style={{ padding: '3px 0', fontWeight: 600, color: '#111827', fontFamily: k === 'Order number' || k === 'Invoice number' || k === 'PO reference' ? 'monospace' : 'inherit' }}>{v}</td>
+                    </tr>
+                  ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Order lines */}
+              <div style={{ marginBottom: '20px' }}>
+                <p style={{ fontSize: '11px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px' }}>Order summary</p>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                      {['Product', 'Code', 'Volume', 'Total'].map((h, i) => (
+                        <th key={h} style={{ padding: '8px 10px', textAlign: i > 0 ? 'right' : 'left', fontSize: '11px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {order.lineItems.map((l, i) => {
+                      const vol = l.volumeLitres ?? 5
+                      return (
+                        <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                          <td style={{ padding: '10px 10px', fontWeight: 500, color: '#111827' }}>{l.productName}</td>
+                          <td style={{ padding: '10px 10px', textAlign: 'right', fontFamily: 'monospace', fontSize: '11px', color: '#9ca3af' }}>{l.productCode}</td>
+                          <td style={{ padding: '10px 10px', textAlign: 'right', color: '#374151' }}>{l.quantity} × {vol}L</td>
+                          <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 700, color: '#111827' }}>£{l.lineTotal.toFixed(2)}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ borderTop: '1px solid #e5e7eb' }}>
+                      <td colSpan={3} style={{ padding: '8px 10px', textAlign: 'right', fontSize: '12px', color: '#6b7280' }}>Subtotal (ex-VAT)</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#374151' }}>£{order.subtotal.toFixed(2)}</td>
+                    </tr>
+                    <tr>
+                      <td colSpan={3} style={{ padding: '4px 10px', textAlign: 'right', fontSize: '12px', color: '#6b7280' }}>VAT (20%)</td>
+                      <td style={{ padding: '4px 10px', textAlign: 'right', color: '#374151' }}>£{order.vatAmount.toFixed(2)}</td>
+                    </tr>
+                    <tr style={{ borderTop: '2px solid #111827' }}>
+                      <td colSpan={3} style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>Total</td>
+                      <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 700, fontSize: '15px', color: '#111827' }}>£{order.total.toFixed(2)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {/* Payment details */}
+              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '16px 20px', marginBottom: '20px' }}>
+                <p style={{ fontSize: '11px', fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>Payment details</p>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <tbody>
+                  {[
+                    ['Amount due',     `£${order.total.toFixed(2)}`],
+                    ['Payment terms',  terms],
+                    ['Due date',       dueStr],
+                    ...(hasBankDetails ? [
+                      ['Account name',   settings.bankAccountName],
+                      ['Sort code',      settings.bankSortCode],
+                      ['Account number', settings.bankAccountNumber],
+                      ['Reference',      invoiceNo],
+                    ] : [['Reference', invoiceNo]]),
+                  ].map(([k, v]) => (
+                    <tr key={k}>
+                      <td style={{ padding: '3px 0', color: '#92400e', width: '140px', opacity: 0.7 }}>{k}</td>
+                      <td style={{ padding: '3px 0', fontWeight: k === 'Amount due' || k === 'Reference' ? 700 : 500, color: '#78350f', fontFamily: k === 'Reference' || k === 'Sort code' || k === 'Account number' ? 'monospace' : 'inherit' }}>{v}</td>
+                    </tr>
+                  ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#6b7280', lineHeight: 1.6 }}>
+                {settings.bankReference || 'Please quote the invoice number as your payment reference.'}
+              </p>
+              <p style={{ margin: '0 0 6px', fontSize: '13px', color: '#4b5563', lineHeight: 1.6 }}>If you have any questions, please don't hesitate to reach out.</p>
+              <p style={{ margin: '20px 0 0', fontSize: '13px', color: '#4b5563', lineHeight: 1.8 }}>
+                Warm regards,<br/>
+                <strong>{settings.supplierName}</strong>
+                {settings.supplierPhone && <><br/>{settings.supplierPhone}</>}
+                {settings.supplierEmail && <><br/>{settings.supplierEmail}</>}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ padding: '16px 24px', borderTop: '1px solid #f3f4f6', flexShrink: 0, display: 'flex', gap: '10px' }}>
+          <button
+            onClick={copy}
+            style={{
+              flex: 1, padding: '11px 16px', borderRadius: '10px', fontSize: '13px', fontWeight: 600,
+              border: `1px solid ${copied ? '#bbf7d0' : '#e5e7eb'}`,
+              background: copied ? '#f0fdf4' : '#f9fafb',
+              color: copied ? '#166534' : '#374151', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+              transition: 'all 0.15s',
+            }}
+          >
+            {copied ? (
+              <>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7l3.5 3.5 6.5-6.5" stroke="#166534" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                Copied!
+              </>
+            ) : (
+              <>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.3" fill="none"/><path d="M2 10V2h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                Copy to clipboard
+              </>
+            )}
+          </button>
+          <a
+            href={mailtoHref}
+            style={{
+              flex: 1, padding: '11px 16px', borderRadius: '10px', fontSize: '13px', fontWeight: 600,
+              border: '1px solid #c7d2fe', background: '#eef2ff', color: '#3730a3',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+              textDecoration: 'none',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M1 3.5h12l-6 4.5L1 3.5zM1 3.5v7a1 1 0 001 1h10a1 1 0 001-1v-7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Open in Mail
+          </a>
         </div>
       </div>
     </div>

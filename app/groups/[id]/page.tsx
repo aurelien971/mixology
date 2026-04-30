@@ -10,6 +10,13 @@ import { getAccountsByGroup } from '@/lib/firestore/accounts'
 import { getPricingByGroup } from '@/lib/firestore/catalog'
 import { Group, Account, AccountPricing } from '@/types'
 
+function calcVenueGp(rrp: number, pricePerUnit: number, volumeLitres: number, servingG: number): number {
+  if (!rrp || !pricePerUnit || !servingG) return 0
+  const servingsPerBag  = (volumeLitres * 1000) / servingG
+  const bagRevenueExVat = (rrp / 1.2) * servingsPerBag
+  return Math.round(((bagRevenueExVat - pricePerUnit) / bagRevenueExVat) * 10000) / 100
+}
+
 export default function GroupDetailPage() {
   const { id } = useParams<{ id: string }>()
   const [group, setGroup] = useState<Group | null>(null)
@@ -39,7 +46,7 @@ export default function GroupDetailPage() {
   const totalPricingLines = pricing.length
   const venuesWithPricing = new Set(pricing.map(p => p.accountName)).size
   const avgVenueGp = pricing.length > 0
-    ? pricing.reduce((s, p) => s + p.venueGpPercent, 0) / pricing.length
+    ? pricing.reduce((s, p) => s + calcVenueGp(p.rrp, p.pricePerUnit, p.volumeLitres ?? 5, p.recommendedServingG), 0) / pricing.length
     : 0
 
   // Group pricing by account for the table preview
@@ -83,7 +90,7 @@ export default function GroupDetailPage() {
         {accounts.map(account => {
           const lines = byAccount[account.tradingName] ?? []
           const avgGp = lines.length > 0
-            ? lines.reduce((s, p) => s + p.venueGpPercent, 0) / lines.length
+            ? lines.reduce((s, p) => s + calcVenueGp(p.rrp, p.pricePerUnit, p.volumeLitres ?? 5, p.recommendedServingG), 0) / lines.length
             : null
 
           return (
@@ -157,9 +164,9 @@ export default function GroupDetailPage() {
                       <td style={{ padding: '8px 16px', textAlign: 'right', color: '#6b7280' }}>{row.recommendedServingG}ml</td>
                       <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>£{row.pricePerUnit.toFixed(2)}</td>
                       <td style={{ padding: '8px 16px', textAlign: 'right', color: '#9ca3af', fontSize: '11px' }}>£{row.pricePerLitre > 0 ? row.pricePerLitre.toFixed(2) : '—'}</td>
-                      <td style={{ padding: '8px 16px', textAlign: 'right', color: '#6b7280' }}>£{row.rrp.toFixed(2)}</td>
-                      <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600, color: row.venueGpPercent >= 75 ? '#166534' : '#854d0e' }}>
-                        {row.venueGpPercent.toFixed(1)}%
+                    <td style={{ padding: '8px 16px', textAlign: 'right', color: '#6b7280' }}>£{row.rrp.toFixed(2)}</td>
+                      <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600, color: calcVenueGp(row.rrp, row.pricePerUnit, row.volumeLitres ?? 5, row.recommendedServingG) >= 75 ? '#166534' : '#854d0e' }}>
+                        {calcVenueGp(row.rrp, row.pricePerUnit, row.volumeLitres ?? 5, row.recommendedServingG).toFixed(1)}%
                       </td>
                     </tr>
                     )

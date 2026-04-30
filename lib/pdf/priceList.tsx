@@ -20,43 +20,43 @@ export const DEFAULT_COLUMNS: PriceListColumns = {
   gpPercent:    true,
 }
 
-// A4 = 595pt. Padding 40pt each side → 515pt usable.
-// Base fixed cols: Code=68, Name=flex. Optional cols are additive.
+// A4 = 595pt. Padding 36pt each side → 523pt usable.
+// Base fixed cols: Code=72, Name=flex. Optional cols are additive.
 // Each optional col width:
-const W = { serveML: 48, qtyPerL: 40, pricePerUnit: 58, pricePerL: 52, rrp: 44, gpPercent: 38 }
+const W = { serveML: 54, qtyPerL: 46, pricePerUnit: 68, pricePerL: 62, rrp: 52, gpPercent: 52 }
 
 const C = StyleSheet.create({
-  page:       { fontFamily: 'Helvetica', fontSize: 9, paddingTop: 36, paddingBottom: 36, paddingLeft: 40, paddingRight: 40, color: '#1a1a1a' },
-  headerRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 },
-  brand:      { fontSize: 17, fontFamily: 'Helvetica-Bold', color: '#111' },
-  brandSub:   { fontSize: 8, color: '#999', marginTop: 2 },
-  docTitle:   { fontSize: 14, fontFamily: 'Helvetica-Bold', textAlign: 'right' },
-  docMeta:    { fontSize: 8, color: '#999', textAlign: 'right', marginTop: 3 },
-  divider:    { borderBottomWidth: 0.5, borderBottomColor: '#ddd', marginBottom: 16 },
-  clientLabel:{ fontSize: 7, color: '#aaa', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 },
+  page:       { fontFamily: 'Helvetica', fontSize: 9, paddingTop: 40, paddingBottom: 40, paddingLeft: 36, paddingRight: 36, color: '#1a1a1a' },
+  headerRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
+  brand:      { fontSize: 18, fontFamily: 'Helvetica-Bold', color: '#111' },
+  brandSub:   { fontSize: 8.5, color: '#999', marginTop: 3 },
+  docTitle:   { fontSize: 15, fontFamily: 'Helvetica-Bold', textAlign: 'right' },
+  docMeta:    { fontSize: 8.5, color: '#999', textAlign: 'right', marginTop: 4 },
+  divider:    { borderBottomWidth: 0.5, borderBottomColor: '#ddd', marginBottom: 18 },
+  clientLabel:{ fontSize: 7.5, color: '#aaa', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 },
   clientName: { fontSize: 14, fontFamily: 'Helvetica-Bold', color: '#111' },
-  clientSub:  { fontSize: 8, color: '#999', marginTop: 2 },
-  clientBlock:{ marginBottom: 20 },
-  venueRow:   { flexDirection: 'row', alignItems: 'center', marginTop: 16, marginBottom: 6 },
-  venueName:  { fontSize: 10, fontFamily: 'Helvetica-Bold', color: '#111', marginRight: 8 },
+  clientSub:  { fontSize: 8.5, color: '#999', marginTop: 2 },
+  clientBlock:{ marginBottom: 22 },
+  venueRow:   { flexDirection: 'row', alignItems: 'center', marginTop: 28, marginBottom: 10 },
+  venueName:  { fontSize: 11, fontFamily: 'Helvetica-Bold', color: '#111', marginRight: 8 },
   venueLine:  { flex: 1, borderBottomWidth: 0.5, borderBottomColor: '#ddd' },
-  thRow:      { flexDirection: 'row', backgroundColor: '#f4f4f4', paddingVertical: 6, paddingHorizontal: 10, marginBottom: 0 },
-  thText:     { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#777', textTransform: 'uppercase', letterSpacing: 0.5 },
-  tdRow:      { flexDirection: 'row', paddingVertical: 7, paddingHorizontal: 10, borderBottomWidth: 0.5, borderBottomColor: '#f0f0f0' },
-  tdRowAlt:   { flexDirection: 'row', paddingVertical: 7, paddingHorizontal: 10, borderBottomWidth: 0.5, borderBottomColor: '#f0f0f0', backgroundColor: '#fafafa' },
-  cCode:      { width: 68, paddingRight: 6 },
-  cName:      { flex: 1,   paddingRight: 6 },
-  codeVal:    { fontSize: 8,  color: '#aaa' },
-  nameVal:    { fontSize: 9,  color: '#111', fontFamily: 'Helvetica-Bold' },
-  numVal:     { fontSize: 9,  color: '#444' },
-  priceVal:   { fontSize: 9,  color: '#111', fontFamily: 'Helvetica-Bold' },
-  gpGood:     { fontSize: 9,  color: '#166534', fontFamily: 'Helvetica-Bold' },
-  gpOk:       { fontSize: 9,  color: '#854d0e', fontFamily: 'Helvetica-Bold' },
-  totRow:     { flexDirection: 'row', paddingVertical: 6, paddingHorizontal: 10, backgroundColor: '#f0f0f0', borderTopWidth: 0.5, borderTopColor: '#ddd', marginBottom: 4 },
-  totLabel:   { flex: 1, fontSize: 8, color: '#666', fontFamily: 'Helvetica-Bold', textAlign: 'right', paddingRight: 6 },
-  totGp:      { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#111' },
-  footer:     { position: 'absolute', bottom: 22, left: 40, right: 40, flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 0.5, borderTopColor: '#e5e5e5', paddingTop: 5 },
-  footerText: { fontSize: 7, color: '#bbb' },
+  thRow:      { flexDirection: 'row', backgroundColor: '#f4f4f4', paddingVertical: 8, paddingHorizontal: 10, marginBottom: 2 },
+  thText:     { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: '#777', textTransform: 'uppercase', letterSpacing: 0.5 },
+  tdRow:      { flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 10, borderBottomWidth: 0.5, borderBottomColor: '#f0f0f0', minHeight: 28 },
+  tdRowAlt:   { flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 10, borderBottomWidth: 0.5, borderBottomColor: '#f0f0f0', backgroundColor: '#fafafa', minHeight: 28 },
+  cCode:      { width: 72, paddingRight: 8 },
+  cName:      { flex: 1, paddingRight: 10 },
+  codeVal:    { fontSize: 8,    color: '#aaa' },
+  nameVal:    { fontSize: 9.5,  color: '#111', fontFamily: 'Helvetica-Bold' },
+  numVal:     { fontSize: 9.5,  color: '#444' },
+  priceVal:   { fontSize: 9.5,  color: '#111', fontFamily: 'Helvetica-Bold' },
+  gpGood:     { fontSize: 9.5,  color: '#166534', fontFamily: 'Helvetica-Bold' },
+  gpOk:       { fontSize: 9.5,  color: '#854d0e', fontFamily: 'Helvetica-Bold' },
+  totRow:     { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 10, backgroundColor: '#f0f0f0', borderTopWidth: 0.5, borderTopColor: '#ddd', marginBottom: 6 },
+  totLabel:   { flex: 1, fontSize: 8.5, color: '#666', fontFamily: 'Helvetica-Bold', textAlign: 'right', paddingRight: 8 },
+  totGp:      { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: '#111' },
+  footer:     { position: 'absolute', bottom: 24, left: 36, right: 36, flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 0.5, borderTopColor: '#e5e5e5', paddingTop: 5 },
+  footerText: { fontSize: 7.5, color: '#bbb' },
 })
 
 function col(width: number, extra?: object) {
@@ -73,25 +73,36 @@ function TableHeader({ cols }: { cols: PriceListColumns }) {
       {cols.pricePerUnit && <Text style={[C.thText, col(W.pricePerUnit)]}>Price / bag</Text>}
       {cols.pricePerL    && <Text style={[C.thText, col(W.pricePerL)]}>Price / L</Text>}
       {cols.rrp          && <Text style={[C.thText, col(W.rrp)]}>RRP</Text>}
-      {cols.gpPercent    && <Text style={[C.thText, { width: W.gpPercent, textAlign: 'right' as const }]}>GP% ex-VAT</Text>}
+      {cols.gpPercent    && <Text style={[C.thText, { width: W.gpPercent, textAlign: 'right' as const }]}>GP%</Text>}
     </View>
   )
 }
 
+function calcVenueGp(rrp: number, pricePerUnit: number, volumeLitres: number, servingG: number): number {
+  if (!rrp || !pricePerUnit || !servingG) return 0
+  const servingsPerBag  = (volumeLitres * 1000) / servingG
+  const bagRevenueExVat = (rrp / 1.2) * servingsPerBag
+  return Math.round(((bagRevenueExVat - pricePerUnit) / bagRevenueExVat) * 10000) / 100
+}
+
 function PricingRows({ rows, cols }: { rows: AccountPricing[]; cols: PriceListColumns }) {
-  const avgGp = rows.length > 0
-    ? rows.reduce((s, r) => s + r.venueGpPercent, 0) / rows.length
+  const rowsWithGp = rows.map(r => ({
+    ...r,
+    _gp: calcVenueGp(r.rrp, r.pricePerUnit, r.volumeLitres ?? 5, r.recommendedServingG),
+    _ppl: (r.volumeLitres ?? 5) > 0 ? Math.round((r.pricePerUnit / (r.volumeLitres ?? 5)) * 100) / 100 : 0,
+  }))
+  const avgGp = rowsWithGp.length > 0
+    ? rowsWithGp.reduce((s, r) => s + r._gp, 0) / rowsWithGp.length
     : 0
 
   return (
     <>
-      {rows.map((item, i) => {
+      {rowsWithGp.map((item, i) => {
         const vol     = item.volumeLitres ?? 5
         const qtyPerL = item.recommendedServingG > 0
           ? (1000 / item.recommendedServingG).toFixed(1)
           : '—'
-        const priceL  = item.pricePerLitre > 0 ? item.pricePerLitre : 0
-        const gpStyle = item.venueGpPercent >= 75 ? C.gpGood : C.gpOk
+        const gpStyle = item._gp >= 75 ? C.gpGood : C.gpOk
         const displayName = `${item.productName} (${vol}L)`
 
         return (
@@ -101,9 +112,9 @@ function PricingRows({ rows, cols }: { rows: AccountPricing[]; cols: PriceListCo
             {cols.serveML      && <Text style={[C.numVal,   col(W.serveML)]}>{item.recommendedServingG}</Text>}
             {cols.qtyPerL      && <Text style={[C.numVal,   col(W.qtyPerL)]}>{qtyPerL}</Text>}
             {cols.pricePerUnit && <Text style={[C.priceVal, col(W.pricePerUnit)]}>£{item.pricePerUnit.toFixed(2)}</Text>}
-            {cols.pricePerL    && <Text style={[C.priceVal, col(W.pricePerL)]}>{priceL > 0 ? `£${priceL.toFixed(2)}` : '—'}</Text>}
+            {cols.pricePerL    && <Text style={[C.priceVal, col(W.pricePerL)]}>{item._ppl > 0 ? `£${item._ppl.toFixed(2)}` : '—'}</Text>}
             {cols.rrp          && <Text style={[C.numVal,   col(W.rrp)]}>£{item.rrp.toFixed(2)}</Text>}
-            {cols.gpPercent    && <Text style={[gpStyle,    { width: W.gpPercent, textAlign: 'right' as const }]}>{item.venueGpPercent.toFixed(1)}%</Text>}
+            {cols.gpPercent    && <Text style={[gpStyle,    { width: W.gpPercent, textAlign: 'right' as const }]}>{item._gp.toFixed(1)}%</Text>}
           </View>
         )
       })}
@@ -178,8 +189,8 @@ export function PriceListPDF({
           Object.entries(venueMap).map(([venueName, rows]) => {
             const legalName = accountLegalNames[venueName]
             return (
-              <View key={venueName} wrap={false}>
-                <View style={C.venueRow}>
+              <View key={venueName}>
+                <View style={C.venueRow} minPresenceAhead={60}>
                   <Text style={C.venueName}>
                     {venueName}{legalName ? ` (${legalName})` : ''}
                   </Text>
