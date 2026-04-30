@@ -140,18 +140,25 @@ export function InvoicePDF({
         {/* Line items */}
         <View style={s.tableHeader}>
           <Text style={[s.colHeader, s.colProduct]}>Description</Text>
-          <Text style={[s.colHeader, s.colQty]}>Qty (L)</Text>
-          <Text style={[s.colHeader, s.colUnit]}>Price / L</Text>
+          <Text style={[s.colHeader, s.colQty]}>Bags</Text>
+          <Text style={[s.colHeader, s.colUnit]}>Price / bag</Text>
           <Text style={[s.colHeader, s.colTotal]}>Amount</Text>
         </View>
-        {order.lineItems.map((item, i) => (
+        {order.lineItems.map((item, i) => {
+          const vol    = item.volumeLitres ?? 5
+          const totalL = item.quantity * vol
+          return (
           <View style={s.tableRow} key={i}>
-            <Text style={[s.colCellBold, s.colProduct]}>{item.productName}</Text>
+            <View style={s.colProduct}>
+              <Text style={s.colCellBold}>{item.productName}</Text>
+              <Text style={[s.colCell, { fontSize: 8, color: '#888' }]}>{item.productCode} · {item.quantity} × {vol}L = {totalL}L</Text>
+            </View>
             <Text style={[s.colCell, s.colQty]}>{item.quantity}</Text>
             <Text style={[s.colCell, s.colUnit]}>£{item.unitPrice.toFixed(2)}</Text>
             <Text style={[s.colCell, s.colTotal]}>£{item.lineTotal.toFixed(2)}</Text>
           </View>
-        ))}
+          )
+        })}
 
         {/* Totals */}
         <View style={s.totalsBlock}>
