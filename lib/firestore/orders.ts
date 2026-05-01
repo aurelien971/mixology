@@ -109,5 +109,5 @@ export async function generateOrderNumber(): Promise<string> {
 }
 
 export async function deleteOrder(id: string): Promise<void> {
-  await deleteDoc(doc(db, ORDERS, id))
+  await deleteDoc(doc(db, COLLECTION, id))
 }

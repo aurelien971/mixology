@@ -25,7 +25,7 @@ const STEPS: { status: OrderStatus; label: string }[] = [
 ]
 
 const STEP_INDEX: Record<string, number> = {
-  received: 0, production: 1, dispatched: 2, delivered: 3, cancelled: -1, picking: 1,
+  received: 0, production: 1, dispatched: 2, delivered: 3, cancelled: -1,
 }
 
 const NEXT_ACTION: Partial<Record<string, string>> = {

@@ -195,12 +195,13 @@ export default function ParseOrderModal({ onClose, onSaved }: Props) {
       const orderNumber = await generateOrderNumber()
 
       const lineItems: OrderLineItem[] = validLines.map(l => ({
-        productId: l.matchedProductId!,
-        productCode: l.matchedProductCode!,
-        productName: l.productName,
-        quantity: l.quantity,
-        unitPrice: l.matchedUnitPrice!,
-        lineTotal: l.quantity * l.matchedUnitPrice!,
+        productId:    l.matchedProductId!,
+        productCode:  l.matchedProductCode!,
+        productName:  l.productName,
+        volumeLitres: 5,
+        quantity:     l.quantity,
+        unitPrice:    l.matchedUnitPrice!,
+        lineTotal:    Math.round(l.quantity * l.matchedUnitPrice! * 100) / 100,
         servingSizeG: 0,
       }))
 
