@@ -13,7 +13,7 @@ import { Order, OrderStatus } from '@/types'
 const STATUS_FILTERS: { label: string; value: OrderStatus | 'all' }[] = [
   { label: 'All', value: 'all' },
   { label: 'Received', value: 'received' },
-  { label: 'Picking', value: 'picking' },
+  { label: 'In Production', value: 'production' },
   { label: 'Dispatched', value: 'dispatched' },
   { label: 'Delivered', value: 'delivered' },
   { label: 'Cancelled', value: 'cancelled' },
