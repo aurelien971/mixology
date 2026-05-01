@@ -6,14 +6,14 @@ import { format } from 'date-fns'
 import Header from '@/components/layout/Header'
 import Badge, { orderStatusBadge } from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
-import ParseOrderModal from '@/components/orders/ParseOrderModal'
+import NoryImportModal from '@/components/orders/NoryImportModal'
 import { getOrders } from '@/lib/firestore/orders'
 import { Order, OrderStatus } from '@/types'
 
 const STATUS_FILTERS: { label: string; value: OrderStatus | 'all' }[] = [
   { label: 'All', value: 'all' },
   { label: 'Received', value: 'received' },
-  { label: 'In Production', value: 'production' },
+  { label: 'Picking', value: 'picking' },
   { label: 'Dispatched', value: 'dispatched' },
   { label: 'Delivered', value: 'delivered' },
   { label: 'Cancelled', value: 'cancelled' },
@@ -24,7 +24,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<OrderStatus | 'all'>('all')
   const [search, setSearch] = useState('')
-  const [showParseModal, setShowParseModal] = useState(false)
+  const [showNoryModal,  setShowNoryModal]  = useState(false)
 
   function load() {
     getOrders().then(setOrders).finally(() => setLoading(false))
@@ -43,10 +43,10 @@ export default function OrdersPage() {
 
   return (
     <div style={{ position: 'relative' }}>
-      {showParseModal && (
-        <ParseOrderModal
-          onClose={() => setShowParseModal(false)}
-          onSaved={() => load()}
+      {showNoryModal && (
+        <NoryImportModal
+          onClose={() => setShowNoryModal(false)}
+          onCreated={() => { setShowNoryModal(false); load() }}
         />
       )}
       <Header
@@ -54,8 +54,8 @@ export default function OrdersPage() {
         subtitle="All orders across accounts"
         action={
           <div style={{ display: 'flex', gap: '8px' }}>
-            <Button size="sm" variant="secondary" onClick={() => setShowParseModal(true)}>
-              Parse with AI
+            <Button size="sm" variant="secondary" onClick={() => setShowNoryModal(true)}>
+              ↑ Import Nory CSV
             </Button>
             <Link href="/orders/new">
               <Button size="sm">+ New order</Button>

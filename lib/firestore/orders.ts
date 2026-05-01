@@ -5,6 +5,7 @@ import {
   getDoc,
   addDoc,
   updateDoc,
+  deleteDoc,
   query,
   where,
   orderBy,
@@ -105,4 +106,8 @@ export async function generateOrderNumber(): Promise<string> {
   const last = snap.docs[0].data().orderNumber as string
   const lastNum = parseInt(last.split('-')[2], 10)
   return `FL-${year}-${String(lastNum + 1).padStart(4, '0')}`
+}
+
+export async function deleteOrder(id: string): Promise<void> {
+  await deleteDoc(doc(db, ORDERS, id))
 }

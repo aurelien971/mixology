@@ -13,6 +13,7 @@ import toast from 'react-hot-toast'
 
 interface ParsedOrderLine {
   productName: string
+  productCode?: string      // from CSV — use for exact matching
   quantity: number
   matchedProductId?: string
   matchedProductCode?: string
@@ -23,6 +24,7 @@ interface ParsedOrderLine {
 interface ParsedOrder {
   accountName: string
   poReference: string
+  deliveryDate: string   // YYYY-MM-DD
   notes: string
   lineItems: ParsedOrderLine[]
 }
@@ -61,9 +63,23 @@ export default function ParseOrderModal({ onClose, onSaved }: Props) {
 
   function matchLineItems(lines: ParsedOrderLine[], pricingList: AccountPricing[]): ParsedOrderLine[] {
     return lines.map(line => {
+      const codeLower = line.productCode?.toLowerCase().trim()
       const nameLower = line.productName.toLowerCase().trim()
 
-      // Exact match
+      // 1. Exact product code — always wins, this is why codes exist
+      if (codeLower) {
+        const byCode = pricingList.find(p => p.productCode.toLowerCase() === codeLower)
+        if (byCode) return {
+          ...line,
+          productName: byCode.productName,
+          matchedProductId: byCode.productId,
+          matchedProductCode: byCode.productCode,
+          matchedUnitPrice: byCode.pricePerUnit,
+          status: 'matched',
+        }
+      }
+
+      // 2. Exact name match
       const exact = pricingList.find(p => p.productName.toLowerCase() === nameLower)
       if (exact) return {
         ...line,
@@ -73,7 +89,7 @@ export default function ParseOrderModal({ onClose, onSaved }: Props) {
         status: 'matched',
       }
 
-      // Partial match
+      // 3. Partial name match
       const partial = pricingList.filter(p =>
         p.productName.toLowerCase().includes(nameLower) ||
         nameLower.includes(p.productName.toLowerCase().split(' ')[0])
@@ -87,7 +103,6 @@ export default function ParseOrderModal({ onClose, onSaved }: Props) {
         status: 'matched',
       }
       if (partial.length > 1) return { ...line, status: 'ambiguous' }
-
       return { ...line, status: 'unmatched' }
     })
   }
@@ -107,15 +122,17 @@ export default function ParseOrderModal({ onClose, onSaved }: Props) {
       const data = json.data
       const lines: ParsedOrderLine[] = (data.lineItems ?? []).map((l: any) => ({
         productName: l.productName,
+        productCode: l.productCode || undefined,
         quantity: l.quantity,
         status: 'unmatched',
       }))
 
       const order: ParsedOrder = {
-        accountName: data.accountName ?? '',
-        poReference: data.poReference ?? '',
-        notes: data.notes ?? '',
-        lineItems: lines,
+        accountName:  data.accountName ?? '',
+        poReference:  data.poReference ?? '',
+        deliveryDate: data.deliveryDate ?? '',
+        notes:        data.notes ?? '',
+        lineItems:    lines,
       }
 
       // Auto-select account if matched
@@ -181,7 +198,6 @@ export default function ParseOrderModal({ onClose, onSaved }: Props) {
         productId: l.matchedProductId!,
         productCode: l.matchedProductCode!,
         productName: l.productName,
-        volumeLitres: 5,
         quantity: l.quantity,
         unitPrice: l.matchedUnitPrice!,
         lineTotal: l.quantity * l.matchedUnitPrice!,
@@ -204,6 +220,7 @@ export default function ParseOrderModal({ onClose, onSaved }: Props) {
         total,
       }
       if (parsed.poReference.trim()) orderData.poReference = parsed.poReference.trim()
+      if (parsed.deliveryDate.trim()) orderData.expectedDeliveryDate = new Date(parsed.deliveryDate.trim())
       if (parsed.notes.trim()) orderData.notes = parsed.notes.trim()
 
       const orderId = await createOrder(orderData)
@@ -268,17 +285,54 @@ export default function ParseOrderModal({ onClose, onSaved }: Props) {
 
         {step === 'input' && (
           <div style={{ padding: '20px 24px' }}>
+
+            {/* CSV drop zone */}
+            <label
+              onDrop={e => {
+                e.preventDefault()
+                const file = e.dataTransfer.files[0]
+                if (file) file.text().then(t => setRawInput(t))
+              }}
+              onDragOver={e => e.preventDefault()}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                padding: '24px', borderRadius: '10px', cursor: 'pointer', marginBottom: '12px',
+                border: '2px dashed #d1d5db', background: '#fafafa', gap: '8px',
+              }}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M12 4v12M7 9l5-5 5 5M4 19h16" stroke="#9ca3af" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <p style={{ fontSize: '13px', fontWeight: 600, color: '#374151', margin: 0 }}>Drop Nory CSV here</p>
+              <p style={{ fontSize: '12px', color: '#9ca3af', margin: 0 }}>or click to browse</p>
+              <input
+                type="file" accept=".csv,.txt"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (file) file.text().then(t => setRawInput(t))
+                }}
+              />
+            </label>
+
+            <p style={{ fontSize: '11px', color: '#9ca3af', textAlign: 'center', margin: '0 0 10px' }}>— or paste text below —</p>
+
             <textarea
               value={rawInput}
               onChange={e => setRawInput(e.target.value)}
-              placeholder={`Paste anything — examples:\n\nFrom: nory@pyro.com\nSubject: Purchase Order #1234\n\nPlease supply:\n- Spicy Margarita TMS x 10\n- Negroni TMS x 5\n- Espresso Martini TMS x 8\n\nOr paste CSV:\nproduct,qty\nAegeas G+T,12\nDaphne,6`}
-              rows={12}
+              placeholder={`Paste a Nory email, CSV, or describe the order:\n- Spicy Margarita TMS x 10\n- Negroni TMS x 5\n- Espresso Martini TMS x 8`}
+              rows={6}
               style={{
                 width: '100%', padding: '12px', border: '1px solid #e5e7eb',
                 borderRadius: '10px', fontSize: '13px', fontFamily: 'monospace',
                 resize: 'vertical', outline: 'none', boxSizing: 'border-box', lineHeight: 1.6,
               }}
             />
+            {rawInput.trim() && (
+              <p style={{ fontSize: '11px', color: '#6b7280', margin: '6px 0 0' }}>
+                ✓ {rawInput.trim().split('\n').length} lines loaded — ready to parse
+              </p>
+            )}
             <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
               <Button onClick={handleParse} loading={parsing} disabled={!rawInput.trim()}>
                 Parse with AI
@@ -312,6 +366,17 @@ export default function ParseOrderModal({ onClose, onSaved }: Props) {
                   onChange={e => setParsed({ ...parsed, poReference: e.target.value })}
                   placeholder="e.g. PO-1234"
                   style={{ width: '100%', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 500, color: '#6b7280', marginBottom: '5px' }}>
+                  Requested delivery {!parsed.deliveryDate && <span style={{ color: '#f59e0b' }}>· not found</span>}
+                </label>
+                <input
+                  type="date"
+                  value={parsed.deliveryDate}
+                  onChange={e => setParsed({ ...parsed, deliveryDate: e.target.value })}
+                  style={{ width: '100%', padding: '8px 10px', border: `1px solid ${parsed.deliveryDate ? '#e5e7eb' : '#fcd34d'}`, borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
                 />
               </div>
             </div>

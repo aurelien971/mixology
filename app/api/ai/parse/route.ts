@@ -33,10 +33,12 @@ Return ONLY valid JSON — no markdown, no explanation. Format:
 {
   "accountName": "string (the restaurant/venue name)",
   "poReference": "string or empty string",
+  "deliveryDate": "YYYY-MM-DD or empty string (use requested_delivery_date or any delivery/due date mentioned)",
   "notes": "string or empty string",
   "lineItems": [
     {
       "productName": "string (match as closely as possible to known cocktail names)",
+      "productCode": "string or empty string (e.g. FL-300035 — extract from CSV product_code column if present)",
       "quantity": number
     }
   ]
@@ -44,7 +46,8 @@ Return ONLY valid JSON — no markdown, no explanation. Format:
 
 Known accounts: Pyro, Heard Soho, Heard Borough, Spring Street Pizza, Sino, Oudh 1722.
 If the account name doesn't exactly match, return your best guess — the user will confirm.
-Quantities should be number of units/bottles ordered, not litres.`
+Quantities should be number of units/bottles ordered, not litres.
+Always extract the delivery date if present — in Nory CSVs it's in the requested_delivery_date column.`
 
 async function callOpenAI(systemPrompt: string, userContent: string) {
   const response = await fetch('https://api.openai.com/v1/chat/completions', {

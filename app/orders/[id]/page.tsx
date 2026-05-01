@@ -1,15 +1,16 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { format, isPast } from 'date-fns'
 import Link from 'next/link'
 import Header from '@/components/layout/Header'
 import Badge, { orderStatusBadge, paymentStatusBadge } from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
-import { getOrder, updateOrderStatus, updateOrder } from '@/lib/firestore/orders'
+import { getOrder, updateOrderStatus, updateOrder, deleteOrder } from '@/lib/firestore/orders'
 import { getPaymentByOrder, markPaymentPaid, updatePaymentStatus, updatePaymentDueDate } from '@/lib/firestore/payments'
 import { getAccount } from '@/lib/firestore/accounts'
+import EditOrderModal from '@/components/orders/EditOrderModal'
 import { getCompanySettings, CompanySettings } from '@/lib/firestore/settings'
 import { downloadXeroCSV } from '@/lib/xeroExport'
 import { uploadSignedDeliveryNote, deleteSignedDeliveryNote } from '@/lib/storage'
@@ -41,6 +42,7 @@ const NEXT_STATUS: Partial<Record<string, OrderStatus>> = {
 
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const router  = useRouter()
   const [order,   setOrder]   = useState<Order | null>(null)
   const [payment, setPayment] = useState<Payment | null>(null)
   const [account, setAccount] = useState<Account | null>(null)
@@ -52,6 +54,7 @@ export default function OrderDetailPage() {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [settings, setSettings] = useState<CompanySettings | null>(null)
+  const [editingOrder, setEditingOrder] = useState(false)
   const [editDue,  setEditDue]  = useState(false)
   const [newDue,   setNewDue]   = useState('')
   const [editEDD,  setEditEDD]  = useState(false)
@@ -83,6 +86,20 @@ export default function OrderDetailPage() {
       load()
     } catch { toast.error('Failed') }
     finally { setUpdating(false) }
+  }
+
+  async function handleDeleteOrder() {
+    if (!order) return
+    if (!confirm(`Permanently delete ${order.orderNumber}? This cannot be undone.`)) return
+    setUpdating(true)
+    try {
+      await deleteOrder(id)
+      toast.success('Order deleted')
+      router.push('/orders')
+    } catch {
+      toast.error('Failed to delete order')
+      setUpdating(false)
+    }
   }
 
   async function cancelOrder() {
@@ -245,6 +262,13 @@ export default function OrderDetailPage() {
 
   return (
     <div>
+      {editingOrder && order && (
+        <EditOrderModal
+          order={order}
+          onClose={() => setEditingOrder(false)}
+          onSaved={() => load()}
+        />
+      )}
       {showConfirmation && order && account && payment && settings && (
         <ConfirmationModal
           order={order}
@@ -262,6 +286,15 @@ export default function OrderDetailPage() {
             {!cancelled && order.status !== 'delivered' && (
               <Button variant="secondary" size="sm" onClick={cancelOrder} loading={updating}>Cancel</Button>
             )}
+            {!cancelled && (
+              <Button variant="secondary" size="sm" onClick={() => setEditingOrder(true)}>Edit order</Button>
+            )}
+            <Button
+              variant="secondary" size="sm" onClick={handleDeleteOrder} loading={updating}
+              style={{ color: '#dc2626', borderColor: '#fecaca' } as React.CSSProperties}
+            >
+              Delete
+            </Button>
             {canAdvance && (
               <Button size="sm" onClick={advanceStatus} loading={updating}>
                 {NEXT_ACTION[order.status]}

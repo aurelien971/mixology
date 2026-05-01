@@ -79,10 +79,16 @@ function parseCSV(text: string): ParsedNoryRow[] {
   })
 }
 
-// Extract volume from unit string e.g. "1 * 5 litre" → 5
+// Extract volume from unit string
+// "1 * 5 litre" → 5
+// "1 * 19000 millilitre" → 19  (19000ml = 19L)
+// "1 * 19 litre" → 19
 function extractVolume(unit: string): number {
-  const m = unit.match(/(\d+)\s*litre/i)
-  return m ? parseInt(m[1]) : 5
+  const mlMatch = unit.match(/(\d+)\s*millilitre/i)
+  if (mlMatch) return Math.round(parseInt(mlMatch[1]) / 1000)
+  const lMatch = unit.match(/(\d+)\s*litre/i)
+  if (lMatch) return parseInt(lMatch[1])
+  return 5
 }
 
 export default function NoryImportModal({ onClose, onCreated }: Props) {
@@ -117,7 +123,9 @@ export default function NoryImportModal({ onClose, onCreated }: Props) {
 
     const previewLines: PreviewLine[] = parsed.map(row => {
       const product = productByCode.get(row.product_code.toLowerCase()) ?? null
-      const vol     = product?.volumeLitres ?? extractVolume(row.unit)
+      const vol = product?.volumeLitres
+        ? product.volumeLitres          // always trust the product document first
+        : extractVolume(row.unit)       // fallback: parse from "1 * 19000 millilitre"
       return {
         productCode:  row.product_code,
         productName:  row.product_name,

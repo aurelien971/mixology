@@ -22,6 +22,7 @@ export default function CatalogPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('All')
+  const [accountFilter, setAccountFilter] = useState('All')
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [hidden, setHidden] = useState(true)
@@ -36,13 +37,22 @@ export default function CatalogPage() {
 
   useEffect(() => { load() }, [])
 
+  // Build list of accounts that have any pricing
+  const allAccounts = ['All', ...Array.from(new Set(allPricing.map(p => p.accountName))).sort()]
+
+  // Product IDs that are priced for the selected account
+  const pricedForAccount = accountFilter === 'All'
+    ? null
+    : new Set(allPricing.filter(p => p.accountName === accountFilter).map(p => p.productId))
+
   const filtered = products.filter((p) => {
     const matchSearch =
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.productCode.toLowerCase().includes(search.toLowerCase())
-    const matchCat = categoryFilter === 'All' || p.category === categoryFilter
+    const matchCat     = categoryFilter === 'All' || p.category === categoryFilter
     const matchMissing = !missingOnly || p.costMissing
-    return matchSearch && matchCat && matchMissing
+    const matchAccount = !pricedForAccount || pricedForAccount.has(p.id)
+    return matchSearch && matchCat && matchMissing && matchAccount
   })
 
   const missingTotal = products.filter(p => p.costMissing).length
@@ -144,6 +154,27 @@ export default function CatalogPage() {
         </div>
       </div>
 
+      {/* Account filter */}
+      {allAccounts.length > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 500 }}>Account:</span>
+          {allAccounts.map(acc => (
+            <button
+              key={acc}
+              onClick={() => setAccountFilter(acc)}
+              style={{
+                padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 500, cursor: 'pointer',
+                border: `1px solid ${accountFilter === acc ? '#111827' : '#e5e7eb'}`,
+                background: accountFilter === acc ? '#111827' : '#fff',
+                color: accountFilter === acc ? '#fff' : '#6b7280',
+              }}
+            >
+              {acc}
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading ? (
         <p className="text-sm text-gray-400">Loading...</p>
       ) : filtered.length === 0 ? (
@@ -186,22 +217,6 @@ export default function CatalogPage() {
                     {product.costMissing && (
                       <p className="text-xs font-medium" style={{ color: '#92400e' }}>⚠ Cost missing — profit calculations affected</p>
                     )}
-                    {(() => {
-                      const accounts = [...new Set(
-                        allPricing
-                          .filter(p => p.productId === product.id)
-                          .map(p => p.accountName)
-                      )]
-                      return accounts.length > 0 ? (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '4px' }}>
-                          {accounts.map(name => (
-                            <span key={name} style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '20px', background: '#E1F5EE', color: '#0F6E56', fontWeight: 500 }}>
-                              {name}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null
-                    })()}
                   </td>
                   <td className="px-5 py-3 text-sm text-gray-500">
                     {product.category ?? '—'}
