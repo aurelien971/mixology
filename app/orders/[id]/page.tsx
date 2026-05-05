@@ -306,7 +306,8 @@ export default function OrderDetailPage() {
 
       {/* Status pipeline */}
       {!cancelled ? (
-        <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', padding: '20px 28px', marginBottom: '24px', display: 'flex', alignItems: 'center' }}>
+        <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', padding: '20px 28px', marginBottom: '20px', overflowX: 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', minWidth: '380px' }}>
           {STEPS.map((step, i) => {
             const done   = currentStep > i
             const active = currentStep === i
@@ -336,6 +337,7 @@ export default function OrderDetailPage() {
               </div>
             )
           })}
+          </div>
         </div>
       ) : (
         <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '12px 16px', marginBottom: '24px' }}>
@@ -343,7 +345,9 @@ export default function OrderDetailPage() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '20px', maxWidth: '1020px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', maxWidth: '1020px' }}
+        className="md:grid-cols-[1fr_320px]"
+      >
 
         {/* LEFT col */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -657,10 +661,11 @@ export default function OrderDetailPage() {
                 ) : (
                   <label style={{
                     display: 'flex', alignItems: 'center', gap: '8px',
-                    padding: '9px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
+                    padding: '12px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
                     border: '1px dashed #d1d5db', background: '#fafafa',
                     color: uploading ? '#9ca3af' : '#374151',
                     cursor: uploading ? 'not-allowed' : 'pointer',
+                    minHeight: '48px',
                   }}>
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                       <path d="M8 10V2M5 5l3-3 3 3M3 13h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>

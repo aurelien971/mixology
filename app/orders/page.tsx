@@ -103,65 +103,80 @@ export default function OrdersPage() {
           )}
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="text-xs text-gray-400 border-b border-gray-100 bg-gray-50">
-                <th className="text-left px-5 py-3 font-medium">Order no.</th>
-                <th className="text-left px-5 py-3 font-medium">Account</th>
-                <th className="text-left px-5 py-3 font-medium">PO ref</th>
-                <th className="text-left px-5 py-3 font-medium">Date</th>
-                <th className="text-left px-5 py-3 font-medium">Status</th>
-                <th className="text-right px-5 py-3 font-medium">Items</th>
-                <th className="text-right px-5 py-3 font-medium">Total</th>
-                <th className="px-5 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((order) => {
-                const badge = orderStatusBadge(order.status)
-                return (
-                  <tr
-                    key={order.id}
-                    className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
-                  >
-                    <td className="px-5 py-3.5">
-                      <Link
-                        href={`/orders/${order.id}`}
-                        className="text-sm font-medium text-gray-900 hover:underline"
-                      >
-                        {order.orderNumber}
-                      </Link>
-                    </td>
-                    <td className="px-5 py-3.5 text-sm text-gray-600">
-                      {order.accountName}
-                    </td>
-                    <td className="px-5 py-3.5 text-sm text-gray-400">
-                      {order.poReference ?? '—'}
-                    </td>
-                    <td className="px-5 py-3.5 text-sm text-gray-500">
-                      {format(order.createdAt, 'd MMM yyyy')}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <Badge label={badge.label} variant={badge.variant} />
-                    </td>
-                    <td className="px-5 py-3.5 text-sm text-right text-gray-500">
-                      {order.lineItems.length}
-                    </td>
-                    <td className="px-5 py-3.5 text-sm text-right font-semibold text-gray-900">
-                      £{order.total.toFixed(2)}
-                    </td>
-                    <td className="px-5 py-3.5 text-right">
-                      <Link href={`/orders/${order.id}`}>
-                        <Button variant="ghost" size="sm">View</Button>
-                      </Link>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {/* Desktop table */}
+          <div className="hidden md:block bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="text-xs text-gray-400 border-b border-gray-100 bg-gray-50">
+                  <th className="text-left px-5 py-3 font-medium">Order no.</th>
+                  <th className="text-left px-5 py-3 font-medium">Account</th>
+                  <th className="text-left px-5 py-3 font-medium">PO ref</th>
+                  <th className="text-left px-5 py-3 font-medium">Date</th>
+                  <th className="text-left px-5 py-3 font-medium">Status</th>
+                  <th className="text-right px-5 py-3 font-medium">Items</th>
+                  <th className="text-right px-5 py-3 font-medium">Total</th>
+                  <th className="text-center px-5 py-3 font-medium">Signed DN</th>
+                  <th className="px-5 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((order) => {
+                  const badge = orderStatusBadge(order.status)
+                  return (
+                    <tr key={order.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                      <td className="px-5 py-3.5">
+                        <Link href={`/orders/${order.id}`} className="text-sm font-medium text-gray-900 hover:underline">{order.orderNumber}</Link>
+                      </td>
+                      <td className="px-5 py-3.5 text-sm text-gray-600">{order.accountName}</td>
+                      <td className="px-5 py-3.5 text-sm text-gray-400">{order.poReference ?? '—'}</td>
+                      <td className="px-5 py-3.5 text-sm text-gray-500">{format(order.createdAt, 'd MMM yyyy')}</td>
+                      <td className="px-5 py-3.5"><Badge label={badge.label} variant={badge.variant} /></td>
+                      <td className="px-5 py-3.5 text-sm text-right text-gray-500">{order.lineItems.length}</td>
+                      <td className="px-5 py-3.5 text-sm text-right font-semibold text-gray-900">£{order.total.toFixed(2)}</td>
+                      <td className="px-5 py-3.5 text-center">
+                        {order.signedDeliveryNoteUrl ? <span style={{ color: '#16a34a', fontSize: '16px' }}>✓</span> : <span style={{ color: '#d1d5db', fontSize: '13px' }}>—</span>}
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <Link href={`/orders/${order.id}`}><Button variant="ghost" size="sm">View</Button></Link>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="flex md:hidden flex-col gap-2">
+            {filtered.map((order) => {
+              const badge = orderStatusBadge(order.status)
+              return (
+                <Link key={order.id} href={`/orders/${order.id}`} style={{ textDecoration: 'none' }}>
+                  <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #f3f4f6', padding: '14px 16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                      <div>
+                        <p style={{ fontSize: '14px', fontWeight: 700, color: '#111827', margin: '0 0 3px', fontFamily: 'monospace' }}>{order.orderNumber}</p>
+                        <p style={{ fontSize: '13px', color: '#6b7280', margin: 0 }}>{order.accountName}</p>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <p style={{ fontSize: '15px', fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>£{order.total.toFixed(2)}</p>
+                        <Badge label={badge.label} variant={badge.variant} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#9ca3af' }}>
+                      <span>{format(order.createdAt, 'd MMM yyyy')}{order.poReference ? ` · ${order.poReference}` : ''}</span>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        {order.signedDeliveryNoteUrl && <span style={{ color: '#16a34a' }}>✓ Signed</span>}
+                        <span>{order.lineItems.length} item{order.lineItems.length !== 1 ? 's' : ''}</span>
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        </>
       )}
     </div>
   )

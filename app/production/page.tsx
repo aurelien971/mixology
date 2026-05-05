@@ -90,7 +90,7 @@ export default function ProductionPage() {
   )
 
   return (
-    <div style={{ maxWidth: '680px' }}>
+    <div style={{ maxWidth: '680px', width: '100%' }}>
 
       {/* Header */}
       <div style={{ marginBottom: '28px' }}>
@@ -196,7 +196,7 @@ export default function ProductionPage() {
                           onClick={() => toggleItem(key, !done)}
                           style={{
                             width: '100%', display: 'flex', alignItems: 'center', gap: '14px',
-                            padding: '12px 10px', borderRadius: '10px', border: 'none',
+                            padding: '14px 10px', borderRadius: '10px', border: 'none',
                             background: done ? '#f9fafb' : '#fff',
                             cursor: 'pointer', textAlign: 'left',
                             borderBottom: i < order.lineItems.length - 1 ? '1px solid #f9fafb' : 'none',
