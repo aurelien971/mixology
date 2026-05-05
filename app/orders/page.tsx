@@ -124,7 +124,7 @@ export default function OrdersPage() {
                 {filtered.map((order) => {
                   const badge = orderStatusBadge(order.status)
                   return (
-                    <tr key={order.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                    <tr key={order.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => window.location.href = `/orders/${order.id}`}>
                       <td className="px-5 py-3.5">
                         <Link href={`/orders/${order.id}`} className="text-sm font-medium text-gray-900 hover:underline">{order.orderNumber}</Link>
                       </td>

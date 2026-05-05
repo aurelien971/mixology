@@ -110,11 +110,25 @@ export default function NoryImportModal({ onClose, onCreated }: Props) {
 
     const first = parsed[0]
 
+    // Normalize company name — "Limited" = "Ltd", "Company" = "Co", etc.
+    function norm(s: string) {
+      return s.toLowerCase()
+        .replace(/\blimited\b/g, 'ltd')
+        .replace(/\bcompany\b/g, 'co')
+        .replace(/[.,]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+    }
+
     // Match account by legal name (customer_number field)
     const accounts = await getAccounts()
+    const csvLegal   = norm(first.customer_number)
+    const csvTrading = norm(first.customer_name.replace(/culinary collective\s*/i, '').trim())
     const matched = accounts.find(a =>
-      a.legalName.toLowerCase() === first.customer_number.toLowerCase() ||
-      a.tradingName.toLowerCase() === first.customer_name.toLowerCase().replace('culinary collective ', '').trim()
+      norm(a.legalName) === csvLegal ||
+      norm(a.tradingName) === csvLegal ||
+      norm(a.legalName) === csvTrading ||
+      norm(a.tradingName) === csvTrading
     ) ?? null
 
     // Match products by code
