@@ -6,7 +6,12 @@ import { useAuth } from '@/contexts/AuthContext'
 import Sidebar from '@/components/layout/Sidebar'
 import Link from 'next/link'
 
-const NO_SHELL = ['/login', '/track']
+const NO_SHELL = ['/login', '/track', '/orders/sign']
+
+// Match sign pages: /orders/[id]/sign
+function isSignPage(pathname: string) {
+  return /^\/orders\/[^/]+\/sign/.test(pathname)
+}
 
 // Mobile bottom nav — just the 4 pages that matter on phone
 const MOBILE_NAV = [
@@ -58,7 +63,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { loading } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
 
-  const bare = NO_SHELL.some(r => pathname.startsWith(r))
+  const bare = NO_SHELL.some(r => pathname.startsWith(r)) || isSignPage(pathname)
 
   if (loading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9fafb' }}>
@@ -89,8 +94,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 40 }}
             />
             <div style={{
-              position: 'fixed', top: 0, right: 0, bottom: 0, width: '280px',
-              background: '#fff', zIndex: 50, boxShadow: '-4px 0 24px rgba(0,0,0,0.1)',
+              position: 'fixed', top: 0, left: 0, bottom: 0, width: '280px',
+              background: '#fff', zIndex: 50, boxShadow: '4px 0 24px rgba(0,0,0,0.1)',
               overflowY: 'auto',
             }}>
               <div style={{ padding: '20px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

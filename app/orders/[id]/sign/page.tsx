@@ -8,7 +8,7 @@ import { getAccount } from '@/lib/firestore/accounts'
 import { getCompanySettings } from '@/lib/firestore/settings'
 import { uploadSignedDeliveryNote } from '@/lib/storage'
 import { Order, Account } from '@/types'
-import toast from 'react-hot-toast'
+import toast, { Toaster } from 'react-hot-toast'
 
 export default function SignDeliveryNotePage() {
   const { id } = useParams<{ id: string }>()
@@ -26,64 +26,81 @@ export default function SignDeliveryNotePage() {
   const [receivedBy, setReceivedBy]   = useState('')
   const [hasSignature, setHasSignature] = useState(false)
 
-  const canvasRef   = useRef<HTMLCanvasElement>(null)
-  const drawingRef  = useRef(false)
-  const lastPosRef  = useRef<{ x: number; y: number } | null>(null)
+  const canvasRef  = useRef<HTMLCanvasElement>(null)
+  const drawingRef = useRef(false)
+  const ptsRef     = useRef<{ x: number; y: number }[]>([])
 
   useEffect(() => {
     async function load() {
-      const o = await getOrder(id)
-      setOrder(o)
-      if (o) {
-        const [a, s] = await Promise.all([getAccount(o.accountId), getCompanySettings()])
-        setAccount(a)
-        setSettings(s)
-      }
-      setLoading(false)
+      try {
+        const o = await getOrder(id)
+        setOrder(o)
+        if (o) {
+          const [a, s] = await Promise.all([getAccount(o.accountId), getCompanySettings()])
+          setAccount(a)
+          setSettings(s)
+        }
+      } catch (e) { console.error(e) }
+      finally { setLoading(false) }
     }
     load()
   }, [id])
 
-  // ── Canvas drawing ──────────────────────────────────────────────────────────
   function getPos(e: React.TouchEvent | React.MouseEvent, canvas: HTMLCanvasElement) {
-    const rect = canvas.getBoundingClientRect()
-    if ('touches' in e) {
-      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top }
-    }
-    return { x: (e as React.MouseEvent).clientX - rect.left, y: (e as React.MouseEvent).clientY - rect.top }
+    const rect  = canvas.getBoundingClientRect()
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    const src = 'touches' in e ? e.touches[0] : (e as React.MouseEvent)
+    return { x: (src.clientX - rect.left) * scaleX, y: (src.clientY - rect.top) * scaleY }
   }
 
-  function startDraw(e: React.TouchEvent | React.MouseEvent) {
-    e.preventDefault()
-    drawingRef.current = true
-    const canvas = canvasRef.current!
-    lastPosRef.current = getPos(e, canvas)
-  }
-
-  function draw(e: React.TouchEvent | React.MouseEvent) {
-    e.preventDefault()
-    if (!drawingRef.current || !canvasRef.current) return
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext('2d')!
-    const pos = getPos(e, canvas)
+  function redraw(pts: { x: number; y: number }[], ctx: CanvasRenderingContext2D) {
+    if (pts.length < 2) return
     ctx.beginPath()
-    ctx.moveTo(lastPosRef.current!.x, lastPosRef.current!.y)
-    ctx.lineTo(pos.x, pos.y)
+    ctx.moveTo(pts[0].x, pts[0].y)
+    for (let i = 1; i < pts.length - 1; i++) {
+      const mx = (pts[i].x + pts[i + 1].x) / 2
+      const my = (pts[i].y + pts[i + 1].y) / 2
+      ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my)
+    }
+    ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y)
     ctx.strokeStyle = '#111827'
     ctx.lineWidth = 2.5
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
     ctx.stroke()
-    lastPosRef.current = pos
+  }
+
+  function onStart(e: React.TouchEvent | React.MouseEvent) {
+    e.preventDefault()
+    const canvas = canvasRef.current!
+    const ctx    = canvas.getContext('2d')!
+    // Save previous strokes as image snapshot
+    ;(canvas as any)._bg = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    drawingRef.current = true
+    ptsRef.current = [getPos(e, canvas)]
+  }
+
+  function onMove(e: React.TouchEvent | React.MouseEvent) {
+    e.preventDefault()
+    if (!drawingRef.current || !canvasRef.current) return
+    const canvas = canvasRef.current
+    const ctx    = canvas.getContext('2d')!
+    ptsRef.current.push(getPos(e, canvas))
+    // Restore bg then redraw current stroke
+    if ((canvas as any)._bg) ctx.putImageData((canvas as any)._bg, 0, 0)
+    redraw(ptsRef.current, ctx)
     setHasSignature(true)
   }
 
-  function stopDraw() { drawingRef.current = false }
+  function onEnd() { drawingRef.current = false }
 
   function clearSignature() {
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
     ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ;(canvas as any)._bg = null
+    ptsRef.current = []
     setHasSignature(false)
   }
 
@@ -183,6 +200,7 @@ export default function SignDeliveryNotePage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#f9fafb', paddingBottom: '40px' }}>
+      <Toaster position="top-center" />
 
       {/* Header */}
       <div style={{ background: '#111827', color: '#fff', padding: '20px 20px 16px' }}>
@@ -232,13 +250,13 @@ export default function SignDeliveryNotePage() {
             width={340}
             height={160}
             style={{ display: 'block', width: '100%', height: '160px', cursor: 'crosshair', touchAction: 'none' }}
-            onMouseDown={startDraw}
-            onMouseMove={draw}
-            onMouseUp={stopDraw}
-            onMouseLeave={stopDraw}
-            onTouchStart={startDraw}
-            onTouchMove={draw}
-            onTouchEnd={stopDraw}
+            onMouseDown={onStart}
+            onMouseMove={onMove}
+            onMouseUp={onEnd}
+            onMouseLeave={onEnd}
+            onTouchStart={onStart}
+            onTouchMove={onMove}
+            onTouchEnd={onEnd}
           />
         </div>
         {!hasSignature && (

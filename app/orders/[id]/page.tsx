@@ -546,6 +546,84 @@ export default function OrderDetailPage() {
           <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', padding: '16px 18px' }}>
             <p style={{ fontSize: '11px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 12px' }}>Documents</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+
+              {/* ── Signed delivery note — FIRST ──────────────────────── */}
+              {!cancelled && (
+                <>
+                  {/* Digital sign */}
+                  {!order.signedDeliveryNoteUrl && (
+                    <a
+                      href={`/orders/${id}/sign`}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        padding: '10px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+                        border: '1px solid #c7d2fe', background: '#eef2ff', color: '#3730a3',
+                        textDecoration: 'none',
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                        <path d="M2 10l2-2 6-6 2 2-6 6-2 2-2-2z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M8 4l2 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                      </svg>
+                      Sign delivery note digitally
+                    </a>
+                  )}
+
+                  {/* View / remove signed note */}
+                  {order.signedDeliveryNoteUrl ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <a
+                        href={order.signedDeliveryNoteUrl}
+                        target="_blank" rel="noreferrer"
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '8px',
+                          padding: '9px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
+                          border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#166534',
+                          textDecoration: 'none',
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                          <path d="M2 2h8l4 4v8H2V2z" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinejoin="round"/>
+                          <path d="M10 2v4h4" stroke="currentColor" strokeWidth="1.3"/>
+                          <path d="M5 9h6M5 11.5h4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+                        </svg>
+                        View signed note ✓
+                      </a>
+                      <button
+                        onClick={handleDeleteSignedDN}
+                        disabled={updating}
+                        style={{ padding: '7px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 500, border: '1px solid #fecaca', background: 'transparent', color: '#dc2626', cursor: 'pointer', textAlign: 'left' as const }}
+                      >
+                        Remove signed note
+                      </button>
+                    </div>
+                  ) : (
+                    <label style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      padding: '12px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
+                      border: '1px dashed #d1d5db', background: '#fafafa',
+                      color: uploading ? '#9ca3af' : '#374151',
+                      cursor: uploading ? 'not-allowed' : 'pointer', minHeight: '48px',
+                    }}>
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                        <path d="M8 10V2M5 5l3-3 3 3M3 13h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      {uploading ? `Uploading… ${uploadProgress}%` : 'Upload signed note'}
+                      <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handleUploadSignedDN} disabled={uploading} style={{ display: 'none' }} />
+                    </label>
+                  )}
+
+                  {uploading && (
+                    <div style={{ height: '3px', background: '#e5e7eb', borderRadius: '2px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${uploadProgress}%`, background: '#111827', borderRadius: '2px', transition: 'width 0.2s' }} />
+                    </div>
+                  )}
+
+                  <div style={{ height: '1px', background: '#f3f4f6', margin: '4px 0' }} />
+                </>
+              )}
+
+              {/* ── Download delivery note + invoice ──────────────────── */}
               {[
                 { label: 'Download delivery note', loading: genDN, action: generateDeliveryNote },
                 { label: 'Download invoice',        loading: genINV, action: generateInvoice },
@@ -568,7 +646,7 @@ export default function OrderDetailPage() {
                 </button>
               ))}
 
-              {/* Xero CSV export */}
+              {/* ── Xero CSV ──────────────────────────────────────────── */}
               <button
                 onClick={() => {
                   if (!order) return
@@ -600,7 +678,7 @@ export default function OrderDetailPage() {
                 Export Xero invoice (CSV)
               </button>
 
-              {/* Send confirmation */}
+              {/* ── Send confirmation ─────────────────────────────────── */}
               {!cancelled && (
                 <button
                   onClick={() => setShowConfirmation(true)}
@@ -617,96 +695,8 @@ export default function OrderDetailPage() {
                   Send order confirmation
                 </button>
               )}
+
             </div>
-
-            {/* Signed delivery note */}
-            {!cancelled && (
-              <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #f3f4f6' }}>
-                <p style={{ fontSize: '11px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
-                  Signed delivery note
-                </p>
-
-                {/* Digital sign button — shows if not yet signed */}
-                {!order.signedDeliveryNoteUrl && (
-                  <a
-                    href={`/orders/${id}/sign`}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px',
-                      padding: '10px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-                      border: '1px solid #c7d2fe', background: '#eef2ff', color: '#3730a3',
-                      textDecoration: 'none',
-                    }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                      <path d="M2 10l2-2 6-6 2 2-6 6-2 2-2-2z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M8 4l2 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                    </svg>
-                    Sign digitally on phone
-                  </a>
-                )}
-
-                {order.signedDeliveryNoteUrl ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <a
-                      href={order.signedDeliveryNoteUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '8px',
-                        padding: '9px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
-                        border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#166534',
-                        textDecoration: 'none',
-                      }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                        <path d="M2 2h8l4 4v8H2V2z" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinejoin="round"/>
-                        <path d="M10 2v4h4" stroke="currentColor" strokeWidth="1.3"/>
-                        <path d="M5 9h6M5 11.5h4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
-                      </svg>
-                      View signed note
-                    </a>
-                    <button
-                      onClick={handleDeleteSignedDN}
-                      disabled={updating}
-                      style={{
-                        padding: '7px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 500,
-                        border: '1px solid #fecaca', background: 'transparent', color: '#dc2626',
-                        cursor: 'pointer', textAlign: 'left' as const,
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ) : (
-                  <label style={{
-                    display: 'flex', alignItems: 'center', gap: '8px',
-                    padding: '12px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
-                    border: '1px dashed #d1d5db', background: '#fafafa',
-                    color: uploading ? '#9ca3af' : '#374151',
-                    cursor: uploading ? 'not-allowed' : 'pointer',
-                    minHeight: '48px',
-                  }}>
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                      <path d="M8 10V2M5 5l3-3 3 3M3 13h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    {uploading ? `Uploading… ${uploadProgress}%` : 'Upload signed note'}
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      onChange={handleUploadSignedDN}
-                      disabled={uploading}
-                      style={{ display: 'none' }}
-                    />
-                  </label>
-                )}
-
-                {uploading && (
-                  <div style={{ marginTop: '6px', height: '3px', background: '#e5e7eb', borderRadius: '2px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${uploadProgress}%`, background: '#111827', borderRadius: '2px', transition: 'width 0.2s' }} />
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
           <div style={{ textAlign: 'center' }}>
