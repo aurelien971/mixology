@@ -626,6 +626,25 @@ export default function OrderDetailPage() {
                   Signed delivery note
                 </p>
 
+                {/* Digital sign button — shows if not yet signed */}
+                {!order.signedDeliveryNoteUrl && (
+                  <a
+                    href={`/orders/${id}/sign`}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px',
+                      padding: '10px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+                      border: '1px solid #c7d2fe', background: '#eef2ff', color: '#3730a3',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M2 10l2-2 6-6 2 2-6 6-2 2-2-2z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M8 4l2 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                    </svg>
+                    Sign digitally on phone
+                  </a>
+                )}
+
                 {order.signedDeliveryNoteUrl ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <a

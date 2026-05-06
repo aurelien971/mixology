@@ -1,4 +1,4 @@
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
+import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer'
 import { Order } from '@/types'
 import { format } from 'date-fns'
 
@@ -70,6 +70,12 @@ interface DeliveryNoteProps {
   supplierName?: string
   supplierAddress?: string
   supplierPhone?: string
+  // Digital signing fields
+  boxesPacked?: string
+  packedBy?: string
+  receivedBy?: string
+  signatureData?: string   // base64 PNG from canvas
+  signedAt?: Date
 }
 
 export function DeliveryNotePDF({
@@ -80,6 +86,11 @@ export function DeliveryNotePDF({
   supplierName    = 'Foodlab Cocktails',
   supplierAddress = 'London, UK',
   supplierPhone   = '',
+  boxesPacked,
+  packedBy,
+  receivedBy,
+  signatureData,
+  signedAt,
 }: DeliveryNoteProps) {
   const noteNumber = order.deliveryNoteNumber ?? `DN-${order.orderNumber.replace('FL-', '')}`
   const noteDate   = order.deliveryDate ?? order.createdAt
@@ -183,18 +194,26 @@ export function DeliveryNotePDF({
           <Text style={s.totVal}>{totalUnits}L</Text>
         </View>
 
-        {/* Signatures — vertical stack, 2 per row */}
+        {/* Signatures */}
         <View style={s.sigSection}>
           <Text style={s.sigSectionLabel}>Confirmation of receipt</Text>
 
           <View style={s.sigRow}>
             <View style={s.sigBox}>
-              <View style={s.sigLine} />
+              {boxesPacked ? (
+                <Text style={[s.sigLabel, { fontSize: 14, fontFamily: 'Helvetica-Bold', marginBottom: 4 }]}>{boxesPacked}</Text>
+              ) : (
+                <View style={s.sigLine} />
+              )}
               <Text style={s.sigLabel}>No. of boxes packed</Text>
               <Text style={s.sigSub}>Completed by Foodlab driver</Text>
             </View>
             <View style={s.sigBox}>
-              <View style={s.sigLine} />
+              {packedBy ? (
+                <Text style={[s.sigLabel, { fontSize: 14, fontFamily: 'Helvetica-Bold', marginBottom: 4 }]}>{packedBy}</Text>
+              ) : (
+                <View style={s.sigLine} />
+              )}
               <Text style={s.sigLabel}>Packed by</Text>
               <Text style={s.sigSub}>Foodlab team member name</Text>
             </View>
@@ -202,14 +221,25 @@ export function DeliveryNotePDF({
 
           <View style={s.sigRow}>
             <View style={s.sigBox}>
-              <View style={s.sigLine} />
+              {receivedBy ? (
+                <Text style={[s.sigLabel, { fontSize: 14, fontFamily: 'Helvetica-Bold', marginBottom: 4 }]}>{receivedBy}</Text>
+              ) : (
+                <View style={s.sigLine} />
+              )}
               <Text style={s.sigLabel}>Received by (print name)</Text>
               <Text style={s.sigSub}>{displayLegal} representative</Text>
             </View>
             <View style={s.sigBox}>
-              <View style={s.sigLine} />
+              {signatureData ? (
+                // eslint-disable-next-line jsx-a11y/alt-text
+                <Image src={signatureData} style={{ height: 48, marginBottom: 4 }} />
+              ) : (
+                <View style={s.sigLine} />
+              )}
               <Text style={s.sigLabel}>Signature + date</Text>
-              <Text style={s.sigSub}>By signing you confirm receipt of all items listed</Text>
+              <Text style={s.sigSub}>
+                {signedAt ? `Signed ${format(signedAt, 'd MMM yyyy HH:mm')}` : 'By signing you confirm receipt of all items listed'}
+              </Text>
             </View>
           </View>
         </View>
