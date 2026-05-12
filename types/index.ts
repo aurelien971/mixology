@@ -61,6 +61,7 @@ export interface Account {
   vatNumber?: string
   paymentTerms: PaymentTerms
   notes?: string
+  clientToken?: string
   createdAt: Date
   updatedAt: Date
 }
@@ -117,8 +118,7 @@ export interface OrderLineItem {
 }
 
 export type OrderType = 'order' | 'rd'
-
-export type RdStatus = 'in_progress' | 'completed' | 'on_hold'
+export type RdStatus  = 'in_progress' | 'completed' | 'on_hold'
 
 export interface Order {
   id: string
@@ -127,7 +127,7 @@ export interface Order {
   accountName: string
   groupId?: string
   groupName?: string
-  type?: OrderType              // 'order' (default) | 'rd'
+  type?: OrderType
   status: OrderStatus
   lineItems: OrderLineItem[]
   subtotal: number
@@ -145,14 +145,13 @@ export interface Order {
   invoiceNumber?: string
   invoiceUrl?: string
   deliveryDate?: Date
-  // R&D specific fields
   rdStatus?: RdStatus
   rdAssignee?: string
   rdStartDate?: Date
   rdEndDate?: Date
   rdBrief?: string
-  rdOutcomes?: string[]         // recipe names added as project progresses
-  rdPrice?: number              // fixed price, can be added later
+  rdOutcomes?: string[]
+  rdPrice?: number
   createdAt: Date
   updatedAt: Date
 }

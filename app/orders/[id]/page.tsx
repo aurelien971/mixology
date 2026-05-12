@@ -553,8 +553,8 @@ export default function OrderDetailPage() {
             <p style={{ fontSize: '11px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 12px' }}>Documents</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
 
-              {/* ── Signed delivery note — FIRST ──────────────────────── */}
-              {!cancelled && (
+              {/* ── Signed delivery note — hidden for R&D ─────────────── */}
+              {!cancelled && order.type !== 'rd' && (
                 <>
                   {/* Digital sign */}
                   {!order.signedDeliveryNoteUrl && (
@@ -631,8 +631,8 @@ export default function OrderDetailPage() {
 
               {/* ── Download delivery note + invoice ──────────────────── */}
               {[
-                { label: 'Download delivery note', loading: genDN, action: generateDeliveryNote },
-                { label: 'Download invoice',        loading: genINV, action: generateInvoice },
+                ...(order.type !== 'rd' ? [{ label: 'Download delivery note', loading: genDN, action: generateDeliveryNote }] : []),
+                { label: order.type === 'rd' ? 'Download R&D invoice' : 'Download invoice', loading: genINV, action: generateInvoice },
               ].map(({ label, loading: l, action }) => (
                 <button
                   key={label}
@@ -681,7 +681,7 @@ export default function OrderDetailPage() {
                   <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.3" fill="none"/>
                   <path d="M5 8.5l2 2 4-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
-                Export Xero invoice (CSV)
+                {order.type === 'rd' ? 'Export R&D invoice (Xero CSV)' : 'Export Xero invoice (CSV)'}
               </button>
 
               {/* ── Send confirmation ─────────────────────────────────── */}
