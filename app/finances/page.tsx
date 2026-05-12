@@ -290,9 +290,9 @@ export default function FinancesPage() {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(value: number, _: any, props: any) => [
-                        `£${value.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`,
-                        props.payload.name,
+                      formatter={(value, name) => [
+                        `£${Number(value).toLocaleString('en-GB', { minimumFractionDigits: 2 })}`,
+                        String(name),
                       ]}
                       contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
                     />
