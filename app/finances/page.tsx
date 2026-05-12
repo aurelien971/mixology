@@ -1,9 +1,10 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
-import { format } from 'date-fns'
+import React, { useEffect, useState, useMemo } from 'react'
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns'
 import Link from 'next/link'
 import Header from '@/components/layout/Header'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { getOrders } from '@/lib/firestore/orders'
 import { getProducts } from '@/lib/firestore/catalog'
 import { Order, Product } from '@/types'
@@ -122,6 +123,22 @@ export default function FinancesPage() {
   const [expanded, setExpanded]     = useState<string | null>(null)
   const [modalOrder, setModalOrder] = useState<OrderProfit | null>(null)
 
+  // Date range
+  type RangeKey = 'this_week' | 'last_week' | 'this_month' | 'last_month' | 'all' | 'custom'
+  const [rangeKey, setRangeKey] = useState<RangeKey>('this_month')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo]     = useState('')
+
+  const dateRange = useMemo(() => {
+    const now = new Date()
+    if (rangeKey === 'this_week')  return { from: startOfWeek(now, { weekStartsOn: 1 }), to: endOfWeek(now, { weekStartsOn: 1 }) }
+    if (rangeKey === 'last_week')  { const lw = new Date(now); lw.setDate(lw.getDate() - 7); return { from: startOfWeek(lw, { weekStartsOn: 1 }), to: endOfWeek(lw, { weekStartsOn: 1 }) } }
+    if (rangeKey === 'this_month') return { from: startOfMonth(now), to: endOfMonth(now) }
+    if (rangeKey === 'last_month') { const lm = subMonths(now, 1); return { from: startOfMonth(lm), to: endOfMonth(lm) } }
+    if (rangeKey === 'custom' && customFrom && customTo) return { from: new Date(customFrom), to: new Date(customTo) }
+    return null // all time
+  }, [rangeKey, customFrom, customTo])
+
   useEffect(() => {
     async function load() {
       const [ords, prods] = await Promise.all([getOrders(200), getProducts()])
@@ -132,7 +149,24 @@ export default function FinancesPage() {
     load()
   }, [])
 
-  const profits = orders.map(o => calcOrderProfit(o, productMap))
+  const profits = useMemo(() => {
+    const filtered = dateRange
+      ? orders.filter(o => isWithinInterval(o.createdAt, { start: dateRange.from, end: dateRange.to }))
+      : orders
+    return filtered.map(o => calcOrderProfit(o, productMap))
+  }, [orders, productMap, dateRange])
+
+  // Pie chart — revenue by account
+  const PIE_COLORS = ['#111827','#2563eb','#059669','#d97706','#dc2626','#7c3aed','#0891b2','#db2777','#65a30d','#ea580c']
+  const pieData = useMemo(() => {
+    const map = new Map<string, number>()
+    profits.forEach(p => {
+      map.set(p.order.accountName, (map.get(p.order.accountName) ?? 0) + p.revenue)
+    })
+    return [...map.entries()]
+      .map(([name, value]) => ({ name, value: r2(value) }))
+      .sort((a, b) => b.value - a.value)
+  }, [profits])
 
   const totalRevenue = r2(profits.reduce((s, p) => s + p.revenue, 0))
   const totalCogs    = r2(profits.filter(p => !p.hasMissingCosts).reduce((s, p) => s + p.cogs, 0))
@@ -176,12 +210,113 @@ export default function FinancesPage() {
           {modalOrder && (
             <FinanceModal profit={modalOrder} onClose={() => setModalOrder(null)} />
           )}
-          <div style={{ display: 'flex', gap: '12px', marginBottom: '28px', flexWrap: 'wrap' }}>
-            {statCard('Total revenue (ex-VAT)', `£${totalRevenue.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`, `${profits.length} orders`)}
-            {statCard('Total COGS', `£${totalCogs.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`, 'Production costs')}
-            {statCard('Gross profit', `£${totalProfit.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`, 'Revenue minus COGS')}
-            {statCard('Avg margin', `${avgMargin.toFixed(1)}%`, 'Excl. orders with missing costs')}
-            {missingCount > 0 && statCard('Missing costs', String(missingCount), 'orders affected', true)}
+          {/* Date range picker */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '20px', flexWrap: 'wrap' }}>
+            {([
+              { key: 'this_week',  label: 'This week' },
+              { key: 'last_week',  label: 'Last week' },
+              { key: 'this_month', label: 'This month' },
+              { key: 'last_month', label: 'Last month' },
+              { key: 'all',        label: 'All time' },
+              { key: 'custom',     label: 'Custom' },
+            ] as { key: RangeKey; label: string }[]).map(({ key, label }) => (
+              <button key={key} onClick={() => setRangeKey(key)} style={{
+                padding: '5px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 500, cursor: 'pointer',
+                border: `1px solid ${rangeKey === key ? '#111827' : '#e5e7eb'}`,
+                background: rangeKey === key ? '#111827' : '#fff',
+                color: rangeKey === key ? '#fff' : '#6b7280',
+              }}>{label}</button>
+            ))}
+            {rangeKey === 'custom' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px' }}>
+                <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+                  style={{ padding: '4px 8px', borderRadius: '7px', border: '1px solid #e5e7eb', fontSize: '12px', outline: 'none' }} />
+                <span style={{ fontSize: '12px', color: '#9ca3af' }}>to</span>
+                <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
+                  style={{ padding: '4px 8px', borderRadius: '7px', border: '1px solid #e5e7eb', fontSize: '12px', outline: 'none' }} />
+              </div>
+            )}
+            {dateRange && (
+              <span style={{ fontSize: '11px', color: '#9ca3af', marginLeft: '4px' }}>
+                {format(dateRange.from, 'd MMM')} – {format(dateRange.to, 'd MMM yyyy')} · {profits.length} orders
+              </span>
+            )}
+          </div>
+
+          {/* Stats row + Pie — balanced grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '16px', marginBottom: '24px', alignItems: 'start' }}>
+
+            {/* Left: stat cards 2×2 */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              {[
+                { label: 'Total revenue (ex-VAT)', value: `£${totalRevenue.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`, sub: `${profits.length} order${profits.length !== 1 ? 's' : ''}` },
+                { label: 'Total COGS', value: `£${totalCogs.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`, sub: 'Production costs' },
+                { label: 'Gross profit', value: `£${totalProfit.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`, sub: 'Revenue minus COGS', green: totalProfit > 0 },
+                { label: 'Avg margin', value: `${avgMargin.toFixed(1)}%`, sub: 'Excl. missing costs', green: avgMargin > 50 },
+              ].map(c => (
+                <div key={c.label} style={{ background: '#fff', border: '1px solid #f3f4f6', borderRadius: '12px', padding: '18px 20px' }}>
+                  <p style={{ fontSize: '11px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>{c.label}</p>
+                  <p style={{ fontSize: '24px', fontWeight: 700, color: c.green ? '#166534' : '#111827', margin: '0 0 4px', letterSpacing: '-0.5px' }}>{c.value}</p>
+                  <p style={{ fontSize: '12px', color: '#9ca3af', margin: 0 }}>{c.sub}</p>
+                </div>
+              ))}
+              {missingCount > 0 && (
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '18px 20px', gridColumn: '1 / -1' }}>
+                  <p style={{ fontSize: '11px', fontWeight: 600, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>Missing costs</p>
+                  <p style={{ fontSize: '22px', fontWeight: 700, color: '#92400e', margin: '0 0 2px' }}>{missingCount}</p>
+                  <Link href="/catalog?missing=1" style={{ fontSize: '12px', color: '#92400e', textDecoration: 'underline' }}>Fix in catalog →</Link>
+                </div>
+              )}
+            </div>
+
+            {/* Right: Pie chart */}
+            {pieData.length > 0 && (
+              <div style={{ background: '#fff', border: '1px solid #f3f4f6', borderRadius: '12px', padding: '20px' }}>
+                <p style={{ fontSize: '13px', fontWeight: 600, color: '#111827', margin: '0 0 4px' }}>Revenue by account</p>
+                <p style={{ fontSize: '11px', color: '#9ca3af', margin: '0 0 16px' }}>{dateRange ? `${format(dateRange.from, 'd MMM')} – ${format(dateRange.to, 'd MMM')}` : 'All time'}</p>
+                <ResponsiveContainer width="100%" height={180}>
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={80}
+                      paddingAngle={3}
+                      dataKey="value"
+                    >
+                      {pieData.map((_, i) => (
+                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke="none" />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: number, _: any, props: any) => [
+                        `£${value.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`,
+                        props.payload.name,
+                      ]}
+                      contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', marginTop: '12px' }}>
+                  {pieData.map((d, i) => {
+                    const pct = totalRevenue > 0 ? ((d.value / totalRevenue) * 100).toFixed(1) : '0'
+                    return (
+                      <div key={d.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: PIE_COLORS[i % PIE_COLORS.length], flexShrink: 0 }} />
+                          <span style={{ fontSize: '12px', color: '#374151' }}>{d.name}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                          <span style={{ fontSize: '11px', color: '#9ca3af', minWidth: '36px', textAlign: 'right' }}>{pct}%</span>
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#111827', minWidth: '70px', textAlign: 'right' }}>£{d.value.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', gap: '6px', marginBottom: '16px' }}>

@@ -59,7 +59,7 @@ export default function AccountsPage() {
             </thead>
             <tbody>
               {accounts.map((account) => (
-                <tr key={account.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                <tr key={account.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => window.location.href = `/accounts/${account.id}`}>
                   <td className="px-5 py-3.5">
                     <p className="text-sm font-medium text-gray-900">{account.legalName}</p>
                   </td>

@@ -24,7 +24,7 @@ const Ctx = createContext<AuthCtx>({
 const SESSION_KEY = 'foodlab_session'
 
 // Routes that don't require auth
-const PUBLIC_ROUTES = ['/login', '/track']
+const PUBLIC_ROUTES = ['/login', '/track', '/portal']
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser]       = useState<AuthUser | null>(null)

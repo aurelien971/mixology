@@ -32,11 +32,31 @@ export default function DashboardPage() {
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
 
-  const revenueMTD   = orders.filter(o => o.createdAt >= startOfMonth && o.status !== 'cancelled').reduce((s, o) => s + o.total, 0)
-  const outstanding  = payments.filter(p => p.status === 'pending' || p.status === 'overdue').reduce((s, p) => s + p.amount, 0)
-  const ordersMonth  = orders.filter(o => o.createdAt >= startOfMonth).length
-  const overdueCount = payments.filter(p => p.status === 'overdue').length
-  const recentOrders = orders.slice(0, 8)
+  const activeOrders  = orders.filter(o => o.status !== 'cancelled')
+  const mtdOrders     = activeOrders.filter(o => o.createdAt >= startOfMonth)
+
+  const revenueMTD    = mtdOrders.reduce((s, o) => s + o.total, 0)
+  const outstanding   = payments.filter(p => p.status === 'pending' || p.status === 'overdue').reduce((s, p) => s + p.amount, 0)
+  const overdueCount  = payments.filter(p => p.status === 'overdue').length
+
+  // Litres produced (all time, non-cancelled)
+  const totalLitres   = activeOrders.reduce((s, o) =>
+    s + o.lineItems.reduce((ls, l) => ls + l.quantity * (l.volumeLitres ?? 5), 0), 0)
+  const litresMTD     = mtdOrders.reduce((s, o) =>
+    s + o.lineItems.reduce((ls, l) => ls + l.quantity * (l.volumeLitres ?? 5), 0), 0)
+
+  // Unique active clients
+  const activeClients = new Set(activeOrders.map(o => o.accountId)).size
+
+  // Pending orders (received + production)
+  const pendingOrders = orders.filter(o => o.status === 'received' || o.status === 'production').length
+
+  // Avg order value (all time)
+  const avgOrderValue = activeOrders.length > 0
+    ? activeOrders.reduce((s, o) => s + o.total, 0) / activeOrders.length
+    : 0
+
+  const recentOrders    = orders.slice(0, 8)
   const overduePayments = payments.filter(p => p.status === 'overdue').slice(0, 5)
 
   if (loading) return (
@@ -70,10 +90,19 @@ export default function DashboardPage() {
       {/* Stat cards — 2 col on mobile, 4 on desktop */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '24px' }}
         className="md:grid-cols-4">
-        <StatCard label="Revenue MTD" value={`£${revenueMTD.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`} sub="This month" hidden={hidden} />
+        <StatCard label="Revenue MTD" value={`£${revenueMTD.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`} sub={`${mtdOrders.length} orders this month`} hidden={hidden} />
         <StatCard label="Outstanding" value={`£${outstanding.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`} sub="Pending + overdue" highlight={outstanding > 0} hidden={hidden} />
-        <StatCard label="Orders this month" value={String(ordersMonth)} />
-        <StatCard label="Overdue invoices" value={String(overdueCount)} highlight={overdueCount > 0} />
+        <StatCard label="Litres this month" value={`${litresMTD}L`} sub={`${totalLitres}L all time`} />
+        <StatCard label="Active clients" value={String(activeClients)} sub="Accounts ordered from" />
+      </div>
+
+      {/* Second row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '24px' }}
+        className="md:grid-cols-4">
+        <StatCard label="Pending orders" value={String(pendingOrders)} sub="Received + in production" highlight={pendingOrders > 0} />
+        <StatCard label="Overdue invoices" value={String(overdueCount)} sub="Need chasing" highlight={overdueCount > 0} />
+        <StatCard label="Avg order value" value={`£${avgOrderValue.toFixed(0)}`} sub="All time" hidden={hidden} />
+        <StatCard label="Total orders" value={String(activeOrders.length)} sub="All time, ex-cancelled" />
       </div>
 
       {/* Two columns on desktop, stacked on mobile */}

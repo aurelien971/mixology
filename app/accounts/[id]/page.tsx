@@ -252,8 +252,6 @@ export default function AccountDetailPage() {
               <PricingManager
                 accountId={id}
                 accountName={account.tradingName}
-                groupId={account.groupId}
-                groupName={account.groupName}
                 onPricingChange={setPricing}
               />
             </div>
@@ -308,6 +306,44 @@ export default function AccountDetailPage() {
                   + New order
                 </Button>
               </Link>
+              {account?.clientToken && (
+                <button
+                  onClick={() => {
+                    const url = `${window.location.origin}/portal/${account.clientToken}`
+                    navigator.clipboard.writeText(url)
+                    toast.success('Portal link copied!')
+                  }}
+                  style={{
+                    width: '100%', padding: '7px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
+                    border: '1px solid #c7d2fe', background: '#eef2ff', color: '#3730a3',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+                    <path d="M8 1H2a1 1 0 00-1 1v8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                    <rect x="4" y="4" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.3" fill="none"/>
+                  </svg>
+                  Copy client portal link
+                </button>
+              )}
+              {account?.clientToken && (
+                <a
+                  href={`/portal/${account.clientToken}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                    width: '100%', padding: '7px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
+                    border: '1px solid #e5e7eb', background: '#fff', color: '#374151', textDecoration: 'none',
+                    boxSizing: 'border-box' as const,
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+                    <path d="M6 2H2a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1V8M9 1h4m0 0v4m0-4L6 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  Preview portal
+                </a>
+              )}
             </div>
           </div>
         </div>

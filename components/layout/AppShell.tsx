@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import Sidebar from '@/components/layout/Sidebar'
 import Link from 'next/link'
 
-const NO_SHELL = ['/login', '/track', '/orders/sign']
+const NO_SHELL = ['/login', '/track', '/orders/sign', '/portal']
 
 // Match sign pages: /orders/[id]/sign
 function isSignPage(pathname: string) {

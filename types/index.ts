@@ -61,6 +61,7 @@ export interface Account {
   vatNumber?: string
   paymentTerms: PaymentTerms
   notes?: string
+  clientToken?: string          // unique token for client portal URL
   createdAt: Date
   updatedAt: Date
 }
