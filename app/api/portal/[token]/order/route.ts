@@ -17,10 +17,10 @@ async function generateOrderNumber(): Promise<string> {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { token: string } }
+  { params }: { params: Promise<{ token: string }> }
 ) {
   try {
-    const { token } = params
+    const { token } = await params
     const body = await req.json() as {
       contactName: string
       notes?: string
