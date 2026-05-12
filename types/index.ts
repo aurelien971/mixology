@@ -61,7 +61,6 @@ export interface Account {
   vatNumber?: string
   paymentTerms: PaymentTerms
   notes?: string
-  clientToken?: string          // unique token for client portal URL
   createdAt: Date
   updatedAt: Date
 }
@@ -117,11 +116,18 @@ export interface OrderLineItem {
   servingSizeG: number
 }
 
+export type OrderType = 'order' | 'rd'
+
+export type RdStatus = 'in_progress' | 'completed' | 'on_hold'
+
 export interface Order {
   id: string
   orderNumber: string
   accountId: string
   accountName: string
+  groupId?: string
+  groupName?: string
+  type?: OrderType              // 'order' (default) | 'rd'
   status: OrderStatus
   lineItems: OrderLineItem[]
   subtotal: number
@@ -130,13 +136,23 @@ export interface Order {
   total: number
   notes?: string
   poReference?: string
+  source?: string
+  portalContactName?: string
   expectedDeliveryDate?: Date
   deliveryNoteNumber?: string
   deliveryNoteUrl?: string
-  signedDeliveryNoteUrl?: string   // uploaded by Foodlab after client signs
+  signedDeliveryNoteUrl?: string
   invoiceNumber?: string
   invoiceUrl?: string
   deliveryDate?: Date
+  // R&D specific fields
+  rdStatus?: RdStatus
+  rdAssignee?: string
+  rdStartDate?: Date
+  rdEndDate?: Date
+  rdBrief?: string
+  rdOutcomes?: string[]         // recipe names added as project progresses
+  rdPrice?: number              // fixed price, can be added later
   createdAt: Date
   updatedAt: Date
 }

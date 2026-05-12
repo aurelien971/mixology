@@ -25,6 +25,7 @@ export default function OrdersPage() {
   const [filter, setFilter] = useState<OrderStatus | 'all'>('all')
   const [search, setSearch] = useState('')
   const [showNoryModal,  setShowNoryModal]  = useState(false)
+  const [typeFilter, setTypeFilter] = useState<'all' | 'order' | 'rd'>('all')
 
   function load() {
     getOrders().then(setOrders).finally(() => setLoading(false))
@@ -38,7 +39,8 @@ export default function OrdersPage() {
       o.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
       o.accountName.toLowerCase().includes(search.toLowerCase()) ||
       (o.poReference ?? '').toLowerCase().includes(search.toLowerCase())
-    return matchStatus && matchSearch
+    const matchType = typeFilter === 'all' || (typeFilter === 'rd' ? o.type === 'rd' : o.type !== 'rd')
+    return matchStatus && matchSearch && matchType
   })
 
   return (
@@ -57,6 +59,9 @@ export default function OrdersPage() {
             <Button size="sm" variant="secondary" onClick={() => setShowNoryModal(true)}>
               ↑ Import Nory CSV
             </Button>
+            <Link href="/orders/rd/new">
+              <Button size="sm" variant="secondary">+ New R&D</Button>
+            </Link>
             <Link href="/orders/new">
               <Button size="sm">+ New order</Button>
             </Link>
@@ -64,7 +69,7 @@ export default function OrdersPage() {
         }
       />
 
-      <div className="flex items-center gap-3 mb-5">
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
         <input
           type="text"
           placeholder="Search by order no., account or PO ref..."
@@ -78,12 +83,23 @@ export default function OrdersPage() {
               key={f.value}
               onClick={() => setFilter(f.value)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                filter === f.value
-                  ? 'bg-gray-900 text-white'
-                  : 'text-gray-500 hover:bg-gray-100'
+                filter === f.value ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100'
               }`}
             >
               {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-1 ml-2 border-l border-gray-200 pl-3">
+          {([['all', 'All types'], ['order', 'Orders'], ['rd', 'R&D']] as const).map(([v, l]) => (
+            <button
+              key={v}
+              onClick={() => setTypeFilter(v)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                typeFilter === v ? 'bg-purple-900 text-white' : 'text-gray-500 hover:bg-gray-100'
+              }`}
+            >
+              {l}
             </button>
           ))}
         </div>
@@ -128,7 +144,14 @@ export default function OrdersPage() {
                       <td className="px-5 py-3.5">
                         <Link href={`/orders/${order.id}`} className="text-sm font-medium text-gray-900 hover:underline">{order.orderNumber}</Link>
                       </td>
-                      <td className="px-5 py-3.5 text-sm text-gray-600">{order.accountName}</td>
+                      <td className="px-5 py-3.5 text-sm text-gray-600">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {order.accountName}
+                          {order.type === 'rd' && (
+                            <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: '#f3e8ff', color: '#7e22ce', letterSpacing: '0.05em' }}>R&D</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-5 py-3.5 text-sm text-gray-400">{order.poReference ?? '—'}</td>
                       <td className="px-5 py-3.5 text-sm text-gray-500">{format(order.createdAt, 'd MMM yyyy')}</td>
                       <td className="px-5 py-3.5"><Badge label={badge.label} variant={badge.variant} /></td>

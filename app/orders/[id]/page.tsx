@@ -352,6 +352,11 @@ export default function OrderDetailPage() {
         {/* LEFT col */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
+          {/* R&D Panel — shown instead of order lines for R&D projects */}
+          {order.type === 'rd' ? (
+            <RdPanel order={order} onSaved={load} />
+          ) : (<>
+
           {/* Order lines */}
           <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', overflow: 'hidden' }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between' }}>
@@ -491,6 +496,7 @@ export default function OrderDetailPage() {
               <p style={{ fontSize: '13px', color: '#78350f', margin: 0 }}>{order.notes}</p>
             </div>
           )}
+          </>)}
         </div>
 
         {/* RIGHT sidebar */}
@@ -964,5 +970,219 @@ ${settings.supplierName}${settings.supplierPhone ? `\n${settings.supplierPhone}`
         </div>
       </div>
     </div>
+  )
+}
+
+// ── R&D Panel component ──────────────────────────────────────────────────────
+
+function RdPanel({ order, onSaved }: { order: Order; onSaved: () => void }) {
+  const [newOutcome, setNewOutcome] = useState('')
+  const [addingPrice, setAddingPrice] = useState(false)
+  const [priceInput, setPriceInput]   = useState('')
+  const [vatIncl, setVatIncl]         = useState(false)
+  const [saving, setSaving]           = useState(false)
+
+  const VAT = 0.20
+  const priceNum  = parseFloat(priceInput) || 0
+  const subtotal  = vatIncl ? Math.round((priceNum / 1.2) * 100) / 100 : priceNum
+  const vatAmount = Math.round(subtotal * VAT * 100) / 100
+  const total     = Math.round((subtotal + vatAmount) * 100) / 100
+
+  const rdStatusLabels: Record<string, { label: string; color: string; bg: string }> = {
+    in_progress: { label: 'In progress', color: '#1d4ed8', bg: '#eff6ff' },
+    completed:   { label: 'Completed',   color: '#166534', bg: '#f0fdf4' },
+    on_hold:     { label: 'On hold',     color: '#92400e', bg: '#fffbeb' },
+  }
+  const rdBadge = rdStatusLabels[order.rdStatus ?? 'in_progress']
+
+  async function addOutcome() {
+    if (!newOutcome.trim()) return
+    setSaving(true)
+    try {
+      const outcomes = [...(order.rdOutcomes ?? []), newOutcome.trim()]
+      await updateOrder(order.id, { rdOutcomes: outcomes })
+      setNewOutcome('')
+      toast.success('Recipe added')
+      onSaved()
+    } catch { toast.error('Failed to save') }
+    finally { setSaving(false) }
+  }
+
+  async function removeOutcome(idx: number) {
+    const outcomes = (order.rdOutcomes ?? []).filter((_, i) => i !== idx)
+    await updateOrder(order.id, { rdOutcomes: outcomes })
+    onSaved()
+  }
+
+  async function updateRdStatus(status: string) {
+    await updateOrder(order.id, { rdStatus: status })
+    onSaved()
+  }
+
+  async function savePrice() {
+    if (!priceNum) return
+    setSaving(true)
+    try {
+      await updateOrder(order.id, {
+        rdPrice:  priceNum,
+        subtotal,
+        vatRate:  VAT,
+        vatAmount,
+        total,
+      })
+      // Create payment if doesn't exist
+      const { createPayment } = await import('@/lib/firestore/payments')
+      const { addDays } = await import('date-fns')
+      await createPayment({
+        orderId:     order.id,
+        orderNumber: order.orderNumber,
+        accountId:   order.accountId,
+        accountName: order.accountName,
+        invoiceNumber: order.invoiceNumber ?? `INV-${order.orderNumber.replace('FL-', '')}`,
+        amount:      total,
+        dueDate:     addDays(new Date(), 30),
+        status:      'pending',
+      })
+      toast.success('Price saved — invoice created')
+      setAddingPrice(false)
+      onSaved()
+    } catch { toast.error('Failed to save price') }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <>
+      {/* R&D Project Overview */}
+      <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', overflow: 'hidden' }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, margin: 0 }}>R&D Project</h3>
+            <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', background: rdBadge.bg, color: rdBadge.color }}>{rdBadge.label}</span>
+          </div>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            {(['in_progress', 'on_hold', 'completed'] as const).map(s => (
+              <button key={s} onClick={() => updateRdStatus(s)} style={{
+                padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 500, cursor: 'pointer',
+                border: `1px solid ${order.rdStatus === s ? '#111827' : '#e5e7eb'}`,
+                background: order.rdStatus === s ? '#111827' : '#fff',
+                color: order.rdStatus === s ? '#fff' : '#6b7280',
+              }}>{rdStatusLabels[s].label}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px' }}>
+          {order.rdAssignee && (
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <span style={{ color: '#9ca3af', width: '100px', flexShrink: 0 }}>Assigned to</span>
+              <span style={{ fontWeight: 500, color: '#111827' }}>{order.rdAssignee}</span>
+            </div>
+          )}
+          {order.rdStartDate && (
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <span style={{ color: '#9ca3af', width: '100px', flexShrink: 0 }}>Start date</span>
+              <span style={{ color: '#374151' }}>{format(order.rdStartDate instanceof Date ? order.rdStartDate : (order.rdStartDate as any).toDate(), 'd MMM yyyy')}</span>
+            </div>
+          )}
+          {order.rdEndDate && (
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <span style={{ color: '#9ca3af', width: '100px', flexShrink: 0 }}>Expected end</span>
+              <span style={{ color: '#374151' }}>{format(order.rdEndDate instanceof Date ? order.rdEndDate : (order.rdEndDate as any).toDate(), 'd MMM yyyy')}</span>
+            </div>
+          )}
+          {order.rdBrief && (
+            <div style={{ padding: '12px 14px', background: '#f9fafb', borderRadius: '8px', color: '#374151', lineHeight: 1.6 }}>
+              {order.rdBrief}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Outcomes / Recipes */}
+      <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', padding: '16px 20px' }}>
+        <p style={{ fontSize: '13px', fontWeight: 600, color: '#111827', margin: '0 0 12px' }}>
+          Recipe outcomes <span style={{ fontWeight: 400, color: '#9ca3af', fontSize: '12px' }}>— add as recipes are developed</span>
+        </p>
+        {(order.rdOutcomes ?? []).length === 0 && (
+          <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '12px' }}>No recipes yet</p>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+          {(order.rdOutcomes ?? []).map((recipe, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#f9fafb', borderRadius: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '16px' }}>🍸</span>
+                <span style={{ fontSize: '13px', fontWeight: 500, color: '#111827' }}>{recipe}</span>
+              </div>
+              <button onClick={() => removeOutcome(i)} style={{ color: '#d1d5db', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', lineHeight: 1 }}>×</button>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <input
+            value={newOutcome}
+            onChange={e => setNewOutcome(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addOutcome()}
+            placeholder="Recipe name..."
+            style={{ flex: 1, padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '13px', outline: 'none' }}
+          />
+          <button onClick={addOutcome} disabled={saving || !newOutcome.trim()} style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, background: '#111827', color: '#fff', border: 'none', cursor: 'pointer' }}>
+            Add
+          </button>
+        </div>
+      </div>
+
+      {/* Pricing */}
+      <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', padding: '16px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+          <p style={{ fontSize: '13px', fontWeight: 600, color: '#111827', margin: 0 }}>Pricing & invoice</p>
+          {!order.rdPrice && !addingPrice && (
+            <button onClick={() => setAddingPrice(true)} style={{ fontSize: '12px', color: '#3730a3', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}>+ Set price</button>
+          )}
+        </div>
+
+        {order.rdPrice ? (
+          <div style={{ display: 'flex', gap: '20px', fontSize: '13px' }}>
+            <div><p style={{ color: '#9ca3af', margin: '0 0 2px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Fee</p><p style={{ fontWeight: 700, color: '#111827', margin: 0, fontSize: '16px' }}>£{order.total.toFixed(2)}</p><p style={{ color: '#9ca3af', fontSize: '11px', margin: '2px 0 0' }}>inc. VAT</p></div>
+            <div><p style={{ color: '#9ca3af', margin: '0 0 2px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ex-VAT</p><p style={{ fontWeight: 500, color: '#374151', margin: 0 }}>£{order.subtotal.toFixed(2)}</p></div>
+            <div><p style={{ color: '#9ca3af', margin: '0 0 2px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>VAT</p><p style={{ fontWeight: 500, color: '#374151', margin: 0 }}>£{order.vatAmount.toFixed(2)}</p></div>
+          </div>
+        ) : addingPrice ? (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '5px' }}>R&D fee (£)</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }}>£</span>
+                  <input type="number" min="0" step="0.01" value={priceInput} onChange={e => setPriceInput(e.target.value)}
+                    style={{ width: '100%', padding: '8px 10px 8px 22px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const }} />
+                </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '5px' }}>Includes VAT?</label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {[false, true].map(v => (
+                    <button key={String(v)} onClick={() => setVatIncl(v)} style={{ flex: 1, padding: '8px 4px', borderRadius: '8px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', border: `1px solid ${vatIncl === v ? '#111827' : '#e5e7eb'}`, background: vatIncl === v ? '#111827' : '#fff', color: vatIncl === v ? '#fff' : '#374151' }}>
+                      {v ? 'Inc. VAT' : 'Ex-VAT'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {priceNum > 0 && (
+              <div style={{ padding: '10px 14px', background: '#f9fafb', borderRadius: '8px', fontSize: '12px', color: '#6b7280', marginBottom: '10px', display: 'flex', gap: '16px' }}>
+                <span>Ex-VAT: <strong style={{ color: '#111' }}>£{subtotal.toFixed(2)}</strong></span>
+                <span>VAT: <strong style={{ color: '#111' }}>£{vatAmount.toFixed(2)}</strong></span>
+                <span>Total: <strong style={{ color: '#111', fontSize: '13px' }}>£{total.toFixed(2)}</strong></span>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={savePrice} disabled={saving || !priceNum} style={{ padding: '8px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, background: '#111827', color: '#fff', border: 'none', cursor: 'pointer' }}>Save price & create invoice</button>
+              <button onClick={() => setAddingPrice(false)} style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '13px', background: '#f9fafb', border: '1px solid #e5e7eb', cursor: 'pointer', color: '#374151' }}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <p style={{ fontSize: '13px', color: '#9ca3af' }}>No price set yet — click "Set price" above to add a fee and generate an invoice.</p>
+        )}
+      </div>
+    </>
   )
 }
