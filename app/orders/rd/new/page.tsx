@@ -8,26 +8,38 @@ import Button from '@/components/ui/Button'
 import { getAccounts } from '@/lib/firestore/accounts'
 import { createOrder, generateOrderNumber } from '@/lib/firestore/orders'
 import { createPayment } from '@/lib/firestore/payments'
+import { getDocs, collection } from 'firebase/firestore'
+import { db } from '@/lib/firebase'
 import { Account } from '@/types'
 import toast from 'react-hot-toast'
 
-const TEAM = ['Aurelien', 'Dima', 'Other']
-const VAT  = 0.20
+const VAT = 0.20
 
 export default function NewRdPage() {
   const router = useRouter()
   const [accounts, setAccounts] = useState<Account[]>([])
-  const [saving, setSaving]     = useState(false)
+  const [teamMembers, setTeamMembers] = useState<string[]>([])
+  const [saving, setSaving] = useState(false)
 
   const [accountId,  setAccountId]  = useState('')
   const [assignee,   setAssignee]   = useState('')
   const [startDate,  setStartDate]  = useState('')
   const [endDate,    setEndDate]    = useState('')
   const [brief,      setBrief]      = useState('')
-  const [price,      setPrice]      = useState('')  // optional
+  const [price,      setPrice]      = useState('')
   const [vatIncl,    setVatIncl]    = useState(false)
 
-  useEffect(() => { getAccounts().then(setAccounts) }, [])
+  useEffect(() => {
+    async function load() {
+      const [accs, staffSnap] = await Promise.all([
+        getAccounts(),
+        getDocs(collection(db, 'staffUsers')),
+      ])
+      setAccounts(accs)
+      setTeamMembers(staffSnap.docs.map(d => (d.data() as any).displayName).sort())
+    }
+    load()
+  }, [])
 
   const selectedAccount = accounts.find(a => a.id === accountId) ?? null
 
@@ -63,7 +75,7 @@ export default function NewRdPage() {
         vatRate:     VAT,
         vatAmount:   priceNum > 0 ? vatAmount : 0,
         total:       priceNum > 0 ? total : 0,
-        rdPrice:     priceNum > 0 ? priceNum : undefined,
+        rdPrice:     priceNum > 0 ? priceNum : 0,
         notes:       `R&D project. Assigned to ${assignee}.`,
       }
       if (startDate) orderData.rdStartDate = new Date(startDate)
@@ -132,13 +144,13 @@ export default function NewRdPage() {
 
             <div>
               <label style={lbl}>Assigned to *</label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                {TEAM.map(t => (
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {teamMembers.map(t => (
                   <button
                     key={t}
                     onClick={() => setAssignee(t)}
                     style={{
-                      flex: 1, padding: '9px 4px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
+                      padding: '9px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
                       cursor: 'pointer', border: `1px solid ${assignee === t ? '#111827' : '#e5e7eb'}`,
                       background: assignee === t ? '#111827' : '#fff',
                       color: assignee === t ? '#fff' : '#374151',

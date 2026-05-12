@@ -20,15 +20,31 @@ const VAT_RATE = 0.20
 function r2(n: number) { return Math.round(n * 100) / 100 }
 
 export default function EditOrderModal({ order, onClose, onSaved }: Props) {
+  const isRd = order.type === 'rd'
+
   const [lineItems, setLineItems] = useState<OrderLineItem[]>(
     order.lineItems.map(l => ({ ...l }))
   )
   const [availablePricing, setAvailablePricing] = useState<AccountPricing[]>([])
   const [saving, setSaving] = useState(false)
 
+  // R&D fields
+  const [rdBrief,    setRdBrief]    = useState(order.rdBrief    ?? '')
+  const [rdAssignee, setRdAssignee] = useState(order.rdAssignee ?? '')
+  const [rdEndDate,  setRdEndDate]  = useState(
+    order.rdEndDate ? (order.rdEndDate instanceof Date ? order.rdEndDate : (order.rdEndDate as any).toDate()).toISOString().split('T')[0] : ''
+  )
+  const [rdPrice,    setRdPrice]    = useState(order.rdPrice ? String(order.rdPrice) : '')
+  const [vatIncl,    setVatIncl]    = useState(false)
+
+  const priceNum  = parseFloat(rdPrice) || 0
+  const subtotalRd = vatIncl ? r2(priceNum / 1.2) : priceNum
+  const vatAmtRd   = r2(subtotalRd * VAT_RATE)
+  const totalRd    = r2(subtotalRd + vatAmtRd)
+
   useEffect(() => {
-    getPricingForAccount(order.accountId).then(setAvailablePricing)
-  }, [order.accountId])
+    if (!isRd) getPricingForAccount(order.accountId).then(setAvailablePricing)
+  }, [order.accountId, isRd])
 
   function updateQty(productId: string, qty: number) {
     const q = Math.max(1, Math.round(qty))
@@ -67,31 +83,33 @@ export default function EditOrderModal({ order, onClose, onSaved }: Props) {
   )
 
   async function handleSave() {
-    if (lineItems.length === 0) return toast.error('Add at least one product')
     setSaving(true)
     try {
-      // 1. Update order
-      await updateOrder(order.id, { lineItems, subtotal, vatAmount, total })
-
-      // 2. Also update the linked payment amount so invoice stays accurate
-      const q = query(collection(db, 'payments'), where('orderId', '==', order.id))
-      const snap = await getDocs(q)
-      for (const d of snap.docs) {
-        await updateDoc(doc(db, 'payments', d.id), {
-          amount: total,
-          updatedAt: Timestamp.now(),
-        })
+      if (isRd) {
+        const updates: any = { rdBrief: rdBrief.trim(), rdAssignee: rdAssignee.trim() }
+        if (rdEndDate) updates.rdEndDate = new Date(rdEndDate)
+        if (priceNum > 0) {
+          updates.rdPrice = priceNum; updates.subtotal = subtotalRd
+          updates.vatRate = VAT_RATE; updates.vatAmount = vatAmtRd; updates.total = totalRd
+        }
+        await updateOrder(order.id, updates)
+      } else {
+        if (lineItems.length === 0) { setSaving(false); return toast.error('Add at least one product') }
+        const subtotal  = r2(lineItems.reduce((s, l) => s + l.lineTotal, 0))
+        const vatAmount = r2(subtotal * VAT_RATE)
+        const total     = r2(subtotal + vatAmount)
+        await updateOrder(order.id, { lineItems, subtotal, vatAmount, total })
+        const q = query(collection(db, 'payments'), where('orderId', '==', order.id))
+        const snap = await getDocs(q)
+        for (const d of snap.docs) {
+          await updateDoc(doc(db, 'payments', d.id), { amount: total, updatedAt: Timestamp.now() })
+        }
       }
-
       toast.success('Order updated')
-      onSaved()
-      onClose()
+      onSaved(); onClose()
     } catch (e) {
-      console.error(e)
-      toast.error('Failed to save')
-    } finally {
-      setSaving(false)
-    }
+      console.error(e); toast.error('Failed to save')
+    } finally { setSaving(false) }
   }
 
   const cell = (style?: React.CSSProperties) => ({
@@ -116,7 +134,7 @@ export default function EditOrderModal({ order, onClose, onSaved }: Props) {
         {/* Header */}
         <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <h2 style={{ fontSize: '16px', fontWeight: 600, margin: 0 }}>Edit order</h2>
+            <h2 style={{ fontSize: '16px', fontWeight: 600, margin: 0 }}>{isRd ? 'Edit R&D project' : 'Edit order'}</h2>
             <p style={{ fontSize: '12px', color: '#9ca3af', margin: '3px 0 0', fontFamily: 'monospace' }}>{order.orderNumber}</p>
           </div>
           <button onClick={onClose} style={{ color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', lineHeight: 1 }}>×</button>
@@ -124,7 +142,53 @@ export default function EditOrderModal({ order, onClose, onSaved }: Props) {
 
         <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-          {/* Line items table */}
+          {/* R&D fields */}
+          {isRd && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={lbl}>Assigned to</label>
+                <input value={rdAssignee} onChange={e => setRdAssignee(e.target.value)} placeholder="Team member name"
+                  style={inpStyle} />
+              </div>
+              <div>
+                <label style={lbl}>Brief / description</label>
+                <textarea value={rdBrief} onChange={e => setRdBrief(e.target.value)} rows={4}
+                  placeholder="What is the client looking for?"
+                  style={{ ...inpStyle, resize: 'none' as const }} />
+              </div>
+              <div>
+                <label style={lbl}>Expected end date</label>
+                <input type="date" value={rdEndDate} onChange={e => setRdEndDate(e.target.value)} style={inpStyle} />
+              </div>
+              <div>
+                <label style={lbl}>R&D fee (£) <span style={{ fontWeight: 400, color: '#9ca3af' }}>— leave blank to keep current</span></label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }}>£</span>
+                    <input type="number" min="0" step="0.01" value={rdPrice} onChange={e => setRdPrice(e.target.value)}
+                      placeholder="0.00" style={{ ...inpStyle, paddingLeft: '24px' }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {[false, true].map(v => (
+                      <button key={String(v)} onClick={() => setVatIncl(v)} style={{
+                        flex: 1, padding: '9px 4px', borderRadius: '8px', fontSize: '12px', fontWeight: 500, cursor: 'pointer',
+                        border: `1px solid ${vatIncl === v ? '#111827' : '#e5e7eb'}`,
+                        background: vatIncl === v ? '#111827' : '#fff', color: vatIncl === v ? '#fff' : '#374151',
+                      }}>{v ? 'Inc. VAT' : 'Ex-VAT'}</button>
+                    ))}
+                  </div>
+                </div>
+                {priceNum > 0 && (
+                  <p style={{ fontSize: '12px', color: '#6b7280', margin: '8px 0 0' }}>
+                    Ex-VAT £{subtotalRd.toFixed(2)} + VAT £{vatAmtRd.toFixed(2)} = <strong>£{totalRd.toFixed(2)} total</strong>
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Line items table — hidden for R&D */}
+          {!isRd && (<>
           <div style={{ border: '1px solid #f3f4f6', borderRadius: '10px', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -211,6 +275,8 @@ export default function EditOrderModal({ order, onClose, onSaved }: Props) {
             </div>
           )}
 
+          </> )}
+
           <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
             <Button onClick={handleSave} loading={saving}>Save changes</Button>
@@ -220,3 +286,6 @@ export default function EditOrderModal({ order, onClose, onSaved }: Props) {
     </div>
   )
 }
+
+const lbl: React.CSSProperties = { display: 'block', fontSize: '11px', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: '6px' }
+const inpStyle: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const, background: '#fff' }

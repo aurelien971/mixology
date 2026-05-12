@@ -143,22 +143,6 @@ export default function Sidebar() {
 
       {/* User + logout */}
       <div style={{ padding: '12px 14px', borderTop: '1px solid #f3f4f6' }}>
-        {/* New account button */}
-        <Link
-          href="/accounts/new"
-          style={{
-            display: 'flex', alignItems: 'center', gap: '7px', padding: '7px 10px',
-            borderRadius: '8px', fontSize: '12px', fontWeight: 500, color: '#374151',
-            textDecoration: 'none', marginBottom: '8px',
-            border: '1px solid #e5e7eb', background: '#f9fafb',
-          }}
-        >
-          <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
-            <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.3" fill="none"/>
-            <path d="M7 4v6M4 7h6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-          </svg>
-          New account
-        </Link>
 
         {user && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
