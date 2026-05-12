@@ -1015,7 +1015,7 @@ function RdPanel({ order, onSaved }: { order: Order; onSaved: () => void }) {
   }
 
   async function updateRdStatus(status: string) {
-    await updateOrder(order.id, { rdStatus: status })
+    await updateOrder(order.id, { rdStatus: status as import('@/types').RdStatus })
     onSaved()
   }
 
