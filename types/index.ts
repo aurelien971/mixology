@@ -120,6 +120,8 @@ export interface OrderLineItem {
 export type OrderType = 'order' | 'rd'
 export type RdStatus  = 'in_progress' | 'completed' | 'on_hold'
 
+export type OrderCategory = 'cocktail_production' | 'cocktail_rd' | 'wine_consulting' | 'popsicles' | 'other'
+
 export interface Order {
   id: string
   orderNumber: string
@@ -128,6 +130,8 @@ export interface Order {
   groupId?: string
   groupName?: string
   type?: OrderType
+  category?: OrderCategory
+  briefingDate?: Date
   status: OrderStatus
   lineItems: OrderLineItem[]
   subtotal: number

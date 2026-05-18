@@ -510,6 +510,29 @@ export default function OrderDetailPage() {
                 <dt style={{ color: '#9ca3af' }}>Status</dt>
                 <dd style={{ margin: 0 }}><Badge label={badge.label} variant={badge.variant} /></dd>
               </div>
+
+              {/* Category */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <dt style={{ color: '#9ca3af' }}>Category</dt>
+                <dd style={{ margin: 0 }}>
+                  <select
+                    value={order.category ?? ''}
+                    onChange={async e => {
+                      await updateOrder(id, { category: e.target.value as any })
+                      load()
+                    }}
+                    style={{ fontSize: '12px', padding: '3px 8px', border: '1px solid #e5e7eb', borderRadius: '6px', outline: 'none', background: '#fff', color: '#374151', cursor: 'pointer' }}
+                  >
+                    <option value="">— none —</option>
+                    <option value="cocktail_production">Cocktail Production</option>
+                    <option value="cocktail_rd">Cocktail R&D</option>
+                    <option value="wine_consulting">Wine Consulting</option>
+                    <option value="popsicles">Popsicles</option>
+                    <option value="other">Other</option>
+                  </select>
+                </dd>
+              </div>
+
               {[
                 ['Created',  format(order.createdAt, 'd MMM yyyy')],
                 order.poReference ? ['PO ref', order.poReference] : null,
@@ -521,6 +544,24 @@ export default function OrderDetailPage() {
                   <dd style={{ color: '#374151', margin: 0 }}>{v}</dd>
                 </div>
               ))}
+
+              {/* Briefing date */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <dt style={{ color: '#9ca3af', fontSize: '13px' }}>Briefing date</dt>
+                <dd style={{ margin: 0 }}>
+                  <input
+                    type="date"
+                    defaultValue={order.briefingDate ? format(order.briefingDate instanceof Date ? order.briefingDate : (order.briefingDate as any).toDate(), 'yyyy-MM-dd') : ''}
+                    onBlur={async e => {
+                      if (e.target.value) {
+                        await updateOrder(id, { briefingDate: new Date(e.target.value) })
+                        load()
+                      }
+                    }}
+                    style={{ fontSize: '12px', padding: '3px 8px', border: '1px solid #e5e7eb', borderRadius: '6px', outline: 'none', color: '#374151' }}
+                  />
+                </dd>
+              </div>
 
               {/* Expected delivery date */}
               <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: '10px' }}>

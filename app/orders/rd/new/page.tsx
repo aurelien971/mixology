@@ -67,6 +67,7 @@ export default function NewRdPage() {
         type:        'rd',
         status:      'received',
         rdStatus:    'in_progress',
+        category:    assignee.toLowerCase().includes('majken') ? 'wine_consulting' : 'cocktail_rd',
         rdAssignee:  assignee,
         rdBrief:     brief.trim(),
         rdOutcomes:  [],

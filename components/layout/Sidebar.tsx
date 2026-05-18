@@ -112,7 +112,7 @@ export default function Sidebar() {
           Foodlab
         </p>
         <h1 style={{ fontSize: '15px', fontWeight: 600, color: '#111827', margin: 0, lineHeight: 1.3 }}>
-          Cocktail Manager
+          Production Tracker
         </h1>
       </div>
 

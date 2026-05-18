@@ -8,7 +8,15 @@ import Badge, { orderStatusBadge } from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import NoryImportModal from '@/components/orders/NoryImportModal'
 import { getOrders } from '@/lib/firestore/orders'
-import { Order, OrderStatus } from '@/types'
+import { Order, OrderStatus, OrderCategory } from '@/types'
+
+const CATEGORY_LABELS: Record<OrderCategory, { label: string; color: string; bg: string }> = {
+  cocktail_production: { label: 'Cocktail Prod.',  color: '#0369a1', bg: '#e0f2fe' },
+  cocktail_rd:         { label: 'Cocktail R&D',    color: '#7e22ce', bg: '#f3e8ff' },
+  wine_consulting:     { label: 'Wine Consulting', color: '#b45309', bg: '#fef3c7' },
+  popsicles:           { label: 'Popsicles',       color: '#0f766e', bg: '#ccfbf1' },
+  other:               { label: 'Other',           color: '#6b7280', bg: '#f3f4f6' },
+}
 
 const STATUS_FILTERS: { label: string; value: OrderStatus | 'all' }[] = [
   { label: 'All', value: 'all' },
@@ -127,6 +135,7 @@ export default function OrdersPage() {
                 <tr className="text-xs text-gray-400 border-b border-gray-100 bg-gray-50">
                   <th className="text-left px-5 py-3 font-medium">Order no.</th>
                   <th className="text-left px-5 py-3 font-medium">Account</th>
+                  <th className="text-left px-5 py-3 font-medium">Category</th>
                   <th className="text-left px-5 py-3 font-medium">PO ref</th>
                   <th className="text-left px-5 py-3 font-medium">Date</th>
                   <th className="text-left px-5 py-3 font-medium">Status</th>
@@ -151,6 +160,17 @@ export default function OrdersPage() {
                             <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: '#f3e8ff', color: '#7e22ce', letterSpacing: '0.05em' }}>R&D</span>
                           )}
                         </div>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {order.category && CATEGORY_LABELS[order.category] && (
+                          <span style={{
+                            fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', whiteSpace: 'nowrap',
+                            background: CATEGORY_LABELS[order.category].bg,
+                            color: CATEGORY_LABELS[order.category].color,
+                          }}>
+                            {CATEGORY_LABELS[order.category].label}
+                          </span>
+                        )}
                       </td>
                       <td className="px-5 py-3.5 text-sm text-gray-400">{order.poReference ?? '—'}</td>
                       <td className="px-5 py-3.5 text-sm text-gray-500">{format(order.createdAt, 'd MMM yyyy')}</td>
@@ -187,9 +207,14 @@ export default function OrdersPage() {
                         <Badge label={badge.label} variant={badge.variant} />
                       </div>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#9ca3af' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#9ca3af', alignItems: 'center' }}>
                       <span>{format(order.createdAt, 'd MMM yyyy')}{order.poReference ? ` · ${order.poReference}` : ''}</span>
-                      <div style={{ display: 'flex', gap: '8px' }}>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        {order.category && CATEGORY_LABELS[order.category] && (
+                          <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 7px', borderRadius: '20px', background: CATEGORY_LABELS[order.category].bg, color: CATEGORY_LABELS[order.category].color }}>
+                            {CATEGORY_LABELS[order.category].label}
+                          </span>
+                        )}
                         {order.signedDeliveryNoteUrl && <span style={{ color: '#16a34a' }}>✓ Signed</span>}
                         <span>{order.lineItems.length} item{order.lineItems.length !== 1 ? 's' : ''}</span>
                       </div>
