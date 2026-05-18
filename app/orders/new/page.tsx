@@ -55,9 +55,10 @@ export default function NewOrderPage() {
         productId:    p.productId,
         productCode:  p.productCode,
         productName:  p.productName,
-        quantity:     1,           // litres
-        unitPrice:    ppl,         // price per litre
-        lineTotal:    ppl,
+        volumeLitres: p.volumeLitres ?? 5,
+        quantity:     1,
+        unitPrice:    p.pricePerUnit,
+        lineTotal:    p.pricePerUnit,
         servingSizeG: p.recommendedServingG,
       },
     ])
