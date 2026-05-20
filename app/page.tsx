@@ -86,6 +86,53 @@ export default function DashboardPage() {
     </div>
   )
 
+  const REPORT_RECIPIENTS = 'c@dreamlab.bm,jamescowen@dreamlab.bm,jesse@bloomin.co.uk,aurelien@foodlab.is,tom.wylde@foodlab.is'
+
+  function openWeeklyReport() {
+    const now  = new Date()
+    const from = new Date(now); from.setDate(from.getDate() - 7)
+
+    const weekOrders    = activeOrders.filter(o => o.createdAt >= from && o.type !== 'rd')
+    const weekRev       = weekOrders.reduce((s, o) => s + o.total, 0)
+    const weekRevExVat  = weekOrders.reduce((s, o) => s + o.subtotal, 0)
+    const overdue       = payments.filter(p => p.status === 'overdue')
+    const overdueTotal  = overdue.reduce((s, p) => s + p.amount, 0)
+
+    // Per-client litres — only accounts with actual litres
+    const clientMap = new Map<string, number>()
+    weekOrders.forEach(o => {
+      const litres = o.lineItems.reduce((s, l) => s + l.quantity * (l.volumeLitres ?? 5), 0)
+      if (litres > 0) clientMap.set(o.accountName, (clientMap.get(o.accountName) ?? 0) + litres)
+    })
+    const clients = [...clientMap.entries()].sort((a, b) => b[1] - a[1])
+
+    const fmt  = (n: number) => `£${n.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`
+    const from_ = format(from, 'd MMM')
+    const to_   = format(now, 'd MMM yyyy')
+
+    const lines = [
+      `Hi team,`,
+      ``,
+      `Production report — ${from_} to ${to_}`,
+      ``,
+      `Revenue:  ${fmt(weekRev)} inc. VAT`,
+      `Profit:   ${fmt(weekRevExVat)} ex. VAT`,
+      ``,
+      `Litres by account:`,
+      ...clients.map(([name, l]) => `  ${name}: ${l}L`),
+    ]
+
+    if (overdueTotal > 0) {
+      lines.push(``, `Outstanding: ${fmt(overdueTotal)}`)
+    }
+
+    lines.push(``, `Foodlab Production Tracker`)
+
+    const subject = encodeURIComponent(`Foodlab Weekly Report — ${from_} to ${to_}`)
+    const body    = encodeURIComponent(lines.join('\n'))
+    window.location.href = `mailto:${REPORT_RECIPIENTS}?subject=${subject}&body=${body}`
+  }
+
   return (
     <div>
       <Header
@@ -99,6 +146,9 @@ export default function DashboardPage() {
                 : <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><ellipse cx="10" cy="10" rx="8" ry="5" stroke="currentColor" strokeWidth="1.5"/><circle cx="10" cy="10" r="2.5" stroke="currentColor" strokeWidth="1.5"/></svg>
               }
             </button>
+            <Button variant="secondary" size="sm" onClick={openWeeklyReport}>
+              📧 Weekly report
+            </Button>
             <Link href="/orders/new"><Button size="sm">+ New order</Button></Link>
           </div>
         }
