@@ -63,15 +63,23 @@ export default function DashboardPage() {
   }, [])
 
   const range = useMemo(() => getRange(rangeKey, customFrom, customTo), [rangeKey, customFrom, customTo])
+  const [deliveredOnly, setDeliveredOnly] = useState(false)
+
   const activeOrders = orders.filter(o => o.status !== 'cancelled')
   const rangeOrders  = useMemo(() => {
-    if (!range) return activeOrders
-    return activeOrders.filter(o => isWithinInterval(o.createdAt, { start: range.from, end: range.to }))
-  }, [orders, range])
+    const base = deliveredOnly ? activeOrders.filter(o => o.status === 'delivered') : activeOrders
+    if (!range) return base
+    return base.filter(o => isWithinInterval(o.createdAt, { start: range.from, end: range.to }))
+  }, [orders, range, deliveredOnly])
 
-  const revenue       = rangeOrders.reduce((s, o) => s + o.total, 0)
+  const revenue       = rangeOrders.reduce((s, o) => s + (o.subtotal ?? o.total / 1.2), 0)
+  const revenueIncVat = rangeOrders.reduce((s, o) => s + o.total, 0)
   const litres        = rangeOrders.reduce((s, o) => s + o.lineItems.reduce((ls, l) => ls + l.quantity * (l.volumeLitres ?? 5), 0), 0)
-  const outstanding   = payments.filter(p => p.status === 'pending' || p.status === 'overdue').reduce((s, p) => s + p.amount, 0)
+  // Outstanding = sum of subtotals from active non-cancelled orders whose payment is pending/overdue
+  const paidOrderIds  = new Set(payments.filter(p => p.status === 'paid').map(p => p.orderId))
+  const outstanding   = activeOrders
+    .filter(o => o.status !== 'cancelled' && !paidOrderIds.has(o.id) && o.subtotal > 0)
+    .reduce((s, o) => s + (o.subtotal ?? 0), 0)
   const overdueCount  = payments.filter(p => p.status === 'overdue').length
   const activeClients = new Set(rangeOrders.map(o => o.accountId)).size
   const pendingOrders = orders.filter(o => o.status === 'received' || o.status === 'production').length
@@ -183,12 +191,28 @@ export default function DashboardPage() {
             {range && <span style={{ fontSize: '12px', color: '#9ca3af' }}>· {rangeOrders.length} orders</span>}
           </div>
         )}
+
+        {/* Delivered vs all toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f3f4f6' }}>
+          <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 500 }}>Revenue based on</span>
+          {[
+            { v: false, l: 'All orders' },
+            { v: true,  l: 'Delivered only' },
+          ].map(({ v, l }) => (
+            <button key={l} onClick={() => setDeliveredOnly(v)} style={{
+              padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 500, cursor: 'pointer',
+              border: `1px solid ${deliveredOnly === v ? '#111827' : 'transparent'}`,
+              background: deliveredOnly === v ? '#111827' : 'transparent',
+              color: deliveredOnly === v ? '#fff' : '#6b7280',
+            }}>{l}</button>
+          ))}
+        </div>
       </div>
 
       {/* ── Stats row 1 ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '12px' }} className="md:grid-cols-4">
-        <StatCard label="Revenue" value={`£${revenue.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`} sub={`${rangeOrders.length} orders · ${rangeLabel}`} hidden={hidden} />
-        <StatCard label="Outstanding" value={`£${outstanding.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`} sub="Pending + overdue" highlight={outstanding > 0} hidden={hidden} />
+        <StatCard label={`Revenue${deliveredOnly ? ' (delivered)' : ''}`} value={`£${revenue.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`} sub={`ex. VAT · £${revenueIncVat.toLocaleString('en-GB', { minimumFractionDigits: 2 })} inc.`} hidden={hidden} />
+        <StatCard label="Outstanding" value={`£${outstanding.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`} sub="Pending + overdue, ex. VAT" highlight={outstanding > 0} hidden={hidden} />
         <StatCard label="Litres produced" value={`${litres}L`} sub={rangeLabel} />
         <StatCard label="Clients" value={String(activeClients)} sub="In selected period" />
       </div>
