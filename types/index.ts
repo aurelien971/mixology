@@ -117,6 +117,41 @@ export interface OrderLineItem {
   servingSizeG: number
 }
 
+export interface RecipeIngredient {
+  name: string
+  supplier?: string
+  code?: string
+  unit: string
+  qtyPer1000L: number
+  qtyPer1L: number
+}
+
+export interface RecipeAnalytical {
+  name: string
+  min?: number
+  target?: number
+  max?: number
+  notes?: string
+}
+
+export interface Recipe {
+  id: string
+  name: string
+  variation?: string
+  version?: string
+  createdBy?: string
+  dateCreated?: string
+  productId?: string
+  productCode?: string
+  productName?: string
+  ingredients: RecipeIngredient[]
+  analyticalValues: RecipeAnalytical[]
+  cookingInstructions: string
+  status: 'active' | 'discontinued'
+  createdAt: Date
+  updatedAt: Date
+}
+
 export type OrderType = 'order' | 'rd'
 export type RdStatus  = 'in_progress' | 'completed' | 'on_hold'
 

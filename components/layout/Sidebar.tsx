@@ -65,6 +65,18 @@ const nav = [
     ),
   },
   {
+    label: 'Recipes',
+    href: '/recipes',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+        <rect x="3" y="2" width="12" height="14" rx="2" stroke="currentColor" strokeWidth="1.4" fill="none"/>
+        <line x1="6" y1="6" x2="12" y2="6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+        <line x1="6" y1="9" x2="12" y2="9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+        <line x1="6" y1="12" x2="9" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
     label: 'Finances',
     href: '/finances',
     icon: (

@@ -177,8 +177,10 @@ export default function NoryImportModal({ onClose, onCreated }: Props) {
 
   async function handleCreate() {
     if (!account) return toast.error('No matching account found — please match manually')
+    const matched = lines.filter(l => l.productId)
+    if (matched.length === 0) return toast.error('No matched products — nothing to create')
     const unmatched = lines.filter(l => !l.productId)
-    if (unmatched.length) return toast.error(`Unmatched products: ${unmatched.map(l => l.productCode).join(', ')}`)
+    if (unmatched.length) toast(`Skipping ${unmatched.length} unmatched row${unmatched.length > 1 ? 's' : ''}`)
 
     setSaving(true)
     setStep('saving')
@@ -191,7 +193,7 @@ export default function NoryImportModal({ onClose, onCreated }: Props) {
         invoiceNumber,
         accountId:   account.id,
         accountName: account.tradingName,
-        lineItems:   lines.map(l => ({
+        lineItems:   lines.filter(l => l.productId).map(l => ({
           productId:    l.productId!,
           productCode:  l.productCode,
           productName:  l.productName,
@@ -206,8 +208,9 @@ export default function NoryImportModal({ onClose, onCreated }: Props) {
         vatAmount: vatAmt,
         total,
         status:      'received',
+        category:    'cocktail_production',
         poReference: poRef,
-        expectedDeliveryDate: deliveryDate ? new Date(deliveryDate) : undefined,
+        ...(deliveryDate ? { expectedDeliveryDate: new Date(deliveryDate) } : {}),
         notes: `Imported from Nory order ${poRef}`,
       })
 
@@ -334,7 +337,16 @@ export default function NoryImportModal({ onClose, onCreated }: Props) {
                         <td style={{ padding: '10px 14px', textAlign: 'right', color: '#6b7280' }}>×{l.quantity}</td>
                         <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600 }}>£{l.lineTotal.toFixed(2)}</td>
                         <td style={{ padding: '10px 14px', textAlign: 'right', fontSize: '11px', color: l.matched ? '#166534' : '#dc2626' }}>
-                          {l.matched ? '✓' : '✗ unmatched'}
+                          {l.matched ? '✓' : (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
+                              <span>✗ unmatched</span>
+                              <button
+                                onClick={() => setLines(prev => prev.filter((_, j) => j !== i))}
+                                style={{ fontSize: '13px', color: '#9ca3af', background: 'none', border: '1px solid #e5e7eb', borderRadius: '4px', cursor: 'pointer', padding: '1px 7px', lineHeight: 1.4 }}
+                                title="Remove this row"
+                              >Remove</button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -349,7 +361,7 @@ export default function NoryImportModal({ onClose, onCreated }: Props) {
 
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                 <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                <Button onClick={handleCreate} loading={saving} disabled={!account || lines.some(l => !l.matched)}>
+                <Button onClick={handleCreate} loading={saving} disabled={!account || lines.filter(l => l.matched).length === 0}>
                   Create order
                 </Button>
               </div>
