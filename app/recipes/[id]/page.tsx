@@ -63,7 +63,7 @@ export default function RecipeDetailPage() {
         import('react'),
       ])
       const RecipePDF = PDFModule.RecipePDF ?? PDFModule.default
-      const blob = await pdf(React.createElement(RecipePDF, { recipe, litres })).toBlob()
+      const blob = await pdf(React.createElement(RecipePDF, { recipe, litres }) as any).toBlob()
       const url  = URL.createObjectURL(blob)
       const a    = document.createElement('a')
       a.href = url; a.download = `${recipe.name.replace(/\s+/g, '-')}-recipe.pdf`
