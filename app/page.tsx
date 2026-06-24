@@ -302,7 +302,7 @@ export default function DashboardPage() {
               <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={v => `£${(v/1000).toFixed(0)}k`} width={40} />
               <Tooltip
-                formatter={(v: number) => [`£${v.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`, 'Revenue ex. VAT']}
+                formatter={(v) => [`£${Number(v).toLocaleString('en-GB', { minimumFractionDigits: 2 })}`, 'Revenue ex. VAT']}
                 contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
               />
               <Area type="monotone" dataKey="revenue" stroke="#111827" strokeWidth={2} fill="url(#revGrad)" dot={false} />
