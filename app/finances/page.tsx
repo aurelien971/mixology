@@ -1,13 +1,14 @@
 'use client'
 
 import React, { useEffect, useState, useMemo } from 'react'
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns'
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths, subWeeks, isWithinInterval } from 'date-fns'
 import Link from 'next/link'
 import Header from '@/components/layout/Header'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { getOrders } from '@/lib/firestore/orders'
 import { getProducts } from '@/lib/firestore/catalog'
 import { Order, Product } from '@/types'
+import toast from 'react-hot-toast'
 
 function r2(n: number) { return Math.round(n * 100) / 100 }
 
@@ -155,6 +156,82 @@ export default function FinancesPage() {
       : orders
     return filtered.map(o => calcOrderProfit(o, productMap))
   }, [orders, productMap, dateRange])
+
+  // Simple comparison toggle — rolling 30 days vs 30-60 days ago
+  type CompareMode = 'month' | 'week' | null
+  const [compareMode, setCompareMode] = useState<CompareMode>('month')
+
+  const { currRange, prevRange, currLabel, prevLabel } = useMemo(() => {
+    const now = new Date()
+    if (compareMode === 'month') {
+      const curr = { from: new Date(now.getTime() - 30 * 86400000), to: now }
+      const prev = { from: new Date(now.getTime() - 60 * 86400000), to: new Date(now.getTime() - 30 * 86400000 - 1) }
+      return { currRange: curr, prevRange: prev, currLabel: 'Last 30 days', prevLabel: 'Prev. 30 days' }
+    }
+    if (compareMode === 'week') {
+      const curr = { from: startOfWeek(now, { weekStartsOn: 1 }), to: endOfWeek(now, { weekStartsOn: 1 }) }
+      const lastWeek = subWeeks(now, 1)
+      const prev = { from: startOfWeek(lastWeek, { weekStartsOn: 1 }), to: endOfWeek(lastWeek, { weekStartsOn: 1 }) }
+      return { currRange: curr, prevRange: prev, currLabel: 'This week', prevLabel: 'Last week' }
+    }
+    return { currRange: null, prevRange: null, currLabel: '', prevLabel: '' }
+  }, [compareMode])
+
+  const accountComparison = useMemo(() => {
+    if (!currRange || !prevRange) return []
+
+    type Acc = { name: string; revenue: number; litres: number; orders: number; profit: number; hasCosts: boolean }
+    const curr = new Map<string, Acc>()
+    const prev = new Map<string, { revenue: number; litres: number; profit: number }>()
+
+    const currOrders = orders.filter(o => isWithinInterval(o.createdAt, { start: currRange.from, end: currRange.to }))
+    const prevOrders = orders.filter(o => isWithinInterval(o.createdAt, { start: prevRange.from, end: prevRange.to }))
+
+    currOrders.forEach(o => {
+      const p    = calcOrderProfit(o, productMap)
+      const key  = o.accountName
+      const ex   = curr.get(key) ?? { name: key, revenue: 0, litres: 0, orders: 0, profit: 0, hasCosts: true }
+      const litres = o.lineItems.reduce((s, l) => s + l.quantity * (l.volumeLitres ?? 5), 0)
+      curr.set(key, { ...ex, revenue: r2(ex.revenue + p.revenue), litres: ex.litres + litres, orders: ex.orders + 1, profit: r2(ex.profit + p.profit), hasCosts: ex.hasCosts && !p.hasMissingCosts })
+    })
+
+    prevOrders.forEach(o => {
+      const p   = calcOrderProfit(o, productMap)
+      const key = o.accountName
+      const ex  = prev.get(key) ?? { revenue: 0, litres: 0, profit: 0 }
+      const litres = o.lineItems.reduce((s, l) => s + l.quantity * (l.volumeLitres ?? 5), 0)
+      prev.set(key, { revenue: r2(ex.revenue + p.revenue), litres: ex.litres + litres, profit: r2(ex.profit + p.profit) })
+    })
+
+    prevOrders.forEach(o => { if (!curr.has(o.accountName)) curr.set(o.accountName, { name: o.accountName, revenue: 0, litres: 0, orders: 0, profit: 0, hasCosts: false }) })
+
+    return [...curr.entries()]
+      .map(([, c]) => {
+        const p          = prev.get(c.name) ?? { revenue: 0, litres: 0, profit: 0 }
+        const gp         = c.revenue > 0 && c.hasCosts ? r2((c.profit / c.revenue) * 100) : null
+        const prevGp     = p.revenue > 0 ? r2((p.profit / p.revenue) * 100) : null
+        const revDiff    = p.revenue > 0 ? r2(((c.revenue - p.revenue) / p.revenue) * 100) : null
+        const litresDiff = p.litres  > 0 ? r2(((c.litres  - p.litres)  / p.litres)  * 100) : null
+        const profitDiff = p.profit  > 0 ? r2(((c.profit  - p.profit)  / p.profit)  * 100) : null
+        const gpDiff     = prevGp !== null && gp !== null ? r2(gp - prevGp) : null
+        return { ...c, prevRevenue: p.revenue, prevLitres: p.litres, prevProfit: p.profit, gp, prevGp, revDiff, litresDiff, profitDiff, gpDiff }
+      })
+      .filter(a => a.revenue > 0 || a.prevRevenue > 0)
+      .sort((a, b) => b.revenue - a.revenue)
+  }, [orders, productMap, currRange, prevRange])
+
+  function copyComparisonToClipboard() {
+    const header = ['Client', 'Vol vs Prev', 'Rev vs Prev', 'Profit vs Prev', 'GP vs Prev'].join('\t')
+    const rows = accountComparison.map(ac => [
+      ac.name,
+      ac.litresDiff !== null ? `${ac.litresDiff > 0 ? '+' : ''}${ac.litresDiff}%` : ac.litres > 0 ? 'New' : 'Lost',
+      ac.revDiff    !== null ? `${ac.revDiff    > 0 ? '+' : ''}${ac.revDiff}%`    : ac.revenue > 0 ? 'New' : 'Lost',
+      ac.profitDiff !== null ? `${ac.profitDiff > 0 ? '+' : ''}${ac.profitDiff}%` : 'TBC',
+      ac.gpDiff     !== null ? `${ac.gpDiff     > 0 ? '+' : ''}${ac.gpDiff}%`     : 'TBC',
+    ].join('\t'))
+    navigator.clipboard.writeText([header, ...rows].join('\n'))
+    toast.success('Copied — paste into your spreadsheet')
+  }
 
   // Pie chart — revenue by account
   const PIE_COLORS = ['#111827','#2563eb','#059669','#d97706','#dc2626','#7c3aed','#0891b2','#db2777','#65a30d','#ea580c']
@@ -316,6 +393,93 @@ export default function FinancesPage() {
                   })}
                 </div>
               </div>
+            )}
+          </div>
+
+          {/* Account comparison vs previous period */}
+          <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', overflow: 'hidden', marginBottom: '16px' }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <p style={{ fontSize: '14px', fontWeight: 600, color: '#111827', margin: 0 }}>Account performance</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {compareMode && currLabel && prevLabel && (
+                  <span style={{ fontSize: '12px', color: '#9ca3af' }}>{currLabel} vs {prevLabel}</span>
+                )}
+                {accountComparison.length > 0 && (
+                  <button onClick={copyComparisonToClipboard} style={{ padding: '4px 12px', borderRadius: '7px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', border: '1px solid #e5e7eb', background: '#fff', color: '#374151', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M5 2H2a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1V9M9 1h4m0 0v4m0-4L6 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    Copy
+                  </button>
+                )}
+                <div style={{ display: 'flex', background: '#f3f4f6', padding: '3px', borderRadius: '8px', gap: '2px' }}>
+                  {([
+                    { key: 'month', label: '30 days' },
+                    { key: 'week',  label: 'Weekly' },
+                  ] as const).map(({ key, label }) => (
+                    <button key={key} onClick={() => setCompareMode(compareMode === key ? null : key)} style={{
+                      padding: '4px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', border: 'none',
+                      background: compareMode === key ? '#fff' : 'transparent',
+                      color: compareMode === key ? '#111827' : '#9ca3af',
+                      boxShadow: compareMode === key ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                    }}>{label}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {!compareMode ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' }}>
+                Select Monthly or Weekly to compare accounts
+              </div>
+            ) : accountComparison.length === 0 ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' }}>
+                No orders in this period
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ background: '#f9fafb' }}>
+                    {['Client', 'Orders', 'Volume', `vs ${prevLabel}`, 'Revenue', `vs ${prevLabel}`, 'Profit', `vs ${prevLabel}`, 'GP%', `vs ${prevLabel}`].map((h, i) => (
+                      <th key={i} style={{ textAlign: i < 2 ? 'left' : 'right', padding: '9px 10px', fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {accountComparison.map(ac => {
+                    const pill = (val: number | null, suffix = '%') => val !== null ? (
+                      <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 7px', borderRadius: '20px', background: val >= 0 ? '#f0fdf4' : '#fef2f2', color: val >= 0 ? '#166534' : '#dc2626', whiteSpace: 'nowrap' as const }}>
+                        {val >= 0 ? '↑' : '↓'} {Math.abs(val)}{suffix}
+                      </span>
+                    ) : ac.revenue > 0 ? <span style={{ fontSize: '11px', color: '#9ca3af' }}>New</span> : <span style={{ fontSize: '11px', color: '#dc2626' }}>Lost</span>
+                    return (
+                      <tr key={ac.name} style={{ borderTop: '1px solid #f9fafb' }}>
+                        <td style={{ padding: '10px 10px', fontWeight: 600, color: ac.revenue === 0 ? '#9ca3af' : '#111827', whiteSpace: 'nowrap' }}>{ac.name}</td>
+                        <td style={{ padding: '10px 10px', textAlign: 'right', color: '#6b7280' }}>{ac.orders || '—'}</td>
+                        <td style={{ padding: '10px 10px', textAlign: 'right', color: ac.litres === 0 ? '#9ca3af' : '#374151' }}>{ac.litres > 0 ? `${ac.litres}L` : '—'}</td>
+                        <td style={{ padding: '10px 10px', textAlign: 'right' }}>{pill(ac.litresDiff)}</td>
+                        <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 600, color: ac.revenue === 0 ? '#9ca3af' : '#111827' }}>
+                          {ac.revenue > 0 ? `£${ac.revenue.toLocaleString('en-GB', { minimumFractionDigits: 2 })}` : '—'}
+                          {ac.prevRevenue > 0 && <div style={{ fontSize: '10px', color: '#9ca3af', fontWeight: 400 }}>prev £{ac.prevRevenue.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</div>}
+                        </td>
+                        <td style={{ padding: '10px 10px', textAlign: 'right' }}>{pill(ac.revDiff)}</td>
+                        <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 600, color: ac.profit > 0 ? '#166534' : '#9ca3af' }}>
+                          {ac.hasCosts && ac.profit !== 0 ? `£${ac.profit.toFixed(2)}` : <span style={{ fontSize: '11px', color: '#d1d5db' }}>TBC</span>}
+                        </td>
+                        <td style={{ padding: '10px 10px', textAlign: 'right' }}>{ac.hasCosts ? pill(ac.profitDiff) : <span style={{ fontSize: '11px', color: '#d1d5db' }}>TBC</span>}</td>
+                        <td style={{ padding: '10px 10px', textAlign: 'right' }}>
+                          {ac.gp !== null ? <span style={{ fontWeight: 600, color: ac.gp >= 60 ? '#166534' : ac.gp >= 45 ? '#92400e' : '#dc2626' }}>{ac.gp}%</span> : <span style={{ fontSize: '11px', color: '#d1d5db' }}>TBC</span>}
+                        </td>
+                        <td style={{ padding: '10px 10px', textAlign: 'right' }}>
+                          {ac.gpDiff !== null ? (
+                            <span style={{ fontSize: '11px', fontWeight: 700, color: ac.gpDiff >= 0 ? '#166534' : '#dc2626' }}>
+                              {ac.gpDiff >= 0 ? '+' : ''}{ac.gpDiff}%
+                            </span>
+                          ) : <span style={{ fontSize: '11px', color: '#d1d5db' }}>TBC</span>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
 
