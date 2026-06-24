@@ -392,7 +392,7 @@ function BaekOrderForm({ onCreated, accounts: baekAccounts }: { onCreated: (id: 
         const newAcc = await createAccount({
           tradingName:  clientName.trim(),
           legalName:    clientName.trim(),
-          type:         'standalone',
+          type:         'external',
           email:        clientEmail.trim(),
           phone:        clientPhone.trim() || undefined,
           businessLine: 'baek',
