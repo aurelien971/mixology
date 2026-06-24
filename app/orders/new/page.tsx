@@ -1,23 +1,31 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
-import { getAccounts } from '@/lib/firestore/accounts'
+import { getAccounts, createAccount } from '@/lib/firestore/accounts'
 import { getPricingForAccount } from '@/lib/firestore/catalog'
 import { createOrder, generateOrderNumber } from '@/lib/firestore/orders'
 import { createPayment } from '@/lib/firestore/payments'
-import { Account, AccountPricing, OrderLineItem, PAYMENT_TERMS_DAYS } from '@/types'
+import { Account, AccountPricing, OrderLineItem, PAYMENT_TERMS_DAYS, BAEK_PRICE_PER_CASE, BAEK_BOTTLES_PER_CASE, BaekFlavour } from '@/types'
 import { addDays } from 'date-fns'
 import toast from 'react-hot-toast'
 
 const VAT_RATE = 0.20
+const BAEK_FLAVOURS: { key: BaekFlavour; label: string; code: string }[] = [
+  { key: 'intricate', label: 'Intricate', code: 'BAEK-INT' },
+  { key: 'mellow',    label: 'Mellow',    code: 'BAEK-MEL' },
+  { key: 'variety',   label: 'Variety (Mix)', code: 'BAEK-VAR' },
+]
+
+type BusinessLine = 'cocktail' | 'baek'
 
 export default function NewOrderPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const preselectedAccountId = searchParams.get('accountId') ?? ''
+  const [businessLine, setBusinessLine] = useState<BusinessLine>('cocktail')
 
   const [accounts, setAccounts] = useState<Account[]>([])
   const [selectedAccountId, setSelectedAccountId] = useState(preselectedAccountId)
@@ -136,9 +144,43 @@ export default function NewOrderPage() {
 
   return (
     <div>
-      <Header title="New order" subtitle="Wholesale — quantities in litres, prices per litre" />
+      <Header title="New order" subtitle="Select a business line to get started" />
 
       <div className="max-w-3xl space-y-6">
+
+        {/* Business line selector */}
+        <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', padding: '20px' }}>
+          <p style={{ fontSize: '11px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 12px' }}>Business line</p>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            {([
+              { key: 'cocktail', label: 'Cocktail Production', emoji: '🍹' },
+              { key: 'baek',     label: 'BAEK',                emoji: '🍷' },
+            ] as { key: BusinessLine; label: string; emoji: string }[]).map(({ key, label, emoji }) => (
+              <button
+                key={key}
+                onClick={() => setBusinessLine(key)}
+                style={{
+                  flex: 1, padding: '14px', borderRadius: '10px', cursor: 'pointer', textAlign: 'left' as const,
+                  border: `2px solid ${businessLine === key ? '#111827' : '#e5e7eb'}`,
+                  background: businessLine === key ? '#111827' : '#fff',
+                  color: businessLine === key ? '#fff' : '#374151',
+                  transition: 'all 0.1s',
+                }}
+              >
+                <div style={{ fontSize: '20px', marginBottom: '6px' }}>{emoji}</div>
+                <div style={{ fontSize: '14px', fontWeight: 700 }}>{label}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* BAEK order form */}
+        {businessLine === 'baek' && (
+          <BaekOrderForm onCreated={(id) => router.push(`/orders/${id}`)} accounts={accounts.filter(a => a.businessLine === 'baek')} />
+        )}
+
+        {/* Cocktail order form */}
+        {businessLine === 'cocktail' && (<>
 
         {/* Order details */}
         <div className="bg-white rounded-xl border border-gray-100 p-6">
@@ -301,6 +343,226 @@ export default function NewOrderPage() {
             Create order
           </Button>
         </div>
+
+        </>)} {/* end cocktail conditional */}
+      </div>
+    </div>
+  )
+}
+
+// ── BAEK Order Form ──────────────────────────────────────────────────────────
+
+function BaekOrderForm({ onCreated, accounts: baekAccounts }: { onCreated: (id: string) => void; accounts: Account[] }) {
+  const [saving, setSaving] = useState(false)
+
+  // Account — existing or new
+  const [accountMode, setAccountMode] = useState<'existing' | 'new'>('new')
+  const [selectedAccountId, setSelectedAccountId] = useState('')
+
+  // New account fields
+  const [clientName, setClientName]   = useState('')
+  const [clientEmail, setClientEmail] = useState('')
+  const [clientPhone, setClientPhone] = useState('')
+
+  // Order fields
+  const [flavour, setFlavour]         = useState<BaekFlavour>('intricate')
+  const [cases, setCases]             = useState(1)
+  const [deliveryDate, setDeliveryDate] = useState('')
+  const [notes, setNotes]             = useState('')
+
+  const subtotal = cases * BAEK_PRICE_PER_CASE
+  const vatAmt   = Math.round(subtotal * 0.2 * 100) / 100
+  const total    = Math.round((subtotal + vatAmt) * 100) / 100
+  const bottles  = cases * BAEK_BOTTLES_PER_CASE
+
+  const flavourDef = BAEK_FLAVOURS.find(f => f.key === flavour)!
+
+  async function handleSubmit() {
+    if (accountMode === 'existing' && !selectedAccountId) return toast.error('Select an account')
+    if (accountMode === 'new' && !clientName.trim()) return toast.error('Enter client name')
+    if (cases < 1) return toast.error('Enter at least 1 case')
+
+    setSaving(true)
+    try {
+      // Create account if new
+      let accountId   = selectedAccountId
+      let accountName = ''
+
+      if (accountMode === 'new') {
+        const newAcc = await createAccount({
+          tradingName:  clientName.trim(),
+          legalName:    clientName.trim(),
+          type:         'standalone',
+          email:        clientEmail.trim(),
+          phone:        clientPhone.trim() || undefined,
+          businessLine: 'baek',
+          paymentTerms: 'net_30',
+          address:      { line1: '', city: '', postcode: '' },
+        })
+        accountId   = newAcc
+        accountName = clientName.trim()
+      } else {
+        accountName = baekAccounts.find(a => a.id === selectedAccountId)?.tradingName ?? ''
+      }
+
+      const orderNumber   = await generateOrderNumber()
+      const invoiceNumber = `INV-${orderNumber.replace('FL-', '')}`
+
+      const orderId = await createOrder({
+        orderNumber,
+        invoiceNumber,
+        accountId,
+        accountName,
+        businessLine: 'baek',
+        category:     'baek',
+        status:       'received',
+        lineItems: [{
+          productId:    flavourDef.code,
+          productCode:  flavourDef.code,
+          productName:  `BAEK ${flavourDef.label}`,
+          volumeLitres: 0,
+          quantity:     cases,
+          unitPrice:    BAEK_PRICE_PER_CASE,
+          lineTotal:    subtotal,
+          servingSizeG: 0,
+        }],
+        subtotal,
+        vatRate:   0.2,
+        vatAmount: vatAmt,
+        total,
+        notes:     notes.trim() || undefined,
+        ...(deliveryDate ? { expectedDeliveryDate: new Date(deliveryDate) } : {}),
+      })
+
+      await createPayment({
+        orderId,
+        orderNumber,
+        accountId,
+        accountName,
+        invoiceNumber,
+        amount:  total,
+        dueDate: addDays(new Date(), 30),
+        status:  'pending',
+      })
+
+      toast.success(`BAEK order ${orderNumber} created`)
+      onCreated(orderId)
+    } catch (e) {
+      console.error(e)
+      toast.error('Failed to create order')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }
+  const lbl: React.CSSProperties = { display: 'block', fontSize: '11px', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: '6px' }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+      {/* Account */}
+      <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', padding: '20px' }}>
+        <p style={{ fontSize: '13px', fontWeight: 600, color: '#111827', margin: '0 0 14px' }}>Client</p>
+
+        <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
+          {(['new', 'existing'] as const).map(m => (
+            <button key={m} onClick={() => setAccountMode(m)} style={{
+              padding: '6px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 500, cursor: 'pointer',
+              border: `1px solid ${accountMode === m ? '#111827' : '#e5e7eb'}`,
+              background: accountMode === m ? '#111827' : '#fff',
+              color: accountMode === m ? '#fff' : '#6b7280',
+            }}>{m === 'new' ? 'New client' : 'Existing client'}</button>
+          ))}
+        </div>
+
+        {accountMode === 'new' ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={lbl}>Client / company name *</label>
+              <input value={clientName} onChange={e => setClientName(e.target.value)} placeholder="e.g. The Ivy" style={inp} />
+            </div>
+            <div>
+              <label style={lbl}>Email</label>
+              <input type="email" value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="orders@example.com" style={inp} />
+            </div>
+            <div>
+              <label style={lbl}>Phone</label>
+              <input type="tel" value={clientPhone} onChange={e => setClientPhone(e.target.value)} placeholder="+44..." style={inp} />
+            </div>
+          </div>
+        ) : (
+          <div>
+            <label style={lbl}>Select client</label>
+            <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
+              <option value="">Select...</option>
+              {baekAccounts.map(a => <option key={a.id} value={a.id}>{a.tradingName}</option>)}
+            </select>
+            {baekAccounts.length === 0 && <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '6px' }}>No BAEK clients yet — switch to "New client"</p>}
+          </div>
+        )}
+      </div>
+
+      {/* Flavour + Quantity */}
+      <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', padding: '20px' }}>
+        <p style={{ fontSize: '13px', fontWeight: 600, color: '#111827', margin: '0 0 14px' }}>Order</p>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={lbl}>Flavour *</label>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {BAEK_FLAVOURS.map(f => (
+              <button key={f.key} onClick={() => setFlavour(f.key)} style={{
+                flex: 1, padding: '12px 8px', borderRadius: '10px', cursor: 'pointer', textAlign: 'center' as const,
+                border: `2px solid ${flavour === f.key ? '#111827' : '#e5e7eb'}`,
+                background: flavour === f.key ? '#111827' : '#fff',
+                color: flavour === f.key ? '#fff' : '#374151',
+                fontSize: '13px', fontWeight: 600,
+              }}>{f.label}</button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+          <div>
+            <label style={lbl}>Cases *</label>
+            <input
+              type="number" min="1" value={cases}
+              onChange={e => setCases(Math.max(1, parseInt(e.target.value) || 1))}
+              style={inp}
+            />
+            <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>{bottles} bottles · £{BAEK_PRICE_PER_CASE}/case</p>
+          </div>
+          <div>
+            <label style={lbl}>Requested delivery</label>
+            <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} style={inp} />
+          </div>
+        </div>
+
+        <div>
+          <label style={lbl}>Notes</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Delivery instructions, special requests..." style={{ ...inp, resize: 'none' as const }} />
+        </div>
+      </div>
+
+      {/* Summary */}
+      <div style={{ background: '#f9fafb', borderRadius: '12px', border: '1px solid #e5e7eb', padding: '16px 20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
+          <span style={{ color: '#6b7280' }}>{cases} case{cases !== 1 ? 's' : ''} × £{BAEK_PRICE_PER_CASE}</span>
+          <span style={{ fontWeight: 600 }}>£{subtotal.toFixed(2)}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
+          <span style={{ color: '#6b7280' }}>VAT (20%)</span>
+          <span>£{vatAmt.toFixed(2)}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 700, borderTop: '1px solid #e5e7eb', paddingTop: '8px' }}>
+          <span>Total</span>
+          <span>£{total.toFixed(2)}</span>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+        <Button variant="secondary" onClick={() => window.history.back()}>Cancel</Button>
+        <Button onClick={handleSubmit} loading={saving}>Create BAEK order</Button>
       </div>
     </div>
   )

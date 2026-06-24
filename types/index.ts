@@ -9,7 +9,12 @@ export type OrderStatus =
 
 export type PaymentStatus = 'pending' | 'paid' | 'overdue' | 'disputed'
 
-export type PaymentTerms =
+export type BusinessLine = 'cocktail' | 'baek'
+
+export type BaekFlavour = 'intricate' | 'mellow' | 'variety'
+
+export const BAEK_PRICE_PER_CASE = 210
+export const BAEK_BOTTLES_PER_CASE = 6
   | 'net_14'
   | 'net_30'
   | 'net_60'
@@ -62,6 +67,7 @@ export interface Account {
   paymentTerms: PaymentTerms
   notes?: string
   clientToken?: string
+  businessLine?: BusinessLine    // 'cocktail' (default) | 'baek'
   createdAt: Date
   updatedAt: Date
 }
@@ -155,7 +161,7 @@ export interface Recipe {
 export type OrderType = 'order' | 'rd'
 export type RdStatus  = 'in_progress' | 'completed' | 'on_hold'
 
-export type OrderCategory = 'cocktail_production' | 'cocktail_rd' | 'wine_consulting' | 'popsicles' | 'other'
+export type OrderCategory = 'cocktail_production' | 'cocktail_rd' | 'wine_consulting' | 'popsicles' | 'baek' | 'other'
 
 export interface Order {
   id: string

@@ -13,6 +13,11 @@ export default function AccountsPage() {
   const [accounts, setAccounts]   = useState<Account[]>([])
   const [loading, setLoading]     = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [businessTab, setBusinessTab] = useState<'cocktail' | 'baek'>('cocktail')
+
+  const cocktailAccounts = accounts.filter(a => !a.businessLine || a.businessLine === 'cocktail')
+  const baekAccounts     = accounts.filter(a => a.businessLine === 'baek')
+  const displayed        = businessTab === 'baek' ? baekAccounts : cocktailAccounts
 
   function load() {
     getAccounts()
@@ -37,9 +42,24 @@ export default function AccountsPage() {
         action={<Button size="sm" onClick={() => setShowModal(true)}>+ New account</Button>}
       />
 
+      {/* Business line tabs */}
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', background: '#f3f4f6', padding: '4px', borderRadius: '10px', width: 'fit-content' }}>
+        {([
+          { key: 'cocktail', label: `🍹 Cocktail (${cocktailAccounts.length})` },
+          { key: 'baek',     label: `🍷 BAEK (${baekAccounts.length})` },
+        ] as const).map(({ key, label }) => (
+          <button key={key} onClick={() => setBusinessTab(key)} style={{
+            padding: '6px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', border: 'none',
+            background: businessTab === key ? '#fff' : 'transparent',
+            color: businessTab === key ? '#111827' : '#6b7280',
+            boxShadow: businessTab === key ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+          }}>{label}</button>
+        ))}
+      </div>
+
       {loading ? (
         <p className="text-sm text-gray-400">Loading...</p>
-      ) : accounts.length === 0 ? (
+      ) : displayed.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
           <p className="text-sm text-gray-400 mb-3">No accounts yet</p>
           <Button size="sm" onClick={() => setShowModal(true)}>Create first account</Button>
@@ -58,7 +78,7 @@ export default function AccountsPage() {
               </tr>
             </thead>
             <tbody>
-              {accounts.map((account) => (
+              {displayed.map((account) => (
                 <tr key={account.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => window.location.href = `/accounts/${account.id}`}>
                   <td className="px-5 py-3.5">
                     <p className="text-sm font-medium text-gray-900">{account.legalName}</p>
@@ -91,7 +111,7 @@ export default function AccountsPage() {
             </tbody>
           </table>
           <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
-            {accounts.length} account{accounts.length !== 1 ? 's' : ''}
+            {displayed.length} account{accounts.length !== 1 ? 's' : ''}
           </div>
         </div>
       )}
