@@ -15,6 +15,8 @@ export type BaekFlavour = 'intricate' | 'mellow' | 'variety'
 
 export const BAEK_PRICE_PER_CASE = 210
 export const BAEK_BOTTLES_PER_CASE = 6
+
+export type PaymentTerms = 'net_14' | 'net_30' | 'net_60' | 'upfront' | 'split_50'
   | 'net_14'
   | 'net_30'
   | 'net_60'
@@ -172,6 +174,7 @@ export interface Order {
   groupName?: string
   type?: OrderType
   category?: OrderCategory
+  businessLine?: BusinessLine
   briefingDate?: Date
   status: OrderStatus
   lineItems: OrderLineItem[]

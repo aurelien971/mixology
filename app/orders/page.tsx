@@ -15,6 +15,7 @@ const CATEGORY_LABELS: Record<OrderCategory, { label: string; color: string; bg:
   cocktail_rd:         { label: 'Cocktail R&D',    color: '#7e22ce', bg: '#f3e8ff' },
   wine_consulting:     { label: 'Wine Consulting', color: '#b45309', bg: '#fef3c7' },
   popsicles:           { label: 'Popsicles',       color: '#0f766e', bg: '#ccfbf1' },
+  baek:                { label: 'BAEK',            color: '#92400e', bg: '#fef3c7' },
   other:               { label: 'Other',           color: '#6b7280', bg: '#f3f4f6' },
 }
 
