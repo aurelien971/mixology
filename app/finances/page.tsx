@@ -1,10 +1,10 @@
 'use client'
 
 import React, { useEffect, useState, useMemo } from 'react'
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths, subWeeks, isWithinInterval } from 'date-fns'
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths, subWeeks, isWithinInterval, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, differenceInCalendarDays } from 'date-fns'
 import Link from 'next/link'
 import Header from '@/components/layout/Header'
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { getOrders } from '@/lib/firestore/orders'
 import { getProducts } from '@/lib/firestore/catalog'
 import { Order, Product } from '@/types'
@@ -266,6 +266,34 @@ export default function FinancesPage() {
       .sort((a, b) => b.value - a.value)
   }, [profits])
 
+  // Revenue over time — built from `profits`, so it follows the date range AND the Hide R&D toggle
+  const revenueSeries = useMemo(() => {
+    if (profits.length === 0) return { data: [] as { label: string; revenue: number }[], granularity: 'day' as 'day' | 'week' | 'month' }
+    const times = profits.map(p => p.order.createdAt.getTime())
+    const from = dateRange ? dateRange.from : new Date(Math.min(...times))
+    const to   = dateRange ? dateRange.to   : new Date(Math.max(...times))
+    const spanDays = differenceInCalendarDays(to, from) + 1
+    const granularity: 'day' | 'week' | 'month' = spanDays <= 35 ? 'day' : spanDays <= 180 ? 'week' : 'month'
+    const keyOf = (d: Date) =>
+      granularity === 'day'  ? format(d, 'yyyy-MM-dd')
+      : granularity === 'week' ? format(startOfWeek(d, { weekStartsOn: 1 }), 'yyyy-MM-dd')
+      : format(d, 'yyyy-MM')
+    const buckets =
+      granularity === 'day'  ? eachDayOfInterval({ start: from, end: to })
+      : granularity === 'week' ? eachWeekOfInterval({ start: from, end: to }, { weekStartsOn: 1 })
+      : eachMonthOfInterval({ start: from, end: to })
+    const totals = new Map<string, number>(buckets.map(b => [keyOf(b), 0]))
+    profits.forEach(p => {
+      const k = keyOf(p.order.createdAt)
+      if (totals.has(k)) totals.set(k, totals.get(k)! + p.revenue)
+    })
+    const data = buckets.map(b => ({
+      label: granularity === 'month' ? format(b, 'MMM yy') : format(b, 'd MMM'),
+      revenue: r2(totals.get(keyOf(b)) ?? 0),
+    }))
+    return { data, granularity }
+  }, [profits, dateRange])
+
   const totalRevenue = r2(profits.reduce((s, p) => s + p.revenue, 0))
   const totalCogs    = r2(profits.filter(p => !p.hasMissingCosts).reduce((s, p) => s + p.cogs, 0))
   const totalProfit  = r2(profits.filter(p => !p.hasMissingCosts).reduce((s, p) => s + p.profit, 0))
@@ -425,6 +453,64 @@ export default function FinancesPage() {
               </div>
             )}
           </div>
+
+          {/* ── Revenue over time ───────────────────────────────────────── */}
+          {revenueSeries.data.length > 1 && (
+            <div style={{ background: '#fff', border: '1px solid #f3f4f6', borderRadius: '14px', padding: '20px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div>
+                  <p style={{ fontSize: '14px', fontWeight: 600, color: '#111827', margin: 0 }}>Revenue over time</p>
+                  <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0' }}>
+                    {revenueSeries.granularity === 'day' ? 'Daily' : revenueSeries.granularity === 'week' ? 'Weekly' : 'Monthly'} revenue (ex-VAT)
+                    {hideRd ? ' · R&D excluded' : ''}
+                  </p>
+                </div>
+                <p style={{ fontSize: '13px', fontWeight: 600, color: '#111827', margin: 0 }}>
+                  £{totalRevenue.toLocaleString('en-GB', { minimumFractionDigits: 2 })} total
+                </p>
+              </div>
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={revenueSeries.data} margin={{ top: 4, right: 8, bottom: 0, left: 8 }}>
+                  <defs>
+                    <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#2563eb" stopOpacity={0.18} />
+                      <stop offset="100%" stopColor="#2563eb" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} stroke="#f3f4f6" />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 11, fill: '#9ca3af' }}
+                    tickLine={false}
+                    axisLine={{ stroke: '#e5e7eb' }}
+                    interval="preserveStartEnd"
+                    minTickGap={24}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: '#9ca3af' }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={56}
+                    tickFormatter={(v: number) => `£${v >= 1000 ? `${r2(v / 1000)}k` : v}`}
+                  />
+                  <Tooltip
+                    formatter={(value) => [`£${Number(value).toLocaleString('en-GB', { minimumFractionDigits: 2 })}`, 'Revenue']}
+                    contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
+                    cursor={{ stroke: '#d1d5db', strokeDasharray: '3 3' }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="#2563eb"
+                    strokeWidth={2}
+                    fill="url(#revenueFill)"
+                    dot={false}
+                    activeDot={{ r: 4, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
           {/* ── Account comparison ──────────────────────────────────────── */}
           <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', overflow: 'hidden', marginBottom: '16px' }}>
