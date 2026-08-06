@@ -49,7 +49,10 @@ export async function getAccount(id: string): Promise<Account | null> {
 
 export async function createAccount(data: Omit<Account, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
   const now = Timestamp.now()
-  const ref = await addDoc(collection(db, COL), { ...data, createdAt: now, updatedAt: now })
+  // Every account gets a portal token from day one
+  const { generatePortalToken } = await import('@/lib/portal')
+  const clientToken = data.clientToken ?? generatePortalToken()
+  const ref = await addDoc(collection(db, COL), { ...data, clientToken, createdAt: now, updatedAt: now })
   return ref.id
 }
 

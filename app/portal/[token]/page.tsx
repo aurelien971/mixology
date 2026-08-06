@@ -6,6 +6,7 @@ import { collection, getDocs, addDoc, query, where, Timestamp } from 'firebase/f
 import { db } from '@/lib/firebase'
 import { format, addDays, isWeekend, startOfDay } from 'date-fns'
 import toast, { Toaster } from 'react-hot-toast'
+import { TERMS_SECTIONS, TERMS_TITLE, TERMS_VERSION, TERMS_PREAMBLE, TERMS_FOOTER } from '@/lib/terms'
 
 interface PortalPricing {
   productId: string
@@ -67,6 +68,8 @@ export default function PortalPage() {
   const [notes, setNotes]       = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted]   = useState('')
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [termsOpen, setTermsOpen]         = useState(false)
 
   const minDate = useMemo(() => toDateInputValue(getMinDeliveryDate()), [])
 
@@ -123,7 +126,7 @@ export default function PortalPage() {
   const vatAmt   = r2(subtotal * VAT)
   const total    = r2(subtotal + vatAmt)
 
-  const canSubmit = contactName.trim() && deliveryDate && cart.length > 0
+  const canSubmit = contactName.trim() && deliveryDate && cart.length > 0 && termsAccepted
 
   async function handleSubmit() {
     if (!canSubmit) return
@@ -147,6 +150,9 @@ export default function PortalPage() {
         status:     'received',
         source:     'client_portal',
         portalContactName: contactName.trim(),
+        termsAccepted:   true,
+        termsAcceptedAt: Timestamp.now(),
+        termsVersion:    TERMS_VERSION,
         expectedDeliveryDate: Timestamp.fromDate(new Date(deliveryDate)),
         notes: `Portal order from ${contactName.trim()}${notes.trim() ? `. ${notes.trim()}` : ''}`,
         createdAt: Timestamp.now(),
@@ -211,7 +217,7 @@ export default function PortalPage() {
         We've received your order and will be in touch to confirm. Expected delivery: {format(new Date(deliveryDate), 'd MMMM yyyy')}.
       </p>
       <button
-        onClick={() => { setSubmitted(''); setQuantities({}); setContactName(''); setDeliveryDate(''); setNotes('') }}
+        onClick={() => { setSubmitted(''); setQuantities({}); setContactName(''); setDeliveryDate(''); setNotes(''); setTermsAccepted(false) }}
         style={{ padding: '11px 28px', borderRadius: '10px', fontSize: '14px', fontWeight: 600, background: '#166534', color: '#fff', border: 'none', cursor: 'pointer' }}
       >
         Place another order
@@ -365,6 +371,51 @@ export default function PortalPage() {
           </div>
         )}
 
+        {/* Terms & conditions — must be accepted to place the order */}
+        {cart.length > 0 && (
+          <div style={{ background: '#fff', borderRadius: '12px', border: `1px solid ${termsAccepted ? '#bbf7d0' : '#f3f4f6'}`, padding: '18px 20px', marginBottom: '16px', transition: 'border-color 0.15s' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: termsOpen ? '12px' : 0 }}>
+              <p style={{ fontSize: '13px', fontWeight: 600, color: '#111827', margin: 0 }}>Terms &amp; conditions</p>
+              <button
+                onClick={() => setTermsOpen(o => !o)}
+                style={{ fontSize: '12px', fontWeight: 500, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+              >
+                {termsOpen ? 'Hide terms' : 'Read the terms'}
+              </button>
+            </div>
+
+            {termsOpen && (
+              <div style={{ maxHeight: '260px', overflowY: 'auto', border: '1px solid #f3f4f6', borderRadius: '9px', padding: '14px 16px', marginBottom: '12px', background: '#f9fafb' }}>
+                <p style={{ fontSize: '12px', fontWeight: 700, color: '#111827', margin: '0 0 10px' }}>{TERMS_TITLE}</p>
+                {TERMS_PREAMBLE.map((para, i) => (
+                  <p key={`pre-${i}`} style={{ fontSize: '12px', color: '#6b7280', lineHeight: 1.6, margin: '0 0 8px' }}>{para}</p>
+                ))}
+                {TERMS_SECTIONS.map((s, i) => (
+                  <div key={i} style={{ marginBottom: '12px' }}>
+                    <p style={{ fontSize: '12px', fontWeight: 600, color: '#374151', margin: '0 0 6px' }}>{s.heading}</p>
+                    {s.paragraphs.map((para, j) => (
+                      <p key={j} style={{ fontSize: '12px', color: '#6b7280', lineHeight: 1.6, margin: '0 0 8px' }}>{para}</p>
+                    ))}
+                  </div>
+                ))}
+                <p style={{ fontSize: '11px', color: '#9ca3af', margin: 0 }}>{TERMS_FOOTER}</p>
+              </div>
+            )}
+
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', marginTop: termsOpen ? 0 : '12px' }}>
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={e => setTermsAccepted(e.target.checked)}
+                style={{ width: '18px', height: '18px', marginTop: '1px', accentColor: '#166534', cursor: 'pointer', flexShrink: 0 }}
+              />
+              <span style={{ fontSize: '13px', color: '#374151', lineHeight: 1.5 }}>
+                I have read and accept the Foodlab Ltd Standard Terms and Conditions of Supply ({TERMS_VERSION}) on behalf of {accountName}.
+              </span>
+            </label>
+          </div>
+        )}
+
         {/* Submit button — only visible when all filled */}
         {canSubmit && (
           <button
@@ -387,6 +438,7 @@ export default function PortalPage() {
             {cart.length === 0 && 'Add at least one product to continue'}
             {cart.length > 0 && !contactName.trim() && 'Enter your name to continue'}
             {cart.length > 0 && contactName.trim() && !deliveryDate && 'Choose a delivery date to continue'}
+            {cart.length > 0 && contactName.trim() && deliveryDate && !termsAccepted && 'Accept the terms & conditions to place your order'}
           </div>
         )}
       </div>

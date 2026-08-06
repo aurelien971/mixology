@@ -186,6 +186,9 @@ export interface Order {
   poReference?: string
   source?: string
   portalContactName?: string
+  termsAccepted?: boolean
+  termsAcceptedAt?: Date
+  termsVersion?: string
   expectedDeliveryDate?: Date
   deliveryNoteNumber?: string
   deliveryNoteUrl?: string

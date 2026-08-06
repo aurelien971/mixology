@@ -10,7 +10,8 @@ import Button from '@/components/ui/Button'
 import PricingManager from '@/components/accounts/PricingManager'
 import DownloadPriceListButton from '@/components/accounts/DownloadPriceListButton'
 import EditAccountModal from '@/components/accounts/EditAccountModal'
-import { getAccount, deleteAccount } from '@/lib/firestore/accounts'
+import { getAccount, deleteAccount, updateAccount } from '@/lib/firestore/accounts'
+import { generatePortalToken, copyPortalLink } from '@/lib/portal'
 import { getOrdersByAccount } from '@/lib/firestore/orders'
 import { getPaymentsByAccount } from '@/lib/firestore/payments'
 import { getPricingForAccount, getProducts } from '@/lib/firestore/catalog'
@@ -82,6 +83,14 @@ export default function AccountDetailPage() {
         getPricingForAccount(id),
         getProducts(),
       ])
+      // Backfill: older accounts may not have a portal token yet
+      if (acc && !acc.clientToken) {
+        const token = generatePortalToken()
+        try {
+          await updateAccount(acc.id, { clientToken: token })
+          acc.clientToken = token
+        } catch (e) { console.error('Failed to backfill portal token', e) }
+      }
       setAccount(acc)
       setOrders(ords)
       setPayments(pays)
@@ -334,6 +343,39 @@ export default function AccountDetailPage() {
             <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
               <p className="text-xs font-medium text-amber-600 mb-1">Notes</p>
               <p className="text-sm text-amber-900">{account.notes}</p>
+            </div>
+          )}
+
+          {account.clientToken && (
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
+                Client portal
+              </h3>
+              <p className="text-xs text-gray-400 mb-1">Portal code</p>
+              <p style={{ fontFamily: 'monospace', fontSize: '12px', color: '#111827', background: '#f9fafb', border: '1px solid #f3f4f6', borderRadius: '7px', padding: '7px 10px', margin: '0 0 10px', wordBreak: 'break-all' }}>
+                {account.clientToken}
+              </p>
+              <div className="space-y-2">
+                <Button
+                  variant="secondary" size="sm" className="w-full justify-center"
+                  onClick={async () => {
+                    try {
+                      await copyPortalLink(account)
+                      toast.success('Portal link copied')
+                    } catch { toast.error('Failed to copy') }
+                  }}
+                >
+                  Copy portal link
+                </Button>
+                <a href={`/portal/${account.clientToken}`} target="_blank" rel="noreferrer" className="block">
+                  <Button variant="ghost" size="sm" className="w-full justify-center">
+                    Open portal ↗
+                  </Button>
+                </a>
+              </div>
+              <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
+                Send this link to the client — they can place orders directly, no login needed.
+              </p>
             </div>
           )}
 

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import Sidebar from '@/components/layout/Sidebar'
 import Link from 'next/link'
+import { Toaster } from 'react-hot-toast'
 
 const NO_SHELL = ['/login', '/track', '/orders/sign', '/portal']
 
@@ -75,6 +76,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
+      <Toaster position="top-right" />
       {/* Desktop layout */}
       <div className="hidden md:flex" style={{ minHeight: '100vh' }}>
         <Sidebar />

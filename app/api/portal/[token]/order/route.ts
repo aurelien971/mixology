@@ -3,6 +3,7 @@ import {
   collection, getDocs, addDoc, query, where, Timestamp,
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
+import { TERMS_VERSION } from '@/lib/terms'
 
 const VAT = 0.20
 
@@ -73,6 +74,9 @@ export async function POST(
       status:      'received',
       source:      'client_portal',
       portalContactName: body.contactName,
+      termsAccepted:   true,
+      termsAcceptedAt: Timestamp.now(),
+      termsVersion:    TERMS_VERSION,
       notes: body.notes ? `Portal order from ${body.contactName}. ${body.notes}` : `Portal order from ${body.contactName}`,
       createdAt:   Timestamp.now(),
       updatedAt:   Timestamp.now(),
