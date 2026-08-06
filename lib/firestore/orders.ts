@@ -42,6 +42,13 @@ export async function getOrders(limitCount = 100): Promise<Order[]> {
   return snap.docs.map((d) => fromFirestore(d.id, d.data()))
 }
 
+// Every order in the database, no limit — used for full history exports
+export async function getAllOrders(): Promise<Order[]> {
+  const q = query(collection(db, COLLECTION), orderBy('createdAt', 'desc'))
+  const snap = await getDocs(q)
+  return snap.docs.map((d) => fromFirestore(d.id, d.data()))
+}
+
 export async function getOrdersByAccount(accountId: string): Promise<Order[]> {
   const q = query(
     collection(db, COLLECTION),

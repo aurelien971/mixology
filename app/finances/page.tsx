@@ -5,7 +5,7 @@ import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths, su
 import Link from 'next/link'
 import Header from '@/components/layout/Header'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
-import { getOrders } from '@/lib/firestore/orders'
+import { getOrders, getAllOrders } from '@/lib/firestore/orders'
 import { getProducts } from '@/lib/firestore/catalog'
 import { Order, Product } from '@/types'
 import toast from 'react-hot-toast'
@@ -223,6 +223,69 @@ export default function FinancesPage() {
   }
   const [expanded, setExpanded]     = useState<string | null>(null)
   const [modalOrder, setModalOrder] = useState<OrderProfit | null>(null)
+  const [exporting, setExporting]   = useState(false)
+
+  // Full historical export — every order ever, one row per line item, with revenue/COGS/profit
+  async function exportAllOrders() {
+    setExporting(true)
+    try {
+      const allOrders = await getAllOrders()
+      const active = allOrders.filter(o => o.status !== 'cancelled')
+      const esc = (v: string | number) => {
+        const s = String(v)
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+      }
+      const header = [
+        'Order number', 'Date', 'Account', 'Group', 'Type', 'Status', 'Source',
+        'Product', 'Product code', 'Bag volume (L)', 'Qty', 'Total litres',
+        'Unit price (ex-VAT)', 'Line revenue (ex-VAT)', 'Cost per litre', 'Line COGS', 'Line profit',
+        'Order revenue (ex-VAT)', 'Order COGS', 'Order profit', 'Order margin %', 'Missing costs',
+      ]
+      const rows: string[] = [header.join(',')]
+      for (const o of active) {
+        const p = calcOrderProfit(o, productMap)
+        for (const l of p.lines) {
+          rows.push([
+            esc(o.orderNumber),
+            format(o.createdAt, 'yyyy-MM-dd'),
+            esc(o.accountName),
+            esc(o.groupName ?? ''),
+            o.type === 'rd' ? 'R&D' : 'Order',
+            esc(o.status),
+            esc(o.source ?? 'internal'),
+            esc(l.productName),
+            esc(l.productCode),
+            l.volumeLitres,
+            l.quantity,
+            l.totalLitres,
+            l.pricePerBag,
+            l.revenue,
+            l.missing ? '' : l.costPerLitre,
+            l.missing ? '' : l.cogs,
+            l.missing ? '' : r2(l.revenue - l.cogs),
+            p.revenue,
+            p.hasMissingCosts ? '' : p.cogs,
+            p.hasMissingCosts ? '' : p.profit,
+            p.hasMissingCosts ? '' : p.margin,
+            p.hasMissingCosts ? 'YES' : '',
+          ].join(','))
+        }
+      }
+      const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `foodlab-orders-export-${format(new Date(), 'yyyy-MM-dd')}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success(`Exported ${active.length} orders (${rows.length - 1} lines)`)
+    } catch (e) {
+      console.error(e)
+      toast.error('Export failed')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const dateRange = useMemo(() => {
     const now = new Date()
@@ -375,6 +438,14 @@ export default function FinancesPage() {
               color: hideRd ? '#7e22ce' : '#9ca3af',
             }}>
               {hideRd ? '✓ R&D hidden' : 'Hide R&D'}
+            </button>
+            <button onClick={exportAllOrders} disabled={exporting} style={{
+              padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 500,
+              cursor: exporting ? 'wait' : 'pointer', border: '1px solid #e5e7eb',
+              background: '#fff', color: '#374151', display: 'flex', alignItems: 'center', gap: '5px',
+            }}>
+              <svg width="11" height="11" viewBox="0 0 14 14" fill="none"><path d="M7 1v8m0 0L4 6m3 3l3-3M2 11v1a1 1 0 001 1h8a1 1 0 001-1v-1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              {exporting ? 'Exporting…' : 'Export all orders (CSV)'}
             </button>
           </div>
 
