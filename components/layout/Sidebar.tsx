@@ -77,6 +77,16 @@ const nav = [
     ),
   },
   {
+    label: 'Stock take',
+    href: '/stocktake',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+        <path d="M2 6l7-4 7 4v7l-7 4-7-4V6z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" fill="none"/>
+        <path d="M2 6l7 4 7-4M9 10v7" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+      </svg>
+    ),
+  },
+  {
     label: 'Finances',
     href: '/finances',
     icon: (

@@ -357,6 +357,26 @@ export default function FinancesPage() {
     return { data, granularity }
   }, [profits, dateRange])
 
+  // Per-drink margins — aggregated from order lines, lowest margin first
+  const drinkMargins = useMemo(() => {
+    type Agg = { name: string; code: string; litres: number; revenue: number; cogs: number; missing: boolean; orders: number }
+    const map = new Map<string, Agg>()
+    for (const p of profits) {
+      for (const l of p.lines) {
+        const ex = map.get(l.productCode) ?? { name: l.productName, code: l.productCode, litres: 0, revenue: 0, cogs: 0, missing: false, orders: 0 }
+        ex.litres = r2(ex.litres + l.totalLitres)
+        ex.revenue = r2(ex.revenue + l.revenue)
+        ex.orders += 1
+        if (l.missing) ex.missing = true
+        else ex.cogs = r2(ex.cogs + l.cogs)
+        map.set(l.productCode, ex)
+      }
+    }
+    return [...map.values()]
+      .map(d => ({ ...d, margin: !d.missing && d.revenue > 0 ? r2(((d.revenue - d.cogs) / d.revenue) * 100) : null }))
+      .sort((a, b) => (a.margin ?? 999) - (b.margin ?? 999))
+  }, [profits])
+
   const totalRevenue = r2(profits.reduce((s, p) => s + p.revenue, 0))
   const totalCogs    = r2(profits.filter(p => !p.hasMissingCosts).reduce((s, p) => s + p.cogs, 0))
   const totalProfit  = r2(profits.filter(p => !p.hasMissingCosts).reduce((s, p) => s + p.profit, 0))
@@ -580,6 +600,43 @@ export default function FinancesPage() {
                   />
                 </AreaChart>
               </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* ── Drink margins ───────────────────────────────────────────── */}
+          {drinkMargins.length > 0 && (
+            <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', overflow: 'hidden', marginBottom: '16px' }}>
+              <div style={{ padding: '14px 18px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <p style={{ fontSize: '14px', fontWeight: 600, color: '#111827', margin: 0 }}>Drink margins</p>
+                <span style={{ fontSize: '12px', color: '#9ca3af' }}>Lowest margin first — where to raise prices or cut costs</span>
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ background: '#f9fafb' }}>
+                    {['Drink', 'Lines', 'Litres', 'Revenue', 'COGS', 'Profit', 'Margin'].map((h, i) => (
+                      <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', padding: '9px 14px', fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {drinkMargins.map(d => (
+                    <tr key={d.code} style={{ borderTop: '1px solid #f9fafb' }}>
+                      <td style={{ padding: '10px 14px' }}>
+                        <span style={{ fontWeight: 600, color: '#111827' }}>{d.name}</span>
+                        <span style={{ marginLeft: '8px', fontFamily: 'monospace', fontSize: '11px', color: '#9ca3af' }}>{d.code}</span>
+                      </td>
+                      <td style={{ padding: '10px 14px', textAlign: 'right', color: '#6b7280' }}>{d.orders}</td>
+                      <td style={{ padding: '10px 14px', textAlign: 'right', color: '#374151' }}>{d.litres}L</td>
+                      <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600 }}>£{d.revenue.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td>
+                      <td style={{ padding: '10px 14px', textAlign: 'right', color: '#6b7280' }}>{d.missing ? '—' : `£${d.cogs.toFixed(2)}`}</td>
+                      <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600, color: d.missing ? '#9ca3af' : '#166534' }}>{d.missing ? '—' : `£${r2(d.revenue - d.cogs).toFixed(2)}`}</td>
+                      <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                        <MarginBadge margin={d.margin ?? 0} missing={d.missing} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
 

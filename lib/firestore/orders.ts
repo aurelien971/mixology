@@ -86,6 +86,20 @@ export async function updateOrderStatus(
     ...extra,
     updatedAt: Timestamp.now(),
   })
+
+  // Entering production consumes ingredients — deduct them from stock (idempotent).
+  // Dynamic import avoids a module cycle (stock.ts imports from this file).
+  if (status === 'production') {
+    try {
+      const order = await getOrder(id)
+      if (order && !order.stockDeducted && order.type !== 'rd') {
+        const { deductStockForOrder } = await import('@/lib/stock')
+        await deductStockForOrder(order)
+      }
+    } catch (e) {
+      console.error('Stock deduction failed for order', id, e)
+    }
+  }
 }
 
 export async function updateOrder(

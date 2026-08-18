@@ -132,6 +132,57 @@ export interface RecipeIngredient {
   unit: string
   qtyPer1000L: number
   qtyPer1L: number
+  ingredientId?: string         // link into the ingredients library — used for costing & stock
+}
+
+// ── Ingredients library (stock take + costing) ───────────────────────────────
+
+export type PackUnit = 'kg' | 'L' | 'unit'
+
+export type IngredientFormat = 'bottle' | 'keg' | 'bag-in-box' | 'drum' | 'bag' | 'other'
+export const INGREDIENT_FORMATS: { value: IngredientFormat; label: string }[] = [
+  { value: 'bottle', label: 'Bottle' },
+  { value: 'keg', label: 'Keg' },
+  { value: 'bag-in-box', label: 'Bag-in-box' },
+  { value: 'drum', label: 'Drum' },
+  { value: 'bag', label: 'Bag' },
+  { value: 'other', label: 'Other' },
+]
+
+export type Currency = 'GBP' | 'EUR' | 'USD'
+export const CURRENCY_SYMBOLS: Record<Currency, string> = { GBP: '£', EUR: '€', USD: '$' }
+
+export interface Ingredient {
+  id: string
+  name: string                  // canonical display name, e.g. "Citric Acid"
+  nameKey: string               // normalised for dedup: lowercase, trimmed, single spaces
+  supplier?: string
+  format?: IngredientFormat     // how it arrives: bottle / keg / bag-in-box / drum...
+  currency?: Currency           // price currency (default GBP)
+  packDescription: string       // human label, e.g. "0.7L bottle", "25kg drum"
+  packSize: number              // size of ONE pack in packUnit, e.g. 0.7
+  packUnit: PackUnit            // what the pack is measured in
+  packPrice: number             // £ per pack (what you pay the supplier)
+  pricePerUnit: number          // derived: £ per kg / L — used for recipe COGS
+  currentStock: number          // stock on hand, in packs (fractional allowed)
+  stockUpdatedAt?: Date
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type StockMovementType = 'stocktake' | 'delivery' | 'production' | 'adjustment'
+
+export interface StockMovement {
+  id: string
+  ingredientId: string
+  ingredientName: string
+  type: StockMovementType
+  packsDelta: number            // +ve for deliveries, -ve for production; for stocktake = new absolute value
+  newStock: number              // stock (in packs) after this movement
+  orderId?: string              // for production deductions
+  orderNumber?: string
+  note?: string
+  createdAt: Date
 }
 
 export interface RecipeAnalytical {
@@ -189,6 +240,7 @@ export interface Order {
   termsAccepted?: boolean
   termsAcceptedAt?: Date
   termsVersion?: string
+  stockDeducted?: boolean       // ingredients already deducted from stock (set when production starts)
   expectedDeliveryDate?: Date
   deliveryNoteNumber?: string
   deliveryNoteUrl?: string

@@ -7,7 +7,10 @@ import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import { getRecipe, updateRecipe, deleteRecipe } from '@/lib/firestore/recipes'
 import { getProducts } from '@/lib/firestore/catalog'
-import { Recipe, Product } from '@/types'
+import { getIngredients } from '@/lib/firestore/ingredients'
+import { computeRecipeCost } from '@/lib/costing'
+import RecipeEditor from '@/components/recipes/RecipeEditor'
+import { Recipe, Product, Ingredient } from '@/types'
 import toast from 'react-hot-toast'
 
 export default function RecipeDetailPage() {
@@ -18,13 +21,16 @@ export default function RecipeDetailPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading]   = useState(true)
   const [litres, setLitres]     = useState(100)
+  const [ingredients, setIngredients] = useState<Ingredient[]>([])
+  const [showEdit, setShowEdit] = useState(false)
   const [linking, setLinking]   = useState(false)
   const [selectedProduct, setSelectedProduct] = useState('')
 
   async function load() {
-    const [r, p] = await Promise.all([getRecipe(id), getProducts()])
+    const [r, p, ings] = await Promise.all([getRecipe(id), getProducts(), getIngredients()])
     setRecipe(r)
     setProducts(p)
+    setIngredients(ings)
     if (r?.productId) setSelectedProduct(r.productId)
     setLoading(false)
   }
@@ -78,17 +84,27 @@ export default function RecipeDetailPage() {
 
   const linkedProduct = products.find(p => p.id === recipe.productId)
   const scale = litres / 1000  // everything is per 1000L in Excel
+  const cost = computeRecipeCost(recipe, ingredients)
 
   const inp: React.CSSProperties = { width: '100%', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: '7px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }
 
   return (
     <div style={{ maxWidth: '900px' }}>
+      {showEdit && (
+        <RecipeEditor
+          existing={recipe}
+          products={products}
+          onSaved={() => load()}
+          onClose={() => setShowEdit(false)}
+        />
+      )}
       <Header
         title={recipe.name}
         subtitle={[recipe.variation, recipe.version ? `v${recipe.version}` : null, recipe.createdBy].filter(Boolean).join(' · ')}
         action={
           <div style={{ display: 'flex', gap: '8px' }}>
             <Button variant="secondary" size="sm" onClick={() => router.back()}>← Back</Button>
+            <Button variant="secondary" size="sm" onClick={() => setShowEdit(true)}>Edit recipe</Button>
             <Button variant="secondary" size="sm" onClick={exportPDF}>↓ Export PDF</Button>
             <Button variant="secondary" size="sm" onClick={handleDelete} style={{ color: '#dc2626' } as React.CSSProperties}>Delete</Button>
           </div>
@@ -174,6 +190,21 @@ export default function RecipeDetailPage() {
 
         {/* RIGHT sidebar */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+          {/* Cost */}
+          <div style={{ background: cost.complete ? '#f0fdf4' : '#fffbeb', borderRadius: '12px', border: `1px solid ${cost.complete ? '#bbf7d0' : '#fde68a'}`, padding: '16px' }}>
+            <p style={{ fontSize: '11px', fontWeight: 600, color: cost.complete ? '#166534' : '#92400e', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Cost to make</p>
+            {cost.complete ? (
+              <>
+                <p style={{ fontSize: '22px', fontWeight: 700, color: '#166534', margin: '0 0 2px' }}>£{cost.costPerLitre.toFixed(2)}<span style={{ fontSize: '13px', fontWeight: 500 }}> / litre</span></p>
+                <p style={{ fontSize: '12px', color: '#4b7c5e', margin: 0 }}>£{(cost.costPerLitre * litres).toFixed(2)} for this {litres}L batch</p>
+              </>
+            ) : (
+              <p style={{ fontSize: '12px', color: '#92400e', margin: 0 }}>
+                Needs prices for: {cost.missingIngredients.join(', ') || 'some ingredients'}. Add them in Stock take → Ingredients.
+              </p>
+            )}
+          </div>
 
           {/* Product link */}
           <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #f3f4f6', padding: '16px' }}>
