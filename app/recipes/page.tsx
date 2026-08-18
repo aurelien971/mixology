@@ -5,7 +5,6 @@ import Link from 'next/link'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import RecipeEditor, { RecipeDraft } from '@/components/recipes/RecipeEditor'
-import ScreenshotImport from '@/components/recipes/ScreenshotImport'
 import { getRecipes } from '@/lib/firestore/recipes'
 import { getProducts } from '@/lib/firestore/catalog'
 import { getIngredients } from '@/lib/firestore/ingredients'
@@ -19,9 +18,6 @@ export default function RecipesPage() {
   const [loading, setLoading]         = useState(true)
   const [search, setSearch]           = useState('')
 
-  // Flows
-  const [showImport, setShowImport]   = useState(false)
-  const [drafts, setDrafts]           = useState<RecipeDraft[]>([])   // parsed from screenshots, waiting for review
   const [editorState, setEditorState] = useState<{ existing?: Recipe; draft?: RecipeDraft; presetProductId?: string } | null>(null)
 
   function load() {
@@ -42,22 +38,8 @@ export default function RecipesPage() {
     (r.variation ?? '').toLowerCase().includes(search.toLowerCase())
   )
 
-  function openNextDraft(remaining: RecipeDraft[]) {
-    setDrafts(remaining)
-    if (remaining.length > 0) {
-      setEditorState({ draft: remaining[0] })
-    }
-  }
-
   return (
     <div>
-      {showImport && (
-        <ScreenshotImport
-          onClose={() => setShowImport(false)}
-          onParsed={parsed => { setShowImport(false); openNextDraft(parsed) }}
-        />
-      )}
-
       {editorState && (
         <RecipeEditor
           existing={editorState.existing}
@@ -65,15 +47,7 @@ export default function RecipesPage() {
           presetProductId={editorState.presetProductId}
           products={activeProducts}
           onSaved={() => { load() }}
-          onClose={() => {
-            const wasDraft = !!editorState.draft
-            setEditorState(null)
-            if (wasDraft) {
-              // move on to the next parsed screenshot recipe, if any
-              const remaining = drafts.slice(1)
-              openNextDraft(remaining)
-            }
-          }}
+          onClose={() => setEditorState(null)}
         />
       )}
 
@@ -81,10 +55,7 @@ export default function RecipesPage() {
         title="Recipes"
         subtitle="Master recipe file — every drink, its ingredients and cost"
         action={
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <Button size="sm" variant="secondary" onClick={() => setShowImport(true)}>📷 From screenshots</Button>
-            <Button size="sm" onClick={() => setEditorState({})}>+ New recipe</Button>
-          </div>
+          <Button size="sm" onClick={() => setEditorState({})}>+ New recipe</Button>
         }
       />
 
@@ -99,7 +70,7 @@ export default function RecipesPage() {
                 <p style={{ fontSize: '14px', fontWeight: 700, color: '#92400e', margin: 0 }}>
                   ⚠ {missingRecipes.length} drink{missingRecipes.length !== 1 ? 's' : ''} missing a recipe
                 </p>
-                <p style={{ fontSize: '12px', color: '#b45309', margin: 0 }}>Add manually or import screenshots — costs & stock need these</p>
+                <p style={{ fontSize: '12px', color: '#b45309', margin: 0 }}>Click a drink, then fill it in or use “Fill from screenshot”</p>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {missingRecipes.map(p => (
@@ -127,11 +98,8 @@ export default function RecipesPage() {
           {recipes.length === 0 && (
             <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', padding: '48px 32px', textAlign: 'center' }}>
               <p style={{ fontSize: '15px', fontWeight: 600, color: '#374151', margin: '0 0 6px' }}>No recipes yet</p>
-              <p style={{ fontSize: '13px', color: '#9ca3af', margin: '0 0 16px' }}>Add your first recipe manually, or screenshot your Google Sheet and let AI read it.</p>
-              <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                <Button size="sm" variant="secondary" onClick={() => setShowImport(true)}>📷 From screenshots</Button>
-                <Button size="sm" onClick={() => setEditorState({})}>+ New recipe</Button>
-              </div>
+              <p style={{ fontSize: '13px', color: '#9ca3af', margin: '0 0 16px' }}>Add a recipe, then use “Fill from screenshot” inside it to import from your Google Sheet.</p>
+              <Button size="sm" onClick={() => setEditorState({})}>+ New recipe</Button>
             </div>
           )}
 

@@ -6,6 +6,7 @@ import { createRecipe, updateRecipe } from '@/lib/firestore/recipes'
 import { getIngredients, createIngredient, normalizeIngredientName, normalizeSupplier } from '@/lib/firestore/ingredients'
 import { syncProductCostForRecipe } from '@/lib/recipeSync'
 import Button from '@/components/ui/Button'
+import ScreenshotImport from '@/components/recipes/ScreenshotImport'
 import toast from 'react-hot-toast'
 
 function r4(n: number) { return Math.round(n * 10000) / 10000 }
@@ -98,6 +99,7 @@ export default function RecipeEditor({
   const [saving, setSaving]   = useState(false)
   const [savingIngIdx, setSavingIngIdx] = useState<number | null>(null)
   const [activeSuggest, setActiveSuggest] = useState<number | null>(null)
+  const [showImport, setShowImport] = useState(false)
 
   useEffect(() => { getIngredients().then(setLibrary) }, [])
 
@@ -143,8 +145,8 @@ export default function RecipeEditor({
     const row = rows[i]
     const np = row.newPack
     if (!np || !row.name.trim()) return
-    if (!parseFloat(np.packSize) || np.packPrice === '' || (np.format === 'other' && !np.formatOther.trim())) {
-      toast.error('Fill in format, volume and price first')
+    if (!parseFloat(np.packSize) || np.packPrice === '' || !np.supplier.trim() || (np.format === 'other' && !np.formatOther.trim())) {
+      toast.error('Fill in format, volume, price and supplier first')
       return
     }
     setSavingIngIdx(i)
@@ -171,8 +173,42 @@ export default function RecipeEditor({
     }
   }
 
+  // Fill this recipe's form from a parsed screenshot. Unmatched ingredients get their
+  // "new ingredient" form opened automatically — the recipe can't be saved until each
+  // one has format, volume, price AND supplier.
+  function applyParsedDraft(d: RecipeDraft) {
+    if (d.name) setName(d.name)
+    if (d.variation) setVariation(d.variation)
+    if (d.createdBy) setCreatedBy(d.createdBy)
+    if (d.cookingInstructions) setInstructions(d.cookingInstructions)
+    if (d.analyticalValues.length) {
+      setAnalytical(d.analyticalValues.map(a => ({
+        name: a.name, min: a.min != null ? String(a.min) : '', target: a.target != null ? String(a.target) : '',
+        max: a.max != null ? String(a.max) : '', notes: a.notes ?? '',
+      })))
+    }
+    setBatchLitres('1000')  // parsed sheets are per 1000L
+    let unmatched = 0
+    setRows(d.ingredients.map(ing => {
+      const match = library.find(l => l.nameKey === normalizeIngredientName(ing.name))
+      if (match) {
+        return { name: match.name, ingredientId: match.id, amount: String(ing.qtyPer1000L), unit: (ing.unit === 'L' ? 'L' : 'kg') as QtyUnit }
+      }
+      unmatched++
+      return {
+        name: ing.name, amount: String(ing.qtyPer1000L), unit: (ing.unit === 'L' ? 'L' : 'kg') as QtyUnit,
+        newPack: { supplier: '', format: 'bottle' as IngredientFormat, formatOther: '', packSize: '', packUnit: 'kg' as PackUnit, packPrice: '', currency: 'GBP' as Currency },
+      }
+    }))
+    if (unmatched > 0) {
+      toast(`${unmatched} new ingredient${unmatched !== 1 ? 's' : ''} — fill in how you order each one before saving`, { icon: '🧾', duration: 5000 })
+    } else {
+      toast.success('Screenshot applied — all ingredients recognised')
+    }
+  }
+
   const unresolved = rows.filter(r => r.name.trim() && !r.ingredientId && !r.newPack)
-  const incompleteNew = rows.filter(r => r.newPack && (!parseFloat(r.newPack.packSize) || r.newPack.packPrice === '' || (r.newPack.format === 'other' && !r.newPack.formatOther.trim())))
+  const incompleteNew = rows.filter(r => r.newPack && (!parseFloat(r.newPack.packSize) || r.newPack.packPrice === '' || !r.newPack.supplier.trim() || (r.newPack.format === 'other' && !r.newPack.formatOther.trim())))
 
   const batch = parseFloat(batchLitres) || 0
 
@@ -203,7 +239,7 @@ export default function RecipeEditor({
     const validRows = rows.filter(r => r.name.trim() && parseFloat(r.amount) > 0)
     if (validRows.length === 0) { toast.error('Add at least one ingredient with an amount'); return }
     if (unresolved.length > 0) { toast.error(`Pick or create: ${unresolved.map(r => r.name).join(', ')}`); return }
-    if (incompleteNew.length > 0) { toast.error(`Fill in format, volume & price for: ${incompleteNew.map(r => r.name).join(', ')}`); return }
+    if (incompleteNew.length > 0) { toast.error(`Fill in format, volume, price & supplier for: ${incompleteNew.map(r => r.name).join(', ')}`); return }
 
     setSaving(true)
     try {
@@ -308,8 +344,23 @@ export default function RecipeEditor({
             <h2 style={{ fontSize: '16px', fontWeight: 700, margin: 0 }}>{existing ? 'Edit recipe' : 'New recipe'}</h2>
             <p style={{ fontSize: '12px', color: '#9ca3af', margin: '2px 0 0' }}>Enter the batch you actually make — amounts scale automatically for any size</p>
           </div>
-          <button onClick={onClose} style={{ color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', lineHeight: 1 }}>×</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Button variant="secondary" size="sm" onClick={() => setShowImport(true)}>📷 Fill from screenshot</Button>
+            <button onClick={onClose} style={{ color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', lineHeight: 1 }}>×</button>
+          </div>
         </div>
+
+        {showImport && (
+          <ScreenshotImport
+            onClose={() => setShowImport(false)}
+            onParsed={drafts => {
+              setShowImport(false)
+              if (!drafts.length) return
+              if (drafts.length > 1) toast(`Screenshots contained ${drafts.length} recipes — applied “${drafts[0].name}” to this one`, { icon: 'ℹ️' })
+              applyParsedDraft(drafts[0])
+            }}
+          />
+        )}
 
         <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
 
@@ -471,7 +522,7 @@ export default function RecipeEditor({
                           </div>
                         </div>
                         <div>
-                          <label style={{ ...labelStyle, fontSize: '11px' }}>Supplier</label>
+                          <label style={{ ...labelStyle, fontSize: '11px' }}>Supplier *</label>
                           <input style={inputStyle} value={row.newPack.supplier} placeholder="start typing…" list="supplier-suggestions"
                             onChange={e => setRow(i, { newPack: { ...row.newPack!, supplier: e.target.value } })} />
                         </div>
@@ -530,9 +581,16 @@ export default function RecipeEditor({
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '14px 24px', borderTop: '1px solid #f3f4f6', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSave} loading={saving}>{existing ? 'Save changes' : 'Save recipe'}</Button>
+        <div style={{ padding: '14px 24px', borderTop: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+          {(unresolved.length > 0 || incompleteNew.length > 0) ? (
+            <p style={{ fontSize: '12px', color: '#92400e', margin: 0 }}>
+              ⚠ {unresolved.length + incompleteNew.length} ingredient{unresolved.length + incompleteNew.length !== 1 ? 's' : ''} need{unresolved.length + incompleteNew.length === 1 ? 's' : ''} setting up (format, volume, price, supplier) before you can save
+            </p>
+          ) : <span />}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button onClick={handleSave} loading={saving}>{existing ? 'Save changes' : 'Save recipe'}</Button>
+          </div>
         </div>
       </div>
     </div>
