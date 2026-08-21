@@ -3,7 +3,7 @@ import {
   query, orderBy, Timestamp, increment,
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
-import { Ingredient, StockMovement, StockMovementType, PackUnit, IngredientFormat, Currency } from '@/types'
+import { Ingredient, StockMovement, StockMovementType, PackUnit, IngredientFormat, Currency, SubIngredient } from '@/types'
 
 const COL = 'ingredients'
 const MOVEMENTS = 'stockMovements'
@@ -54,10 +54,14 @@ export interface NewIngredientInput {
   format?: IngredientFormat
   currency?: Currency
   packDescription: string
-  packSize: number
-  packUnit: PackUnit
-  packPrice: number
+  packSize: number              // for processes: yield amount of one batch
+  packUnit: PackUnit            // for processes: yield unit
+  packPrice: number             // for processes: summed sub-ingredient cost
   currentStock?: number
+  isProcess?: boolean
+  processDescription?: string
+  laborMinutes?: number
+  subIngredients?: SubIngredient[]
 }
 
 export async function createIngredient(input: NewIngredientInput): Promise<string> {
@@ -77,6 +81,12 @@ export async function createIngredient(input: NewIngredientInput): Promise<strin
   if (input.supplier?.trim()) data.supplier = input.supplier.trim()
   if (input.format) data.format = input.format
   data.currency = input.currency ?? 'GBP'
+  if (input.isProcess) {
+    data.isProcess = true
+    if (input.processDescription?.trim()) data.processDescription = input.processDescription.trim()
+    if (input.laborMinutes != null) data.laborMinutes = input.laborMinutes
+    data.subIngredients = input.subIngredients ?? []
+  }
   const ref = await addDoc(collection(db, COL), data)
   return ref.id
 }

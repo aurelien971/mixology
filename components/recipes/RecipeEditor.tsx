@@ -1,26 +1,18 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Recipe, RecipeIngredient, RecipeAnalytical, Product, Ingredient, PackUnit, IngredientFormat, Currency, INGREDIENT_FORMATS, CURRENCY_SYMBOLS } from '@/types'
+import { Recipe, RecipeIngredient, RecipeAnalytical, Product, Ingredient, PackUnit, IngredientFormat, Currency, RecipeUnit, INGREDIENT_FORMATS, CURRENCY_SYMBOLS } from '@/types'
 import { createRecipe, updateRecipe } from '@/lib/firestore/recipes'
-import { getIngredients, createIngredient, normalizeIngredientName, normalizeSupplier } from '@/lib/firestore/ingredients'
+import { getIngredients, createIngredient, updateIngredient, normalizeIngredientName, normalizeSupplier } from '@/lib/firestore/ingredients'
 import { syncProductCostForRecipe } from '@/lib/recipeSync'
 import Button from '@/components/ui/Button'
 import ScreenshotImport from '@/components/recipes/ScreenshotImport'
+import ProcessEditor from '@/components/recipes/ProcessEditor'
+import { toBaseAmount } from '@/lib/costing'
 import toast from 'react-hot-toast'
 
 function r4(n: number) { return Math.round(n * 10000) / 10000 }
 
-type QtyUnit = 'g' | 'kg' | 'ml' | 'L'
-// Convert an amount to base units (kg or L) — 1g = 0.001kg, 1ml = 0.001L
-function toBase(amount: number, unit: QtyUnit): { value: number; base: 'KG' | 'L' } {
-  switch (unit) {
-    case 'g':  return { value: amount / 1000, base: 'KG' }
-    case 'kg': return { value: amount, base: 'KG' }
-    case 'ml': return { value: amount / 1000, base: 'L' }
-    case 'L':  return { value: amount, base: 'L' }
-  }
-}
 
 interface NewPack {
   supplier: string
@@ -36,11 +28,17 @@ interface Row {
   name: string
   ingredientId?: string
   amount: string                // quantity for THIS batch, in `unit`
-  unit: QtyUnit
+  unit: RecipeUnit
   newPack?: NewPack
 }
 
 interface AnalyticalRow { name: string; min: string; target: string; max: string; notes: string }
+
+function unitFromStored(u: string): RecipeUnit {
+  if (u === 'L') return 'L'
+  if (u === 'UNIT' || u === 'unit') return 'unit'
+  return 'kg'
+}
 
 export interface RecipeDraft {
   name: string
@@ -52,6 +50,7 @@ export interface RecipeDraft {
   ingredients: RecipeIngredient[]
   analyticalValues: RecipeAnalytical[]
   cookingInstructions: string
+  approxTimeMinutes?: number
 }
 
 const inputStyle: React.CSSProperties = {
@@ -86,7 +85,7 @@ export default function RecipeEditor({
       name: i.name,
       ingredientId: i.ingredientId,
       amount: String(i.qtyPer1000L),
-      unit: i.unit === 'L' ? 'L' : 'kg',
+      unit: unitFromStored(i.unit),
     }))
   )
   const [analytical, setAnalytical] = useState<AnalyticalRow[]>(
@@ -98,8 +97,12 @@ export default function RecipeEditor({
   const [library, setLibrary] = useState<Ingredient[]>([])
   const [saving, setSaving]   = useState(false)
   const [savingIngIdx, setSavingIngIdx] = useState<number | null>(null)
+  const [priceInputs, setPriceInputs] = useState<Record<string, string>>({})
+  const [savingPriceId, setSavingPriceId] = useState<string | null>(null)
   const [activeSuggest, setActiveSuggest] = useState<number | null>(null)
   const [showImport, setShowImport] = useState(false)
+  const [processForRow, setProcessForRow] = useState<{ index: number; presetName: string } | null>(null)
+  const [approxTime, setApproxTime] = useState(src?.approxTimeMinutes != null ? String(src.approxTimeMinutes) : '')
 
   useEffect(() => { getIngredients().then(setLibrary) }, [])
 
@@ -173,6 +176,25 @@ export default function RecipeEditor({
     }
   }
 
+  // Inline fix: a matched library ingredient has no price — set it right here
+  async function savePriceFor(ing: Ingredient) {
+    const raw = priceInputs[ing.id]
+    const price = parseFloat(raw)
+    if (!(price > 0)) { toast.error('Enter the price you pay per ' + ing.packDescription); return }
+    setSavingPriceId(ing.id)
+    try {
+      await updateIngredient(ing.id, { packPrice: price })
+      setLibrary(await getIngredients())
+      setPriceInputs(prev => { const n = { ...prev }; delete n[ing.id]; return n })
+      toast.success(`${ing.name}: £${price.toFixed(2)} per ${ing.packDescription} saved`)
+    } catch (e) {
+      console.error(e)
+      toast.error('Failed to save price')
+    } finally {
+      setSavingPriceId(null)
+    }
+  }
+
   // Fill this recipe's form from a parsed screenshot. Unmatched ingredients get their
   // "new ingredient" form opened automatically — the recipe can't be saved until each
   // one has format, volume, price AND supplier.
@@ -192,11 +214,11 @@ export default function RecipeEditor({
     setRows(d.ingredients.map(ing => {
       const match = library.find(l => l.nameKey === normalizeIngredientName(ing.name))
       if (match) {
-        return { name: match.name, ingredientId: match.id, amount: String(ing.qtyPer1000L), unit: (ing.unit === 'L' ? 'L' : 'kg') as QtyUnit }
+        return { name: match.name, ingredientId: match.id, amount: String(ing.qtyPer1000L), unit: unitFromStored(ing.unit) }
       }
       unmatched++
       return {
-        name: ing.name, amount: String(ing.qtyPer1000L), unit: (ing.unit === 'L' ? 'L' : 'kg') as QtyUnit,
+        name: ing.name, amount: String(ing.qtyPer1000L), unit: unitFromStored(ing.unit),
         newPack: { supplier: '', format: 'bottle' as IngredientFormat, formatOther: '', packSize: '', packUnit: 'kg' as PackUnit, packPrice: '', currency: 'GBP' as Currency },
       }
     }))
@@ -208,6 +230,11 @@ export default function RecipeEditor({
   }
 
   const unresolved = rows.filter(r => r.name.trim() && !r.ingredientId && !r.newPack)
+  const unpriced = rows.filter(r => {
+    if (!r.ingredientId) return false
+    const ing = library.find(l => l.id === r.ingredientId)
+    return !!ing && !(ing.packPrice > 0)
+  })
   const incompleteNew = rows.filter(r => r.newPack && (!parseFloat(r.newPack.packSize) || r.newPack.packPrice === '' || !r.newPack.supplier.trim() || (r.newPack.format === 'other' && !r.newPack.formatOther.trim())))
 
   const batch = parseFloat(batchLitres) || 0
@@ -219,7 +246,7 @@ export default function RecipeEditor({
     for (const r of rows) {
       const amount = parseFloat(r.amount)
       if (!r.name.trim() || !amount) continue
-      const { value } = toBase(amount, r.unit)
+      const { value } = toBaseAmount(amount, r.unit)
       const perLitre = value / batch
       const ing = r.ingredientId ? library.find(i => i.id === r.ingredientId) : undefined
       if (ing && ing.packPrice > 0 && ing.packSize > 0) {
@@ -240,6 +267,7 @@ export default function RecipeEditor({
     if (validRows.length === 0) { toast.error('Add at least one ingredient with an amount'); return }
     if (unresolved.length > 0) { toast.error(`Pick or create: ${unresolved.map(r => r.name).join(', ')}`); return }
     if (incompleteNew.length > 0) { toast.error(`Fill in format, volume, price & supplier for: ${incompleteNew.map(r => r.name).join(', ')}`); return }
+    if (unpriced.length > 0) { toast.error(`Add the price for: ${unpriced.map(r => r.name).join(', ')}`); return }
 
     setSaving(true)
     try {
@@ -269,7 +297,7 @@ export default function RecipeEditor({
         .map((r, i) => ({ r, i }))
         .filter(({ r }) => r.name.trim() && parseFloat(r.amount) > 0)
         .map(({ r, i }) => {
-          const { value, base } = toBase(parseFloat(r.amount), r.unit)
+          const { value, base } = toBaseAmount(parseFloat(r.amount), r.unit)
           const per1L = value / batch
           return {
             name: r.name.trim(),
@@ -300,6 +328,7 @@ export default function RecipeEditor({
         status: 'active',
       }
       if (variation.trim()) payload.variation = variation.trim()
+      if (approxTime !== '' && parseFloat(approxTime) > 0) payload.approxTimeMinutes = parseFloat(approxTime)
       if (createdBy.trim()) payload.createdBy = createdBy.trim()
       if (existing?.version) payload.version = existing.version
       if (productId) {
@@ -350,6 +379,20 @@ export default function RecipeEditor({
           </div>
         </div>
 
+        {processForRow && (
+          <ProcessEditor
+            presetName={processForRow.presetName}
+            ingredients={library}
+            onClose={() => setProcessForRow(null)}
+            onSaved={async id => {
+              const fresh = await getIngredients()
+              setLibrary(fresh)
+              const proc = fresh.find(x => x.id === id)
+              setRow(processForRow.index, { ingredientId: id, name: proc?.name ?? processForRow.presetName, newPack: undefined })
+            }}
+          />
+        )}
+
         {showImport && (
           <ScreenshotImport
             onClose={() => setShowImport(false)}
@@ -380,8 +423,8 @@ export default function RecipeEditor({
             </div>
           </div>
 
-          {/* Product link + batch volume */}
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
+          {/* Product link + batch volume + approx time */}
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '10px' }}>
             <div>
               <label style={labelStyle}>Linked product (drives COGS in catalog & finances)</label>
               <select style={{ ...inputStyle, cursor: 'pointer' }} value={productId} onChange={e => setProductId(e.target.value)}>
@@ -396,6 +439,13 @@ export default function RecipeEditor({
               <div style={{ position: 'relative' }}>
                 <input style={inputStyle} inputMode="decimal" value={batchLitres} onChange={e => setBatchLitres(e.target.value)} placeholder="10" />
                 <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: '#9ca3af' }}>L</span>
+              </div>
+            </div>
+            <div>
+              <label style={labelStyle}>Approx. time to cook</label>
+              <div style={{ position: 'relative' }}>
+                <input style={inputStyle} inputMode="decimal" value={approxTime} onChange={e => setApproxTime(e.target.value)} placeholder="90" />
+                <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: '#9ca3af' }}>min</span>
               </div>
             </div>
           </div>
@@ -413,7 +463,8 @@ export default function RecipeEditor({
               </span>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 78px 32px', gap: '6px', marginBottom: '4px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '26px 1fr 100px 78px 32px', gap: '6px', marginBottom: '4px' }}>
+              <span />
               <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' }}>Ingredient</span>
               <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' }}>Amount</span>
               <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' }}>Unit</span>
@@ -423,9 +474,21 @@ export default function RecipeEditor({
             {rows.map((row, i) => {
               const suggestions = suggestionsFor(row)
               const linked = row.ingredientId ? library.find(l => l.id === row.ingredientId) : undefined
+              const priced = !!linked && linked.packPrice > 0
+              const status: 'ok' | 'price' | 'setup' | 'empty' =
+                !row.name.trim() ? 'empty' : priced ? 'ok' : linked ? 'price' : 'setup'
               return (
-                <div key={i} style={{ marginBottom: '6px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 78px 32px', gap: '6px', alignItems: 'center' }}>
+                <div key={i} style={{ marginBottom: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '26px 1fr 100px 78px 32px', gap: '6px', alignItems: 'center' }}>
+                    <span title={status === 'ok' ? 'Validated — matched & priced' : status === 'price' ? 'Needs a price' : status === 'setup' ? 'Needs setting up' : ''}
+                      style={{
+                        width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '12px', fontWeight: 700,
+                        background: status === 'ok' ? '#dcfce7' : status === 'price' ? '#fef3c7' : status === 'setup' ? '#fef3c7' : '#f3f4f6',
+                        color: status === 'ok' ? '#166534' : status === 'empty' ? '#d1d5db' : '#92400e',
+                      }}>
+                      {status === 'ok' ? '✓' : status === 'price' ? '£' : status === 'setup' ? '?' : '·'}
+                    </span>
                     <div style={{ position: 'relative' }}>
                       <input
                         style={{ ...inputStyle, borderColor: row.name.trim() && !row.ingredientId && !row.newPack ? '#fbbf24' : linked ? '#bbf7d0' : '#e5e7eb' }}
@@ -455,6 +518,10 @@ export default function RecipeEditor({
                             style={{ display: 'block', width: '100%', padding: '8px 12px', border: 'none', borderTop: suggestions.length ? '1px solid #f3f4f6' : 'none', background: '#f0fdf4', cursor: 'pointer', fontSize: '13px', textAlign: 'left', color: '#166534', fontWeight: 600 }}>
                             + New ingredient “{row.name.trim()}”
                           </button>
+                          <button onMouseDown={() => { setProcessForRow({ index: i, presetName: row.name.trim() }); setActiveSuggest(null) }}
+                            style={{ display: 'block', width: '100%', padding: '8px 12px', border: 'none', borderTop: '1px solid #f3f4f6', background: '#eff6ff', cursor: 'pointer', fontSize: '13px', textAlign: 'left', color: '#1d4ed8', fontWeight: 600 }}>
+                            ⚙️ New process “{row.name.trim()}” (made in-house)
+                          </button>
                         </div>
                       )}
                     </div>
@@ -464,19 +531,40 @@ export default function RecipeEditor({
                       onChange={e => setRow(i, { amount: e.target.value })}
                     />
                     <select style={{ ...inputStyle, padding: '9px 6px', cursor: 'pointer' }} value={row.unit}
-                      onChange={e => setRow(i, { unit: e.target.value as QtyUnit })}>
+                      onChange={e => setRow(i, { unit: e.target.value as RecipeUnit })}>
                       <option value="g">g</option>
                       <option value="kg">kg</option>
                       <option value="ml">ml</option>
                       <option value="L">L</option>
+                      <option value="unit">unit</option>
                     </select>
                     <button onClick={() => setRows(prev => prev.filter((_, idx) => idx !== i))}
                       style={{ color: '#d1d5db', background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px' }}>×</button>
                   </div>
 
+                  {/* Linked ingredient with no price — fix it inline, no trip to Stock take */}
+                  {linked && !(linked.packPrice > 0) && (
+                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderLeft: '4px solid #f59e0b', borderRadius: '10px', padding: '8px 12px', margin: '4px 0 2px 32px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '12px', color: '#92400e' }}>
+                        <strong>{linked.name}</strong> — add the price: what do you pay per {linked.packDescription}?
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
+                        <span style={{ fontSize: '13px', color: '#92400e', fontWeight: 700 }}>£</span>
+                        <input
+                          style={{ ...inputStyle, width: '90px', padding: '7px 10px' }}
+                          inputMode="decimal" placeholder="0.00" autoFocus={false}
+                          value={priceInputs[linked.id] ?? ''}
+                          onChange={e => setPriceInputs(prev => ({ ...prev, [linked.id]: e.target.value }))}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); savePriceFor(linked) } }}
+                        />
+                        <Button size="sm" onClick={() => savePriceFor(linked)} loading={savingPriceId === linked.id}>Save price</Button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* New ingredient — how do you ORDER it from the supplier */}
                   {row.newPack && (
-                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '12px 14px', margin: '6px 0 2px' }}>
+                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderLeft: '4px solid #22c55e', borderRadius: '10px', padding: '12px 14px', margin: '4px 0 2px 32px' }}>
                       <p style={{ fontSize: '12px', fontWeight: 600, color: '#166534', margin: '0 0 2px' }}>
                         New ingredient — “{row.name.trim()}”
                       </p>
@@ -506,6 +594,7 @@ export default function RecipeEditor({
                             onChange={e => setRow(i, { newPack: { ...row.newPack!, packUnit: e.target.value as PackUnit } })}>
                             <option value="kg">kg</option>
                             <option value="L">L</option>
+                            <option value="unit">units</option>
                           </select>
                         </div>
                         <div>
@@ -582,9 +671,9 @@ export default function RecipeEditor({
 
         {/* Footer */}
         <div style={{ padding: '14px 24px', borderTop: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-          {(unresolved.length > 0 || incompleteNew.length > 0) ? (
+          {(unresolved.length > 0 || incompleteNew.length > 0 || unpriced.length > 0) ? (
             <p style={{ fontSize: '12px', color: '#92400e', margin: 0 }}>
-              ⚠ {unresolved.length + incompleteNew.length} ingredient{unresolved.length + incompleteNew.length !== 1 ? 's' : ''} need{unresolved.length + incompleteNew.length === 1 ? 's' : ''} setting up (format, volume, price, supplier) before you can save
+              ⚠ {unresolved.length + incompleteNew.length + unpriced.length} ingredient{unresolved.length + incompleteNew.length + unpriced.length !== 1 ? 's' : ''} left to validate — every row needs a ✓ before you can save
             </p>
           ) : <span />}
           <div style={{ display: 'flex', gap: '8px' }}>

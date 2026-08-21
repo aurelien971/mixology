@@ -1,8 +1,40 @@
-import { Ingredient, Recipe, Product, Order } from '@/types'
+import { Ingredient, Recipe, Order, RecipeUnit } from '@/types'
 import { normalizeIngredientName } from '@/lib/firestore/ingredients'
 
 function r2(n: number) { return Math.round(n * 100) / 100 }
 function r4(n: number) { return Math.round(n * 10000) / 10000 }
+
+// Convert a recipe/process amount to base units (kg / L / unit)
+export function toBaseAmount(amount: number, unit: RecipeUnit): { value: number; base: 'KG' | 'L' | 'UNIT' } {
+  switch (unit) {
+    case 'g':    return { value: amount / 1000, base: 'KG' }
+    case 'kg':   return { value: amount, base: 'KG' }
+    case 'ml':   return { value: amount / 1000, base: 'L' }
+    case 'L':    return { value: amount, base: 'L' }
+    case 'unit': return { value: amount, base: 'UNIT' }
+  }
+}
+
+// Cost of making one batch of a process ingredient from its sub-ingredients
+export function computeProcessCost(
+  proc: Pick<Ingredient, 'subIngredients' | 'packSize'>,
+  all: Ingredient[]
+): { total: number; perYieldUnit: number; complete: boolean; missing: string[] } {
+  let total = 0
+  const missing: string[] = []
+  for (const sub of proc.subIngredients ?? []) {
+    const ing = all.find(i => i.id === sub.ingredientId)
+    if (!ing || !(ing.pricePerUnit > 0)) { missing.push(sub.name); continue }
+    total += toBaseAmount(sub.amount, sub.unit).value * ing.pricePerUnit
+  }
+  const yieldAmount = proc.packSize || 0
+  return {
+    total: r2(total),
+    perYieldUnit: yieldAmount > 0 ? r4(total / yieldAmount) : 0,
+    complete: missing.length === 0 && (proc.subIngredients?.length ?? 0) > 0,
+    missing,
+  }
+}
 
 export interface RecipeCostLine {
   name: string
@@ -79,6 +111,21 @@ export function ingredientNeedsForOrder(
   const acc = new Map<string, IngredientNeed>()
   const unreciped: string[] = []
 
+  function addNeed(ing: Ingredient, amount: number) {
+    const ex = acc.get(ing.id)
+    if (ex) {
+      ex.amount = r4(ex.amount + amount)
+      ex.packs = ing.packSize > 0 ? r4(ex.amount / ing.packSize) : 0
+    } else {
+      acc.set(ing.id, {
+        ingredientId: ing.id,
+        ingredientName: ing.name,
+        amount: r4(amount),
+        packs: ing.packSize > 0 ? r4(amount / ing.packSize) : 0,
+      })
+    }
+  }
+
   for (const item of order.lineItems) {
     const recipe = recipes.find(r => r.productId === item.productId)
     if (!recipe) { unreciped.push(item.productName); continue }
@@ -87,17 +134,16 @@ export function ingredientNeedsForOrder(
       const ing = matchIngredient(row, ingredients)
       if (!ing) continue
       const amount = row.qtyPer1L * litres
-      const ex = acc.get(ing.id)
-      if (ex) {
-        ex.amount = r4(ex.amount + amount)
-        ex.packs = ing.packSize > 0 ? r4(ex.amount / ing.packSize) : 0
+      // Processes are made in-house — what we actually buy is their sub-ingredients
+      if (ing.isProcess && ing.subIngredients?.length && ing.packSize > 0) {
+        const batches = amount / ing.packSize
+        for (const sub of ing.subIngredients) {
+          const subIng = ingredients.find(x => x.id === sub.ingredientId)
+          if (!subIng) continue
+          addNeed(subIng, toBaseAmount(sub.amount, sub.unit).value * batches)
+        }
       } else {
-        acc.set(ing.id, {
-          ingredientId: ing.id,
-          ingredientName: ing.name,
-          amount: r4(amount),
-          packs: ing.packSize > 0 ? r4(amount / ing.packSize) : 0,
-        })
+        addNeed(ing, amount)
       }
     }
   }

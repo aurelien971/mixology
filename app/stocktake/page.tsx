@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
+import ProcessEditor from '@/components/recipes/ProcessEditor'
 import { getIngredients, createIngredient, updateIngredient, deleteIngredient, recordStockMovement, getStockMovements, normalizeSupplier } from '@/lib/firestore/ingredients'
 import { getRecipes } from '@/lib/firestore/recipes'
 import { getAllOrders } from '@/lib/firestore/orders'
@@ -209,6 +210,7 @@ function IngredientsTab({ ingredients, recipes, onChanged }: { ingredients: Ingr
   const knownSuppliers = [...new Set(ingredients.map(i => i.supplier).filter((x): x is string => !!x))].sort()
   const [adding, setAdding] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [processModal, setProcessModal] = useState<{ existing?: Ingredient } | null>(null)
 
   const usageCount = (id: string, name: string) =>
     recipes.filter(r => r.ingredients.some(ri => ri.ingredientId === id || ri.name.trim().toLowerCase() === name.toLowerCase())).length
@@ -287,7 +289,7 @@ function IngredientsTab({ ingredients, recipes, onChanged }: { ingredients: Ingr
           )}
           <input style={{ ...inp, width: '58px' }} inputMode="decimal" value={form.packSize} onChange={e => setForm(f => ({ ...f, packSize: e.target.value }))} placeholder="0.7" />
           <select style={{ ...inp, width: '54px', padding: '8px 4px' }} value={form.packUnit} onChange={e => setForm(f => ({ ...f, packUnit: e.target.value as PackUnit }))}>
-            <option value="kg">kg</option><option value="L">L</option>
+            <option value="kg">kg</option><option value="L">L</option><option value="unit">unit</option>
           </select>
         </div>
       </td>
@@ -309,12 +311,27 @@ function IngredientsTab({ ingredients, recipes, onChanged }: { ingredients: Ingr
 
   return (
     <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', overflow: 'hidden' }}>
+      {processModal && (
+        <ProcessEditor
+          existing={processModal.existing}
+          ingredients={ingredients}
+          onClose={() => setProcessModal(null)}
+          onSaved={async () => {
+            const { updated } = await recomputeAllProductCosts()
+            if (updated) toast.success(`${updated} product cost${updated !== 1 ? 's' : ''} recalculated`)
+            onChanged()
+          }}
+        />
+      )}
       <div style={{ padding: '14px 18px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <p style={{ fontSize: '14px', fontWeight: 600, color: '#111827', margin: 0 }}>Ingredients & prices</p>
           <p style={{ fontSize: '12px', color: '#9ca3af', margin: '2px 0 0' }}>Change a price here and every recipe cost & product COGS updates automatically</p>
         </div>
-        <Button size="sm" onClick={() => { setEditing(null); setAdding(true); setForm(emptyForm) }}>+ Add ingredient</Button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <Button size="sm" variant="secondary" onClick={() => setProcessModal({})}>⚙️ Add process</Button>
+          <Button size="sm" onClick={() => { setEditing(null); setAdding(true); setForm(emptyForm) }}>+ Add ingredient</Button>
+        </div>
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
@@ -335,6 +352,11 @@ function IngredientsTab({ ingredients, recipes, onChanged }: { ingredients: Ingr
             <tr key={ing.id} style={{ borderTop: '1px solid #f9fafb' }}>
               <td style={{ ...td, fontWeight: 600, color: '#111827' }}>
                 {ing.name}
+                {ing.isProcess && (
+                  <span style={{ marginLeft: '6px', fontSize: '10px', fontWeight: 700, color: '#1d4ed8', background: '#eff6ff', border: '1px solid #dbeafe', padding: '1px 7px', borderRadius: '20px' }}>
+                    ⚙ process{ing.laborMinutes ? ` · ${ing.laborMinutes}min labour` : ''}
+                  </span>
+                )}
                 {usageCount(ing.id, ing.name) > 0 && <span style={{ marginLeft: '8px', fontSize: '11px', color: '#9ca3af' }}>{usageCount(ing.id, ing.name)} recipe{usageCount(ing.id, ing.name) !== 1 ? 's' : ''}</span>}
               </td>
               <td style={{ ...td, color: '#6b7280' }}>{ing.supplier ?? <span style={{ color: '#d1d5db' }}>—</span>}</td>
@@ -346,7 +368,7 @@ function IngredientsTab({ ingredients, recipes, onChanged }: { ingredients: Ingr
                 {ing.pricePerUnit > 0 ? `${CURRENCY_SYMBOLS[ing.currency ?? 'GBP']}${ing.pricePerUnit.toFixed(2)}` : '—'}
               </td>
               <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                <Button size="sm" variant="ghost" onClick={() => startEdit(ing)}>Edit</Button>
+                <Button size="sm" variant="ghost" onClick={() => ing.isProcess ? setProcessModal({ existing: ing }) : startEdit(ing)}>Edit</Button>
                 <Button size="sm" variant="ghost" onClick={() => remove(ing)} style={{ color: '#dc2626' } as React.CSSProperties}>×</Button>
               </td>
             </tr>

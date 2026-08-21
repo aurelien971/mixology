@@ -8,6 +8,7 @@ import RecipeEditor, { RecipeDraft } from '@/components/recipes/RecipeEditor'
 import { getRecipes } from '@/lib/firestore/recipes'
 import { getProducts } from '@/lib/firestore/catalog'
 import { getIngredients } from '@/lib/firestore/ingredients'
+import { getRecipeDrafts } from '@/lib/firestore/recipeDrafts'
 import { computeRecipeCost } from '@/lib/costing'
 import { Recipe, Product, Ingredient } from '@/types'
 
@@ -19,11 +20,13 @@ export default function RecipesPage() {
   const [search, setSearch]           = useState('')
 
   const [editorState, setEditorState] = useState<{ existing?: Recipe; draft?: RecipeDraft; presetProductId?: string } | null>(null)
+  const [pendingDrafts, setPendingDrafts] = useState(0)
 
   function load() {
     Promise.all([getRecipes(), getProducts(), getIngredients()])
       .then(([r, p, i]) => { setRecipes(r); setProducts(p); setIngredients(i) })
       .finally(() => setLoading(false))
+    getRecipeDrafts().then(d => setPendingDrafts(d.length)).catch(() => {})
   }
   useEffect(() => { load() }, [])
 
@@ -63,6 +66,21 @@ export default function RecipesPage() {
         <p style={{ fontSize: '13px', color: '#9ca3af' }}>Loading...</p>
       ) : (
         <>
+          {/* Imported drafts awaiting approval */}
+          {pendingDrafts > 0 && (
+            <Link href="/recipes/review" style={{ textDecoration: 'none' }}>
+              <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '14px', padding: '14px 20px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
+                <div>
+                  <p style={{ fontSize: '14px', fontWeight: 700, color: '#1d4ed8', margin: 0 }}>
+                    📋 {pendingDrafts} imported recipe{pendingDrafts !== 1 ? 's' : ''} waiting for your approval
+                  </p>
+                  <p style={{ fontSize: '12px', color: '#3b82f6', margin: '2px 0 0' }}>Extracted from the Cocktail Production blend sheets — review, tweak and approve</p>
+                </div>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: '#1d4ed8' }}>Review →</span>
+              </div>
+            </Link>
+          )}
+
           {/* Missing recipes — the to-do list for Dima */}
           {missingRecipes.length > 0 && (
             <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '14px', padding: '16px 20px', marginBottom: '20px' }}>

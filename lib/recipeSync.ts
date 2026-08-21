@@ -1,9 +1,25 @@
 import { Recipe, Ingredient } from '@/types'
 import { getRecipes } from '@/lib/firestore/recipes'
-import { getIngredients } from '@/lib/firestore/ingredients'
+import { getIngredients, updateIngredient } from '@/lib/firestore/ingredients'
 import { updateProduct } from '@/lib/firestore/catalog'
 import { getProducts } from '@/lib/firestore/catalog'
-import { computeRecipeCost, costPerServingFromLitre } from '@/lib/costing'
+import { computeRecipeCost, costPerServingFromLitre, computeProcessCost } from '@/lib/costing'
+
+// Re-derive every process ingredient's price from its sub-ingredients.
+// Call before recomputing product costs so recipes using processes get fresh numbers.
+export async function recomputeProcessPrices(preloaded?: Ingredient[]): Promise<Ingredient[]> {
+  let all = preloaded ?? await getIngredients()
+  let changed = false
+  for (const proc of all.filter(i => i.isProcess)) {
+    const c = computeProcessCost(proc, all)
+    if (c.complete && Math.abs(c.total - proc.packPrice) > 0.005) {
+      await updateIngredient(proc.id, { packPrice: c.total })
+      changed = true
+    }
+  }
+  if (changed) all = await getIngredients()
+  return all
+}
 
 // Push the recipe-calculated cost into the linked catalog product.
 // Wherever a recipe exists, catalog cost is CALCULATED — never typed in.
@@ -31,7 +47,8 @@ export async function syncProductCostForRecipe(
 
 // Recompute every linked product's cost — call after ingredient prices change.
 export async function recomputeAllProductCosts(): Promise<{ updated: number; incomplete: number }> {
-  const [recipes, ingredients, products] = await Promise.all([getRecipes(), getIngredients(), getProducts()])
+  const [recipes, rawIngredients, products] = await Promise.all([getRecipes(), getIngredients(), getProducts()])
+  const ingredients = await recomputeProcessPrices(rawIngredients)
   let updated = 0, incomplete = 0
   for (const recipe of recipes) {
     if (!recipe.productId) continue

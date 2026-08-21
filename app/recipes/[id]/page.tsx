@@ -136,7 +136,7 @@ export default function RecipeDetailPage() {
                 <tr style={{ background: '#f9fafb' }}>
                   <th style={{ textAlign: 'left', padding: '8px 18px', color: '#9ca3af', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ingredient</th>
                   <th style={{ textAlign: 'right', padding: '8px 12px', color: '#9ca3af', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Per 1000L</th>
-                  <th style={{ textAlign: 'right', padding: '8px 18px', color: '#9ca3af', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>For {litres}L (KG)</th>
+                  <th style={{ textAlign: 'right', padding: '8px 18px', color: '#9ca3af', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>For {litres}L</th>
                 </tr>
               </thead>
               <tbody>
@@ -149,7 +149,7 @@ export default function RecipeDetailPage() {
                         {ing.supplier && <span style={{ marginLeft: '6px', fontSize: '11px', color: '#9ca3af' }}>{ing.supplier}</span>}
                       </td>
                       <td style={{ padding: '10px 12px', color: '#6b7280', textAlign: 'right', fontFamily: 'monospace', fontSize: '12px' }}>{ing.qtyPer1000L}</td>
-                      <td style={{ padding: '10px 18px', color: '#111827', textAlign: 'right', fontWeight: 600, fontFamily: 'monospace' }}>{qty}</td>
+                      <td style={{ padding: '10px 18px', color: '#111827', textAlign: 'right', fontWeight: 600, fontFamily: 'monospace' }}>{qty} {ing.unit === 'L' ? 'L' : ing.unit === 'UNIT' ? 'units' : 'kg'}</td>
                     </tr>
                   )
                 })}
@@ -239,6 +239,7 @@ export default function RecipeDetailPage() {
               {recipe.createdBy  && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#9ca3af' }}>Created by</span><span style={{ color: '#374151', fontWeight: 500 }}>{recipe.createdBy}</span></div>}
               {recipe.version    && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#9ca3af' }}>Version</span><span style={{ color: '#374151' }}>v{recipe.version}</span></div>}
               {recipe.dateCreated && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#9ca3af' }}>Date</span><span style={{ color: '#374151' }}>{recipe.dateCreated}</span></div>}
+              {recipe.approxTimeMinutes != null && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#9ca3af' }}>Approx. cook time</span><span style={{ color: '#374151', fontWeight: 500 }}>{recipe.approxTimeMinutes >= 60 ? `${Math.floor(recipe.approxTimeMinutes / 60)}h${recipe.approxTimeMinutes % 60 ? ` ${recipe.approxTimeMinutes % 60}m` : ''}` : `${recipe.approxTimeMinutes} min`}</span></div>}
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#9ca3af' }}>Ingredients</span><span style={{ color: '#374151' }}>{recipe.ingredients.length}</span></div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#9ca3af' }}>Status</span>

@@ -152,6 +152,17 @@ export const INGREDIENT_FORMATS: { value: IngredientFormat; label: string }[] = 
 export type Currency = 'GBP' | 'EUR' | 'USD'
 export const CURRENCY_SYMBOLS: Record<Currency, string> = { GBP: '£', EUR: '€', USD: '$' }
 
+// Units used when measuring an ingredient inside a recipe or process
+export type RecipeUnit = 'g' | 'kg' | 'ml' | 'L' | 'unit'
+
+// A component of a "process" ingredient (e.g. lemon juice = water + limes + time)
+export interface SubIngredient {
+  ingredientId: string
+  name: string
+  amount: number
+  unit: RecipeUnit
+}
+
 export interface Ingredient {
   id: string
   name: string                  // canonical display name, e.g. "Citric Acid"
@@ -159,6 +170,12 @@ export interface Ingredient {
   supplier?: string
   format?: IngredientFormat     // how it arrives: bottle / keg / bag-in-box / drum...
   currency?: Currency           // price currency (default GBP)
+  // Process ingredients — made in-house from other ingredients
+  isProcess?: boolean
+  processDescription?: string   // quick description of how it's made
+  laborMinutes?: number         // ACTIVE labour only (not resting/distilling time)
+  subIngredients?: SubIngredient[]
+  // For processes: packSize = yield amount, packUnit = yield unit, packPrice = summed cost
   packDescription: string       // human label, e.g. "0.7L bottle", "25kg drum"
   packSize: number              // size of ONE pack in packUnit, e.g. 0.7
   packUnit: PackUnit            // what the pack is measured in
@@ -206,9 +223,39 @@ export interface Recipe {
   ingredients: RecipeIngredient[]
   analyticalValues: RecipeAnalytical[]
   cookingInstructions: string
+  approxTimeMinutes?: number    // rough start-to-finish time to cook one batch
   status: 'active' | 'discontinued'
   createdAt: Date
   updatedAt: Date
+}
+
+// ── Imported recipe drafts awaiting approval ─────────────────────────────────
+
+export interface DraftIngredientRow {
+  name: string
+  qtyPer1L: number
+  matched: boolean              // true when it maps to an ingredient in the library
+}
+
+export interface RecipeDraftDoc {
+  id: string
+  kind: 'recipe' | 'process'
+  name: string
+  client?: string
+  version?: string
+  sourceFile: string
+  confidence: number            // 0-100
+  matchedProductId?: string
+  matchedProductName?: string
+  matchedProductCode?: string
+  productHasRecipe?: boolean
+  ingredients: DraftIngredientRow[]
+  analyticalValues: RecipeAnalytical[]
+  cookingInstructions: string
+  approxTimeMinutes?: number
+  laborMinutes?: number
+  status: 'pending'
+  createdAt: Date
 }
 
 export type OrderType = 'order' | 'rd'
