@@ -8,7 +8,7 @@ import { syncProductCostForRecipe } from '@/lib/recipeSync'
 import Button from '@/components/ui/Button'
 import ScreenshotImport from '@/components/recipes/ScreenshotImport'
 import ProcessEditor from '@/components/recipes/ProcessEditor'
-import { toBaseAmount } from '@/lib/costing'
+import { toBaseAmount, findIngredientMatch } from '@/lib/costing'
 import toast from 'react-hot-toast'
 
 function r4(n: number) { return Math.round(n * 10000) / 10000 }
@@ -112,11 +112,11 @@ export default function RecipeEditor({
     [library]
   )
 
-  // Auto-link rows whose typed name matches the library
+  // Auto-link rows whose typed name matches the library (fuzzy: handles TMS suffixes etc.)
   useEffect(() => {
     setRows(prev => prev.map(row => {
       if (row.ingredientId) return row
-      const match = library.find(i => i.nameKey === normalizeIngredientName(row.name))
+      const match = findIngredientMatch(row.name, library)
       return match ? { ...row, ingredientId: match.id, name: match.name, newPack: undefined } : row
     }))
   }, [library])

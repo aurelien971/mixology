@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { Ingredient, PackUnit, RecipeUnit, SubIngredient, CURRENCY_SYMBOLS } from '@/types'
 import { createIngredient, updateIngredient, getIngredients, normalizeIngredientName } from '@/lib/firestore/ingredients'
-import { toBaseAmount } from '@/lib/costing'
+import { toBaseAmount, findIngredientMatch } from '@/lib/costing'
 import Button from '@/components/ui/Button'
 import toast from 'react-hot-toast'
 
@@ -50,10 +50,10 @@ export default function ProcessEditor({
   const [subs, setSubs] = useState<SubRow[]>(
     existing
       ? (existing.subIngredients ?? []).map(s => ({ ingredientId: s.ingredientId, amount: String(s.amount), unit: s.unit }))
-      : (draft?.subs ?? []).map(s => ({
-          ingredientId: ingredients.find(i => !i.isProcess && i.nameKey === normalizeIngredientName(s.name))?.id ?? '',
-          amount: String(s.amount), unit: s.unit, rawName: s.name,
-        }))
+      : (draft?.subs ?? []).map(s => {
+          const match = findIngredientMatch(s.name, ingredients.filter(i => !i.isProcess))
+          return { ingredientId: match?.id ?? '', amount: String(s.amount), unit: s.unit, rawName: s.name }
+        })
   )
   const [saving, setSaving] = useState(false)
   const [lib, setLib] = useState<Ingredient[]>(ingredients)

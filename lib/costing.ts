@@ -52,6 +52,26 @@ export interface RecipeCost {
   missingIngredients: string[]
 }
 
+// Fuzzy name → ingredient matcher. Handles the "Sugar syrup" vs "Sugar Syrup TMS"
+// mismatch between cocktail sheets and house-blend names: exact key first, then
+// key with TMS/underscore junk stripped, then unambiguous containment.
+export function findIngredientMatch(name: string, ingredients: Ingredient[]): Ingredient | undefined {
+  const key = normalizeIngredientName(name)
+  if (!key) return undefined
+  const exact = ingredients.find(i => i.nameKey === key)
+  if (exact) return exact
+  const strip = (x: string) => x.replace(/\btms\b/g, ' ').replace(/_/g, ' ').replace(/\s+/g, ' ').trim()
+  const k = strip(key)
+  const stripped = ingredients.find(i => strip(i.nameKey) === k)
+  if (stripped) return stripped
+  if (k.length < 5) return undefined  // too short for safe containment ("hay", "gin"…)
+  const contains = ingredients.filter(i => {
+    const ik = strip(i.nameKey)
+    return ik.includes(k) || k.includes(ik)
+  })
+  return contains.length === 1 ? contains[0] : undefined
+}
+
 // Match a recipe ingredient row to the ingredients library (by id first, then by name)
 export function matchIngredient(
   row: { name: string; ingredientId?: string },
@@ -61,8 +81,7 @@ export function matchIngredient(
     const byId = ingredients.find(i => i.id === row.ingredientId)
     if (byId) return byId
   }
-  const key = normalizeIngredientName(row.name)
-  return ingredients.find(i => i.nameKey === key)
+  return findIngredientMatch(row.name, ingredients)
 }
 
 // Cost of one litre of finished product, from ingredient prices

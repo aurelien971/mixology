@@ -11,6 +11,7 @@ import { getRecipes } from '@/lib/firestore/recipes'
 import { getProducts } from '@/lib/firestore/catalog'
 import { getIngredients } from '@/lib/firestore/ingredients'
 import { RecipeDraftDoc, Recipe, Product, Ingredient } from '@/types'
+import { findIngredientMatch } from '@/lib/costing'
 import toast from 'react-hot-toast'
 
 type Filter = 'all' | 'recipe' | 'process'
@@ -159,7 +160,10 @@ export default function RecipeReviewPage() {
           {/* Draft cards */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '28px' }}>
             {filtered.map(d => {
-              const unmatched = d.ingredients.filter(i => !i.matched)
+              // Live match against the CURRENT library — an approved house blend
+              // immediately turns green in the remaining drafts
+              const pool = d.kind === 'process' ? ingredients.filter(i => !i.isProcess) : ingredients
+              const unmatched = d.ingredients.filter(i => !findIngredientMatch(i.name, pool))
               return (
                 <div key={d.id} style={{ background: '#fff', border: '1px solid #f3f4f6', borderRadius: '12px', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: '260px' }}>
