@@ -141,7 +141,10 @@ export default function RecipeEditor({
   const suggestionsFor = (row: Row) => {
     const q = normalizeIngredientName(row.name)
     if (!q) return []
-    return library.filter(i => i.nameKey.includes(q)).slice(0, 6)
+    return library
+      .filter(i => i.nameKey.includes(q))
+      .sort((a, b) => (a.nameKey.startsWith(q) ? 0 : 1) - (b.nameKey.startsWith(q) ? 0 : 1) || a.name.localeCompare(b.name))
+      .slice(0, 8)
   }
 
   async function createFromNewPack(name: string, np: NewPack): Promise<string> {
@@ -510,7 +513,7 @@ export default function RecipeEditor({
                               style={{ display: 'flex', justifyContent: 'space-between', width: '100%', padding: '8px 12px', border: 'none', background: '#fff', cursor: 'pointer', fontSize: '13px', textAlign: 'left' }}
                               onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
                               onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
-                              <span style={{ fontWeight: 500, color: '#111827' }}>{s.name}</span>
+                              <span style={{ fontWeight: 500, color: '#111827' }}>{s.isProcess ? '⚙️ ' : ''}{s.name}</span>
                               <span style={{ color: '#9ca3af', fontSize: '12px' }}>{s.packDescription} · {CURRENCY_SYMBOLS[s.currency ?? 'GBP']}{s.packPrice.toFixed(2)}</span>
                             </button>
                           ))}
