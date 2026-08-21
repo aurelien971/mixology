@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Recipe, RecipeIngredient, RecipeAnalytical, Product, Ingredient, PackUnit, IngredientFormat, Currency, RecipeUnit, INGREDIENT_FORMATS, CURRENCY_SYMBOLS } from '@/types'
 import { createRecipe, updateRecipe } from '@/lib/firestore/recipes'
-import { getIngredients, createIngredient, updateIngredient, normalizeIngredientName, normalizeSupplier } from '@/lib/firestore/ingredients'
+import { getIngredients, createIngredient, updateIngredient, recordStockMovement, normalizeIngredientName, normalizeSupplier } from '@/lib/firestore/ingredients'
 import { syncProductCostForRecipe } from '@/lib/recipeSync'
 import Button from '@/components/ui/Button'
 import ScreenshotImport from '@/components/recipes/ScreenshotImport'
@@ -22,6 +22,7 @@ interface NewPack {
   packUnit: PackUnit
   packPrice: string
   currency: Currency
+  stock: string                 // optional: packs on the shelf right now → seeds stock take
 }
 
 interface Row {
@@ -132,7 +133,7 @@ export default function RecipeEditor({
   function markAsNew(i: number) {
     setRow(i, {
       ingredientId: undefined,
-      newPack: { supplier: '', format: 'bottle', formatOther: '', packSize: '', packUnit: 'kg', packPrice: '', currency: 'GBP' },
+      newPack: { supplier: '', format: 'bottle', formatOther: '', packSize: '', packUnit: 'kg', packPrice: '', currency: 'GBP', stock: '' },
     })
     setActiveSuggest(null)
   }
@@ -141,6 +142,26 @@ export default function RecipeEditor({
     const q = normalizeIngredientName(row.name)
     if (!q) return []
     return library.filter(i => i.nameKey.includes(q)).slice(0, 6)
+  }
+
+  async function createFromNewPack(name: string, np: NewPack): Promise<string> {
+    const formatLabel = np.format === 'other' ? np.formatOther.trim() : np.format
+    const id = await createIngredient({
+      name,
+      supplier: np.supplier ? normalizeSupplier(np.supplier, knownSuppliers) : undefined,
+      format: np.format,
+      currency: np.currency,
+      packDescription: `${parseFloat(np.packSize)}${np.packUnit} ${formatLabel}`,
+      packSize: parseFloat(np.packSize),
+      packUnit: np.packUnit,
+      packPrice: parseFloat(np.packPrice) || 0,
+    })
+    // Seed the stock count so it shows in Stock take immediately
+    const stock = parseFloat(np.stock)
+    if (stock > 0) {
+      await recordStockMovement({ ingredientId: id, ingredientName: name, type: 'stocktake', packsDelta: stock, note: 'Counted while adding ingredient' })
+    }
+    return id
   }
 
   // Save a new ingredient to the library immediately, without saving the whole recipe
@@ -154,17 +175,7 @@ export default function RecipeEditor({
     }
     setSavingIngIdx(i)
     try {
-      const formatLabel = np.format === 'other' ? np.formatOther.trim() : np.format
-      const id = await createIngredient({
-        name: row.name,
-        supplier: np.supplier ? normalizeSupplier(np.supplier, knownSuppliers) : undefined,
-        format: np.format,
-        currency: np.currency,
-        packDescription: `${parseFloat(np.packSize)}${np.packUnit} ${formatLabel}`,
-        packSize: parseFloat(np.packSize),
-        packUnit: np.packUnit,
-        packPrice: parseFloat(np.packPrice) || 0,
-      })
+      const id = await createFromNewPack(row.name, np)
       setLibrary(await getIngredients())
       setRow(i, { ingredientId: id, newPack: undefined })
       toast.success(`“${row.name.trim()}” saved to your ingredients`)
@@ -219,7 +230,7 @@ export default function RecipeEditor({
       unmatched++
       return {
         name: ing.name, amount: String(ing.qtyPer1000L), unit: unitFromStored(ing.unit),
-        newPack: { supplier: '', format: 'bottle' as IngredientFormat, formatOther: '', packSize: '', packUnit: 'kg' as PackUnit, packPrice: '', currency: 'GBP' as Currency },
+        newPack: { supplier: '', format: 'bottle' as IngredientFormat, formatOther: '', packSize: '', packUnit: 'kg' as PackUnit, packPrice: '', currency: 'GBP' as Currency, stock: '' },
       }
     }))
     if (unmatched > 0) {
@@ -277,18 +288,7 @@ export default function RecipeEditor({
         const r = rows[i]
         if (!r.name.trim() || !(parseFloat(r.amount) > 0)) continue
         if (r.ingredientId) { idByRowIndex.set(i, r.ingredientId); continue }
-        const np = r.newPack!
-        const formatLabel = np.format === 'other' ? np.formatOther.trim() : np.format
-        const id = await createIngredient({
-          name: r.name,
-          supplier: np.supplier ? normalizeSupplier(np.supplier, knownSuppliers) : undefined,
-          format: np.format,
-          currency: np.currency,
-          packDescription: `${parseFloat(np.packSize)}${np.packUnit} ${formatLabel}`,
-          packSize: parseFloat(np.packSize),
-          packUnit: np.packUnit,
-          packPrice: parseFloat(np.packPrice) || 0,
-        })
+        const id = await createFromNewPack(r.name, r.newPack!)
         idByRowIndex.set(i, id)
       }
 
@@ -571,7 +571,7 @@ export default function RecipeEditor({
                       <p style={{ fontSize: '11px', color: '#4b7c5e', margin: '0 0 8px' }}>
                         Tell us how you <strong>order it from the supplier</strong> — this drives costs and stock counting.
                       </p>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 66px 110px 1.2fr', gap: '6px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 76px 62px 106px 1fr 96px', gap: '6px' }}>
                         <div>
                           <label style={{ ...labelStyle, fontSize: '11px' }}>Format *</label>
                           <select style={{ ...inputStyle, padding: '9px 6px', cursor: 'pointer' }} value={row.newPack.format}
@@ -615,10 +615,15 @@ export default function RecipeEditor({
                           <input style={inputStyle} value={row.newPack.supplier} placeholder="start typing…" list="supplier-suggestions"
                             onChange={e => setRow(i, { newPack: { ...row.newPack!, supplier: e.target.value } })} />
                         </div>
+                        <div>
+                          <label style={{ ...labelStyle, fontSize: '11px' }}>In stock now</label>
+                          <input style={inputStyle} inputMode="decimal" value={row.newPack.stock} placeholder="packs"
+                            onChange={e => setRow(i, { newPack: { ...row.newPack!, stock: e.target.value } })} />
+                        </div>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', gap: '10px' }}>
                         <p style={{ fontSize: '11px', color: '#9ca3af', margin: 0 }}>
-                          e.g. Bottle · 0.7 · L · £14.50 means: you buy it as 0.7-litre bottles at £14.50 each.
+                          e.g. Bottle · 0.7 · L · £14.50 = you buy 0.7-litre bottles at £14.50 each. “In stock now” is optional — how many packs are on the shelf; it goes straight into Stock take.
                         </p>
                         <Button size="sm" onClick={() => saveNewIngredient(i)} loading={savingIngIdx === i}>
                           Save ingredient
