@@ -77,6 +77,16 @@ const nav = [
     ),
   },
   {
+    label: 'COGS',
+    href: '/cogs',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+        <circle cx="9" cy="9" r="7" stroke="currentColor" strokeWidth="1.4" fill="none"/>
+        <path d="M11.5 6.5c-.5-.8-1.4-1.2-2.5-1.2-1.5 0-2.6.8-2.6 1.9 0 2.6 5.4 1.2 5.4 3.8 0 1.1-1.1 1.9-2.8 1.9-1.2 0-2.2-.5-2.7-1.3M9 4v10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
     label: 'Stock take',
     href: '/stocktake',
     icon: (
