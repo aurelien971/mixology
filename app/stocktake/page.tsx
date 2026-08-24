@@ -272,6 +272,46 @@ function IngredientsTab({ ingredients, recipes, onChanged }: { ingredients: Ingr
     onChanged()
   }
 
+  async function exportExcel() {
+    const XLSX = await import('xlsx')
+    const stamp = format(new Date(), 'yyyy-MM-dd')
+    const raw = ingredients.filter(i => !i.isProcess)
+    const procs = ingredients.filter(i => i.isProcess)
+
+    const wsIng = XLSX.utils.json_to_sheet(raw.map(i => ({
+      'Ingredient': i.name,
+      'Supplier': i.supplier ?? '',
+      'Format': i.format ?? '',
+      'Pack': i.packDescription,
+      'Pack size': i.packSize,
+      'Unit': i.packUnit,
+      'Currency': i.currency ?? 'GBP',
+      'Price per pack': i.packPrice,
+      'Price per kg/L': i.pricePerUnit,
+      'In stock (packs)': r2(i.currentStock ?? 0),
+      'Stock value': r2((i.currentStock ?? 0) * i.packPrice),
+      'Last counted': i.stockUpdatedAt ? format(i.stockUpdatedAt, 'yyyy-MM-dd HH:mm') : 'never',
+    })))
+    wsIng['!cols'] = [{ wch: 28 }, { wch: 16 }, { wch: 10 }, { wch: 16 }, { wch: 9 }, { wch: 6 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 14 }, { wch: 11 }, { wch: 17 }]
+
+    const wsProc = XLSX.utils.json_to_sheet(procs.map(p => ({
+      'House blend': p.name,
+      'One batch makes': `${p.packSize}${p.packUnit}`,
+      'Batch cost £': p.packPrice,
+      'Cost per kg/L £': p.pricePerUnit,
+      'Labour (min)': p.laborMinutes ?? '',
+      'Made from': (p.subIngredients ?? []).map(x => `${x.amount}${x.unit} ${x.name}`).join(', '),
+      'How it is made': p.processDescription ?? '',
+    })))
+    wsProc['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 11 }, { wch: 13 }, { wch: 11 }, { wch: 60 }, { wch: 60 }]
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, wsIng, 'Ingredients')
+    XLSX.utils.book_append_sheet(wb, wsProc, 'House blends')
+    XLSX.writeFile(wb, `foodlab-ingredients-pricing-${stamp}.xlsx`)
+    toast.success(`Exported ${raw.length} ingredients + ${procs.length} house blends`)
+  }
+
   const editorRow = (id?: string) => (
     <tr style={{ background: '#f0fdf4' }}>
       <td style={td}><input style={inp} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Name" /></td>
@@ -329,6 +369,7 @@ function IngredientsTab({ ingredients, recipes, onChanged }: { ingredients: Ingr
           <p style={{ fontSize: '12px', color: '#9ca3af', margin: '2px 0 0' }}>Change a price here and every recipe cost & product COGS updates automatically</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
+          <Button size="sm" variant="secondary" onClick={exportExcel}>↓ Export (Excel)</Button>
           <Button size="sm" variant="secondary" onClick={() => setProcessModal({})}>⚙️ Add process</Button>
           <Button size="sm" onClick={() => { setEditing(null); setAdding(true); setForm(emptyForm) }}>+ Add ingredient</Button>
         </div>
