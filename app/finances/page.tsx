@@ -5,7 +5,7 @@ import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths, su
 import Link from 'next/link'
 import Header from '@/components/layout/Header'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
-import { getOrders, getAllOrders } from '@/lib/firestore/orders'
+import { getAllOrders } from '@/lib/firestore/orders'
 import { getProducts } from '@/lib/firestore/catalog'
 import { Order, Product } from '@/types'
 import toast from 'react-hot-toast'
@@ -300,7 +300,7 @@ export default function FinancesPage() {
 
   useEffect(() => {
     async function load() {
-      const [ords, prods] = await Promise.all([getOrders(200), getProducts()])
+      const [ords, prods] = await Promise.all([getAllOrders(), getProducts()])
       setOrders(ords.filter(o => o.status !== 'cancelled'))
       setProductMap(new Map(prods.map(p => [p.id, p])))
       setLoading(false)

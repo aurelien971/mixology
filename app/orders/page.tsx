@@ -7,7 +7,7 @@ import Header from '@/components/layout/Header'
 import Badge, { orderStatusBadge } from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import NoryImportModal from '@/components/orders/NoryImportModal'
-import { getOrders } from '@/lib/firestore/orders'
+import { getAllOrders } from '@/lib/firestore/orders'
 import { Order, OrderStatus, OrderCategory } from '@/types'
 
 const CATEGORY_LABELS: Record<OrderCategory, { label: string; color: string; bg: string }> = {
@@ -37,7 +37,7 @@ export default function OrdersPage() {
   const [typeFilter, setTypeFilter] = useState<'all' | 'order' | 'rd'>('all')
 
   function load() {
-    getOrders().then(setOrders).finally(() => setLoading(false))
+    getAllOrders().then(setOrders).finally(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [])
