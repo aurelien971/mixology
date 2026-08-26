@@ -224,6 +224,30 @@ export default function FinancesPage() {
   const [expanded, setExpanded]     = useState<string | null>(null)
   const [modalOrder, setModalOrder] = useState<OrderProfit | null>(null)
   const [exporting, setExporting]   = useState(false)
+  const [brief, setBrief]           = useState('')
+  const [briefLoading, setBriefLoading] = useState(false)
+
+  async function generateBrief() {
+    setBriefLoading(true)
+    try {
+      const res = await fetch('/api/ai/weekly-brief', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok || json.error) throw new Error(json.error ?? `API error ${res.status}`)
+      setBrief(json.brief)
+    } catch (e) {
+      console.error(e)
+      toast.error(e instanceof Error ? e.message : 'Failed to generate brief')
+    } finally {
+      setBriefLoading(false)
+    }
+  }
+
+  function copyBrief() {
+    navigator.clipboard.writeText(brief).then(
+      () => toast.success('Brief copied — paste it into your call notes'),
+      () => toast.error('Failed to copy')
+    )
+  }
 
   // Full historical export — every order ever, one row per line item, with revenue/COGS/profit
   async function exportAllOrders() {
@@ -541,6 +565,48 @@ export default function FinancesPage() {
                     )
                   })}
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── AI weekly brief ─────────────────────────────────────────── */}
+          <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', marginBottom: '16px', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: brief || briefLoading ? '1px solid #f3f4f6' : 'none' }}>
+              <div>
+                <p style={{ fontSize: '14px', fontWeight: 700, color: '#111827', margin: 0 }}>🤖 Weekly brief</p>
+                <p style={{ fontSize: '12px', color: '#9ca3af', margin: '2px 0 0' }}>AI recap for the Foodlab Weekly call — records, movers, accounts going quiet, drinks that stopped selling</p>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {brief && (
+                  <button onClick={copyBrief} style={{ padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', border: '1px solid #e5e7eb', background: '#fff', color: '#374151' }}>
+                    Copy
+                  </button>
+                )}
+                <button onClick={generateBrief} disabled={briefLoading} style={{
+                  padding: '5px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                  cursor: briefLoading ? 'wait' : 'pointer', border: 'none', background: '#111827', color: '#fff',
+                }}>
+                  {briefLoading ? 'Analysing…' : brief ? '↺ Regenerate' : 'Generate brief'}
+                </button>
+              </div>
+            </div>
+            {briefLoading && (
+              <p style={{ padding: '16px 18px', fontSize: '13px', color: '#9ca3af', margin: 0 }}>Crunching every order, cadence and drink trend — ~20 seconds…</p>
+            )}
+            {brief && !briefLoading && (
+              <div style={{ padding: '16px 22px', fontSize: '13px', color: '#374151', lineHeight: 1.7 }}>
+                {brief.split('\n').map((line, i) => {
+                  const t = line.trim()
+                  if (!t) return <div key={i} style={{ height: '6px' }} />
+                  if (t.startsWith('## ')) return <p key={i} style={{ fontSize: '13px', fontWeight: 700, color: '#111827', margin: '10px 0 4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t.slice(3)}</p>
+                  if (t.startsWith('- ') || t.startsWith('* ')) return (
+                    <p key={i} style={{ margin: '0 0 3px', paddingLeft: '14px', position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 0, color: '#9ca3af' }}>•</span>
+                      {t.slice(2).replace(/\*\*/g, '')}
+                    </p>
+                  )
+                  return <p key={i} style={{ margin: '0 0 4px' }}>{t.replace(/\*\*/g, '')}</p>
+                })}
               </div>
             )}
           </div>
