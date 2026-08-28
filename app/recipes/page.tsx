@@ -6,11 +6,12 @@ import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import RecipeEditor, { RecipeDraft } from '@/components/recipes/RecipeEditor'
 import { getRecipes } from '@/lib/firestore/recipes'
-import { getProducts } from '@/lib/firestore/catalog'
+import { getProducts, updateProduct } from '@/lib/firestore/catalog'
 import { getIngredients } from '@/lib/firestore/ingredients'
 import { getRecipeDrafts } from '@/lib/firestore/recipeDrafts'
 import { computeRecipeCost } from '@/lib/costing'
 import { Recipe, Product, Ingredient } from '@/types'
+import toast from 'react-hot-toast'
 
 export default function RecipesPage() {
   const [recipes, setRecipes]         = useState<Recipe[]>([])
@@ -92,10 +93,27 @@ export default function RecipesPage() {
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {missingRecipes.map(p => (
-                  <button key={p.id} onClick={() => setEditorState({ presetProductId: p.id, draft: { name: p.name, ingredients: [], analyticalValues: [], cookingInstructions: '' } })}
-                    style={{ padding: '6px 12px', background: '#fff', border: '1px solid #fde68a', borderRadius: '8px', fontSize: '13px', color: '#92400e', cursor: 'pointer', fontWeight: 500 }}>
-                    + {p.name} <span style={{ color: '#d1d5db', fontFamily: 'monospace', fontSize: '11px' }}>{p.productCode}</span>
-                  </button>
+                  <span key={p.id} style={{ display: 'inline-flex', alignItems: 'stretch', background: '#fff', border: '1px solid #fde68a', borderRadius: '8px', overflow: 'hidden' }}>
+                    <button onClick={() => setEditorState({ presetProductId: p.id, draft: { name: p.name, ingredients: [], analyticalValues: [], cookingInstructions: '' } })}
+                      style={{ padding: '6px 4px 6px 12px', background: 'transparent', border: 'none', fontSize: '13px', color: '#92400e', cursor: 'pointer', fontWeight: 500 }}>
+                      + {p.name} <span style={{ color: '#d1d5db', fontFamily: 'monospace', fontSize: '11px' }}>{p.productCode}</span>
+                    </button>
+                    <button
+                      title={`Remove ${p.name} from the platform`}
+                      onClick={async e => {
+                        e.stopPropagation()
+                        if (!confirm(`Remove “${p.name}” (${p.productCode}) from the platform?\n\nIt disappears from the catalog, this list and pricing — past orders keep their numbers.`)) return
+                        try {
+                          await updateProduct(p.id, { isActive: false })
+                          toast.success(`${p.name} removed`)
+                          load()
+                        } catch { toast.error('Failed to remove') }
+                      }}
+                      style={{ padding: '6px 10px 6px 6px', background: 'transparent', border: 'none', borderLeft: '1px solid #fef3c7', fontSize: '13px', color: '#d97706', cursor: 'pointer', lineHeight: 1 }}
+                      onMouseEnter={e => (e.currentTarget.style.color = '#dc2626')}
+                      onMouseLeave={e => (e.currentTarget.style.color = '#d97706')}
+                    >×</button>
+                  </span>
                 ))}
               </div>
             </div>
