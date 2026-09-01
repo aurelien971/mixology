@@ -60,7 +60,7 @@ export default function PricingPage() {
 
   const [format, setFormat] = useState<Format>('premix')
   const [venueGp, setVenueGp] = useState(80)
-  const [ourGp, setOurGp] = useState(60)
+  const [ourGp, setOurGp] = useState(30)
   const [vat, setVat] = useState(20)
   const [classicsOnly, setClassicsOnly] = useState(true)
   const [mode, setMode] = useState<PriceMode>('venue')
@@ -111,7 +111,12 @@ export default function PricingPage() {
     return {
       total: rows.length,
       ok: ok.length,
-      avgGp: ok.length ? ok.reduce((s, r) => s + r.ourGp, 0) / ok.length : 0,
+      blended: (() => {
+        const rev = rows.reduce((s, r) => s + r.ourPrice, 0)
+        const cost = rows.reduce((s, r) => s + r.ourCost, 0)
+        return rev > 0 ? ((rev - cost) / rev) * 100 : 0
+      })(),
+      losers: rows.filter((r) => r.ourGp < 0).length,
       worst: rows.filter((r) => !r.works).sort((a, b) => b.menuNeeded - a.menuNeeded)[0],
       incomplete: rows.filter((r) => !r.complete).length,
     }
@@ -168,6 +173,12 @@ export default function PricingPage() {
       </div>
 
       <div style={{ ...card, marginBottom: '16px' }}>
+        <p style={{ margin: '0 0 10px', fontSize: '13.5px', lineHeight: 1.6, color: '#4b5563', maxWidth: '82ch' }}>
+          <strong style={{ color: '#111827' }}>Read the blended figure, not the verdicts.</strong> Every drink is priced
+          at the same £{(parseFloat(defaultMenu) || 0).toFixed(2)} here, which no menu actually does — a Dry Martini is
+          not the same price as a G&amp;T. Put the real menu price on each row and the picture changes. The verdict column
+          only asks whether one drink clears your floor at its own price.
+        </p>
         <p style={{ margin: 0, fontSize: '13.5px', lineHeight: 1.6, color: '#4b5563', maxWidth: '82ch' }}>
           {format === 'premix' ? (
             <>We supply the finished drink and the venue pays us once, so their whole budget comes to us.
@@ -189,9 +200,9 @@ export default function PricingPage() {
         {[
           { k: 'Drinks priced', v: String(summary.total) },
           { k: 'Both targets hold', v: `${summary.ok}/${summary.total}`, warn: summary.ok < summary.total },
-          { k: 'Our GP where it works', v: `${summary.avgGp.toFixed(0)}%` },
+          { k: 'Blended GP, this scenario', v: `${summary.blended.toFixed(0)}%`, warn: summary.blended < 40 },
+          { k: 'Losing money', v: String(summary.losers), warn: summary.losers > 0 },
           { k: 'Hardest drink', v: summary.worst ? `£${summary.worst.menuNeeded.toFixed(2)}` : '—', warn: !!summary.worst },
-          { k: 'Not fully costed', v: String(summary.incomplete), warn: summary.incomplete > 0 },
         ].map((s) => (
           <div key={s.k} style={{ background: '#fff', padding: '11px 13px' }}>
             <p style={{ fontSize: '10px', color: '#9ca3af', margin: '0 0 3px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{s.k}</p>
