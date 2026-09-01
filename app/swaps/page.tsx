@@ -9,7 +9,9 @@ import { getProducts } from '@/lib/firestore/catalog'
 import { getRecipes } from '@/lib/firestore/recipes'
 import { getIngredients } from '@/lib/firestore/ingredients'
 import { matchIngredient } from '@/lib/costing'
-import { SWAPS, swapTotals, QUARTER_SPEND, Swap, SwapVerdict } from '@/lib/data/swaps'
+import { SWAPS, swapTotals, swapMaths, QUARTER_SPEND, Swap, SwapVerdict } from '@/lib/data/swaps'
+import { LWC_LINES } from '@/lib/lwcSync'
+import { retroFor } from '@/lib/data/pernodRetro'
 import { findIngredientMatch } from '@/lib/costing'
 import { Product, Recipe, Ingredient } from '@/types'
 import { useTable, ColumnDef } from '@/hooks/useTable'
@@ -71,6 +73,10 @@ export default function SwapsPage() {
   const [brief, setBrief] = useState<string | null>(null)
   const [thinking, setThinking] = useState(false)
   const [coreOnly, setCoreOnly] = useState(true)
+  // A different replacement, chosen off the trade list before anything is agreed.
+  const [target, setTarget] = useState<Record<string, { to: string; toPrice: number; toLitres: number; retroPerBottle: number }>>({})
+  const [picking, setPicking] = useState<string | null>(null)
+  const [q, setQ] = useState('')
   const swapCols = useTable<Swap>('swaps', SWAP_COLUMNS)
   const gpCols = useTable<GpRow>('swaps-gp', GP_COLUMNS)
 
@@ -81,8 +87,13 @@ export default function SwapsPage() {
   }, [])
 
   // Mandated swaps are on by default; refusals off; tastings off until Mark rules.
+  // Apply whatever replacement has been chosen, then everything downstream —
+  // savings, retro, totals, the drink re-cost — follows from it.
+  const withTargets = (s: Swap): Swap => ({ ...s, ...(target[s.from] ?? {}) })
+  const swaps = SWAPS.map(withTargets)
+
   const isTaken = (s: Swap) => taken[s.from] ?? s.verdict === 'mandated'
-  const active = SWAPS.filter(isTaken)
+  const active = swaps.filter(isTaken)
   const totals = swapTotals(active)
 
   // Re-price the library under the selected swaps, then re-cost every recipe.
@@ -90,10 +101,9 @@ export default function SwapsPage() {
     const swapped = ingredients.map((ing) => {
       const hit = active.find((s) => findIngredientMatch(s.from, [ing]))
       if (!hit || !ing.packSize) return ing
-      // Both prices are per 70cl bottle unless the name says otherwise; scale to
-      // whatever pack size this ingredient is actually held in.
-      const perLitreNow = hit.fromPrice / 0.7
-      const perLitreAfter = hit.toPrice / 0.7
+      // Pack sizes differ between the two sides, so the comparison is per litre.
+      const perLitreNow = hit.fromLitres > 0 ? hit.fromPrice / hit.fromLitres : 0
+      const perLitreAfter = hit.toLitres > 0 ? hit.toPrice / hit.toLitres : 0
       const ratio = perLitreNow > 0 ? perLitreAfter / perLitreNow : 1
       const packPrice = r2(ing.packPrice * ratio)
       return { ...ing, packPrice, pricePerUnit: packPrice / ing.packSize }
@@ -239,9 +249,10 @@ export default function SwapsPage() {
           <swapCols.ColGroup />
           <swapCols.Head />
           <tbody>
-            {swapCols.sortRows(SWAPS).map((s) => {
-              const saving = r2((s.fromPrice - s.toPrice) * s.bottles)
-              const retro = r2(s.retroPerBottle * s.bottles)
+            {swapCols.sortRows(swaps).map((s) => {
+              const m = swapMaths(s)
+              const saving = m.unitSaving
+              const retro = m.retro
               const v = VERDICT[s.verdict]
               const on = isTaken(s)
               return (
@@ -254,9 +265,117 @@ export default function SwapsPage() {
                     <span style={{ color: '#9ca3af', marginLeft: '7px', fontSize: '12px' }}>{money(s.fromPrice)}</span>
                     <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#9ca3af', lineHeight: 1.5, whiteSpace: 'normal', maxWidth: '52ch' }}>{s.note}</p>
                   </td>
-                  <td style={{ ...td, textAlign: 'left' }}>
-                    <span style={{ fontWeight: 600, color: '#111827' }}>{s.to}</span>
-                    <span style={{ color: '#9ca3af', marginLeft: '7px', fontSize: '12px' }}>{money(s.toPrice)}</span>
+                  <td className="dt-wrap" style={{ ...td, textAlign: 'left' }}>
+                    <button
+                      onClick={() => { setPicking(picking === s.from ? null : s.from); setQ('') }}
+                      title="Choose a different replacement from the LWC list"
+                      style={{
+                        border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit',
+                        textAlign: 'left', borderBottom: '1px dotted #d1d5db',
+                      }}
+                    >
+                      <span style={{ fontWeight: 600, color: '#111827' }}>{s.to}</span>
+                      <span style={{ color: '#9ca3af', marginLeft: '7px', fontSize: '12px' }}>
+                        {money(s.toPrice)} · {s.toLitres}L
+                      </span>
+                    </button>
+                    {target[s.from] && (
+                      <span style={{ marginLeft: '7px', fontSize: '10px', fontWeight: 700, color: '#2b3a8f' }}>CHANGED</span>
+                    )}
+
+                    {picking === s.from && (
+                      <div style={{ marginTop: '8px', border: '1px solid #e5e7eb', borderRadius: '8px', background: '#fff', padding: '8px' }}>
+                        <input
+                          autoFocus
+                          value={q}
+                          onChange={(e) => setQ(e.target.value)}
+                          placeholder="Search the LWC list…"
+                          style={{ width: '100%', padding: '6px 9px', border: '1px solid #e5e7eb', borderRadius: '6px', fontSize: '12.5px', outline: 'none' }}
+                        />
+                        <div style={{ maxHeight: '220px', overflowY: 'auto', marginTop: '6px' }}>
+                          {q.length > 1 && ingredients
+                            .filter((ing) => ing.packUnit === 'L' && ing.packSize > 0 && ing.name.toLowerCase().includes(q.toLowerCase()))
+                            .slice(0, 12)
+                            .map((ing) => {
+                              const rt = retroFor(ing.name)
+                              return (
+                                <button
+                                  key={'ing-' + ing.id}
+                                  onClick={() => {
+                                    setTarget({
+                                      ...target,
+                                      [s.from]: {
+                                        to: ing.name, toPrice: ing.packPrice, toLitres: ing.packSize,
+                                        retroPerBottle: rt?.perBottle ?? 0,
+                                      },
+                                    })
+                                    setPicking(null)
+                                  }}
+                                  style={{
+                                    display: 'block', width: '100%', textAlign: 'left', border: 'none',
+                                    background: '#f9fafb', cursor: 'pointer', padding: '5px 6px', fontSize: '12px',
+                                    borderRadius: '5px', color: '#374151', marginBottom: '2px',
+                                  }}
+                                >
+                                  <span style={{ fontSize: '9.5px', fontWeight: 700, color: '#2b3a8f', marginRight: '6px' }}>STOCK</span>
+                                  {ing.name}
+                                  <span style={{ color: '#9ca3af', marginLeft: '6px' }}>
+                                    {money(ing.packPrice)} · {money(ing.pricePerUnit)}/L
+                                  </span>
+                                </button>
+                              )
+                            })}
+                          {LWC_LINES
+                            .filter((l) => l.litres && q.length > 1 && l.name.toLowerCase().includes(q.toLowerCase()))
+                            .slice(0, 40)
+                            .map((l) => {
+                              const rt = retroFor(l.name)
+                              return (
+                                <button
+                                  key={l.code}
+                                  onClick={() => {
+                                    setTarget({
+                                      ...target,
+                                      [s.from]: {
+                                        to: l.name, toPrice: l.price, toLitres: l.litres as number,
+                                        retroPerBottle: rt?.perBottle ?? 0,
+                                      },
+                                    })
+                                    setPicking(null)
+                                  }}
+                                  style={{
+                                    display: 'block', width: '100%', textAlign: 'left', border: 'none',
+                                    background: 'none', cursor: 'pointer', padding: '5px 6px', fontSize: '12px',
+                                    borderRadius: '5px', color: '#374151',
+                                  }}
+                                >
+                                  {l.name}
+                                  <span style={{ color: '#9ca3af', marginLeft: '6px' }}>
+                                    {money(l.price)} · {money(l.price / (l.litres as number))}/L
+                                  </span>
+                                  {rt && <span style={{ color: '#166534', marginLeft: '6px' }}>retro {money(rt.perBottle)}</span>}
+                                </button>
+                              )
+                            })}
+                          {q.length > 1 && !LWC_LINES.some((l) => l.litres && l.name.toLowerCase().includes(q.toLowerCase())) && (
+                            <p style={{ margin: '6px', fontSize: '12px', color: '#9ca3af' }}>Nothing on the list matches.</p>
+                          )}
+                          {q.length <= 1 && (
+                            <p style={{ margin: '6px', fontSize: '12px', color: '#9ca3af' }}>
+                              Type two letters to search your stock take and the 861 trade lines.
+                            </p>
+                          )}
+                        </div>
+                        {target[s.from] && (
+                          <button
+                            onClick={() => {
+                              const next = { ...target }; delete next[s.from]; setTarget(next); setPicking(null)
+                            }}
+                            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '11.5px', color: '#9ca3af', padding: '4px 6px' }}
+                          >Back to the contract default</button>
+                        )}
+                      </div>
+                    )}
                   </td>
                   <td style={{ ...td, color: '#9ca3af' }}>{s.bottles || '—'}</td>
                   <td style={{ ...td, color: saving < 0 ? '#b91c1c' : saving > 0 ? '#166534' : '#9ca3af', fontWeight: saving ? 700 : 400 }}>
