@@ -8,11 +8,36 @@ import { getRecipes } from '@/lib/firestore/recipes'
 import { getIngredients } from '@/lib/firestore/ingredients'
 import { computeRecipeCost, RecipeCostLine } from '@/lib/costing'
 import { Product, Recipe, Ingredient, CLASSIC_COCKTAILS, matchesClassic } from '@/types'
+import { useTable, ColumnDef } from '@/hooks/useTable'
 
-const th: React.CSSProperties = {
-  padding: '9px 12px', fontSize: '10px', fontWeight: 600, color: '#9ca3af',
-  textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right', whiteSpace: 'nowrap',
+interface CardRow {
+  product: Product
+  servingMl: number
+  costPerServe: number | null
+  sellPerLitre: number
+  sellPerServe: number
+  rrp: number
+  venueGp: number
+  foodlabGp: number | null
+  complete: boolean
+  missing: string[]
+  lines: RecipeCostLine[]
+  costPerLitre: number
 }
+
+const COLUMNS: ColumnDef<CardRow>[] = [
+  { key: 'star',   label: '★',            width: 36,  align: 'center', sortValue: (r) => (r.product.isClassic ? 0 : 1) },
+  { key: 'name',   label: 'Product',      width: 230, sortValue: (r) => r.product.name },
+  { key: 'cat',    label: 'Category',     width: 128, sortValue: (r) => r.product.category },
+  { key: 'serve',  label: 'Serve',        width: 84,  align: 'right', sortValue: (r) => r.servingMl, descFirst: true },
+  { key: 'perL',   label: 'Our £/L',      width: 96,  align: 'right', sortValue: (r) => r.sellPerLitre, descFirst: true },
+  { key: 'perSrv', label: 'Our £/serve',  width: 108, align: 'right', sortValue: (r) => r.sellPerServe, descFirst: true },
+  { key: 'rrp',    label: 'RRP',          width: 88,  align: 'right', sortValue: (r) => r.rrp, descFirst: true },
+  { key: 'vgp',    label: 'Venue GP',     width: 100, align: 'right', sortValue: (r) => r.venueGp, descFirst: true },
+  { key: 'cost',   label: 'Cost/serve',   width: 104, align: 'right', sortValue: (r) => r.costPerServe, descFirst: true },
+  { key: 'fgp',    label: 'Foodlab GP',   width: 106, align: 'right', sortValue: (r) => r.foodlabGp, descFirst: true },
+]
+
 const td: React.CSSProperties = { padding: '10px 12px', fontSize: '13px', color: '#374151', textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }
 
 function r2(n: number) { return Math.round(n * 100) / 100 }
@@ -123,6 +148,7 @@ export default function RateCardPage() {
   const [category, setCategory] = useState('All')
   const [busy, setBusy] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
+  const cols = useTable<CardRow>('rate-card', COLUMNS)
 
   useEffect(() => {
     Promise.all([getProducts(), getRecipes(), getIngredients()])
@@ -190,7 +216,7 @@ export default function RateCardPage() {
           lines: cost?.lines ?? [], costPerLitre: cost?.costPerLitre ?? 0,
         }
       })
-      .sort((a, b) => b.rrp - a.rrp)
+      .sort((a, b) => b.rrp - a.rrp) as CardRow[]
   }, [products, recipes, ingredients, targetGp, vat, coreOnly, classicsOnly, category])
 
   const priced = rows.filter((r) => r.costPerServe !== null)
@@ -307,23 +333,11 @@ export default function RateCardPage() {
         <p className="text-sm text-gray-400">Loading…</p>
       ) : (
         <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #f3f4f6', overflowX: 'auto' }}>
-          <table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #f3f4f6', background: '#fafafa' }}>
-                <th style={{ ...th, width: '34px', textAlign: 'center' }}>★</th>
-                <th style={{ ...th, textAlign: 'left' }}>Product</th>
-                <th style={{ ...th, textAlign: 'left' }}>Category</th>
-                <th style={th}>Serve</th>
-                <th style={th}>Our £/L</th>
-                <th style={th}>Our £/serve</th>
-                <th style={th}>RRP</th>
-                <th style={th}>Venue GP</th>
-                <th style={{ ...th, borderLeft: '1px solid #f3f4f6' }}>Cost/serve</th>
-                <th style={th}>Foodlab GP</th>
-              </tr>
-            </thead>
+          <table className="dt" style={{ minWidth: cols.minWidth }}>
+            <cols.ColGroup />
+            <cols.Head />
             <tbody>
-              {rows.map((r) => (
+              {cols.sortRows(rows).map((r) => (
                 <Fragment key={r.product.id}>
                 <tr style={{ borderBottom: '1px solid #f9fafb' }}>
                   <td style={{ ...td, textAlign: 'center', padding: '10px 4px' }}>

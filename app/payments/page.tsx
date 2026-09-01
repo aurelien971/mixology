@@ -7,6 +7,17 @@ import Badge, { paymentStatusBadge } from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import { getPayments, markPaymentPaid, updatePaymentStatus } from '@/lib/firestore/payments'
 import { Payment, PaymentStatus } from '@/types'
+import { useTable, ColumnDef } from '@/hooks/useTable'
+
+const COLUMNS: ColumnDef<Payment>[] = [
+  { key: 'invoice', label: 'Invoice',  width: 130, sortValue: (p) => p.invoiceNumber },
+  { key: 'order',   label: 'Order',    width: 120, sortValue: (p) => p.orderNumber },
+  { key: 'account', label: 'Account',  width: 220, sortValue: (p) => p.accountName },
+  { key: 'due',     label: 'Due date', width: 124, sortValue: (p) => p.dueDate, descFirst: true },
+  { key: 'status',  label: 'Status',   width: 110, sortValue: (p) => p.status },
+  { key: 'amount',  label: 'Amount',   width: 110, align: 'right', sortValue: (p) => p.amount, descFirst: true },
+  { key: 'go',      label: '',         width: 96 },
+]
 import toast from 'react-hot-toast'
 
 const STATUS_FILTERS: { label: string; value: PaymentStatus | 'all' }[] = [
@@ -17,6 +28,7 @@ const STATUS_FILTERS: { label: string; value: PaymentStatus | 'all' }[] = [
 ]
 
 export default function PaymentsPage() {
+  const cols = useTable<Payment>('payments', COLUMNS)
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<PaymentStatus | 'all'>('all')
@@ -99,21 +111,12 @@ export default function PaymentsPage() {
           <p className="text-sm text-gray-400">No payments found</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="text-xs text-gray-400 border-b border-gray-100 bg-gray-50">
-                <th className="text-left px-5 py-3 font-medium">Invoice</th>
-                <th className="text-left px-5 py-3 font-medium">Order</th>
-                <th className="text-left px-5 py-3 font-medium">Account</th>
-                <th className="text-left px-5 py-3 font-medium">Due date</th>
-                <th className="text-left px-5 py-3 font-medium">Status</th>
-                <th className="text-right px-5 py-3 font-medium">Amount</th>
-                <th className="px-5 py-3" />
-              </tr>
-            </thead>
+        <div className="bg-white rounded-xl border border-gray-100" style={{ overflowX: 'auto' }}>
+                    <table className="dt" style={{ minWidth: cols.minWidth }}>
+              <cols.ColGroup />
+              <cols.Head />
             <tbody>
-              {filtered.map((payment) => {
+              {cols.sortRows(filtered).map((payment) => {
                 const badge = paymentStatusBadge(payment.status)
                 const isOverdue = payment.status === 'overdue'
                 return (

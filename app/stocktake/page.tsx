@@ -11,6 +11,23 @@ import { getAllOrders } from '@/lib/firestore/orders'
 import { recomputeAllProductCosts } from '@/lib/recipeSync'
 import { buildShoppingList, ShoppingLine } from '@/lib/costing'
 import { Ingredient, Recipe, Order, StockMovement, PackUnit, IngredientFormat, Currency, INGREDIENT_FORMATS, CURRENCY_SYMBOLS } from '@/types'
+import { useTable, ColumnDef } from '@/hooks/useTable'
+
+const COUNT_COLUMNS: ColumnDef<Ingredient>[] = [
+  { key: 'name',    label: 'Ingredient',   width: 280, sortValue: (i) => i.name },
+  { key: 'pack',    label: 'Pack',         width: 180, sortValue: (i) => i.packDescription },
+  { key: 'stock',   label: 'In stock',     width: 140, align: 'right', sortValue: (i) => i.currentStock, descFirst: true },
+  { key: 'counted', label: 'Last counted', width: 150, align: 'right', sortValue: (i) => i.stockUpdatedAt, descFirst: true },
+]
+
+const PRICE_COLUMNS: ColumnDef<Ingredient>[] = [
+  { key: 'name',     label: 'Ingredient',   width: 260, sortValue: (i) => i.name },
+  { key: 'supplier', label: 'Supplier',     width: 170, sortValue: (i) => i.supplier },
+  { key: 'pack',     label: 'Pack',         width: 170, sortValue: (i) => i.packDescription },
+  { key: 'price',    label: 'Price / unit', width: 128, align: 'right', sortValue: (i) => i.packPrice, descFirst: true },
+  { key: 'perKgL',   label: 'Per kg·L',     width: 120, align: 'right', sortValue: (i) => i.pricePerUnit, descFirst: true },
+  { key: 'act',      label: '',             width: 90 },
+]
 import toast from 'react-hot-toast'
 
 type Tab = 'stock' | 'ingredients' | 'deliveries' | 'shopping'
@@ -79,6 +96,7 @@ export default function StockTakePage() {
 // ── Stock tab — counts + stock take flow ─────────────────────────────────────
 
 function StockTab({ ingredients, movements, onChanged }: { ingredients: Ingredient[]; movements: StockMovement[]; onChanged: () => void }) {
+  const countCols = useTable<Ingredient>('stock-count', COUNT_COLUMNS)
   const [counting, setCounting] = useState(false)
   const [counts, setCounts] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
@@ -139,17 +157,11 @@ function StockTab({ ingredients, movements, onChanged }: { ingredients: Ingredie
             <Button size="sm" onClick={startCount}>{neverCounted === ingredients.length ? 'Create first stock take' : 'New stock take'}</Button>
           )}
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: '#f9fafb' }}>
-              <th style={th}>Ingredient</th>
-              <th style={th}>Pack</th>
-              <th style={{ ...th, textAlign: 'right' }}>{counting ? 'Count (packs)' : 'In stock (packs)'}</th>
-              <th style={{ ...th, textAlign: 'right' }}>Last counted</th>
-            </tr>
-          </thead>
+        <table className="dt" style={{ minWidth: countCols.minWidth }}>
+          <countCols.ColGroup />
+          <countCols.Head />
           <tbody>
-            {ingredients.map(ing => (
+            {countCols.sortRows(ingredients).map(ing => (
               <tr key={ing.id} style={{ borderTop: '1px solid #f9fafb' }}>
                 <td style={{ ...td, fontWeight: 600, color: '#111827' }}>{ing.name}</td>
                 <td style={{ ...td, color: '#9ca3af', fontSize: '12px' }}>{ing.packDescription}</td>
@@ -204,6 +216,7 @@ function StockTab({ ingredients, movements, onChanged }: { ingredients: Ingredie
 // ── Ingredients tab — prices & suppliers, easy to edit ───────────────────────
 
 function IngredientsTab({ ingredients, recipes, onChanged }: { ingredients: Ingredient[]; recipes: Recipe[]; onChanged: () => void }) {
+  const priceCols = useTable<Ingredient>('stock-prices', PRICE_COLUMNS)
   const [editing, setEditing] = useState<string | null>(null)
   const emptyForm = { name: '', supplier: '', format: 'bottle' as IngredientFormat, formatOther: '', packSize: '', packUnit: 'kg' as PackUnit, packPrice: '', currency: 'GBP' as Currency }
   const [form, setForm] = useState(emptyForm)
@@ -374,20 +387,12 @@ function IngredientsTab({ ingredients, recipes, onChanged }: { ingredients: Ingr
           <Button size="sm" onClick={() => { setEditing(null); setAdding(true); setForm(emptyForm) }}>+ Add ingredient</Button>
         </div>
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ background: '#f9fafb' }}>
-            <th style={th}>Ingredient</th>
-            <th style={th}>Supplier</th>
-            <th style={th}>Pack</th>
-            <th style={{ ...th, textAlign: 'right' }}>Price / unit</th>
-            <th style={{ ...th, textAlign: 'right' }}>Per kg·L</th>
-            <th style={th} />
-          </tr>
-        </thead>
+      <table className="dt" style={{ minWidth: priceCols.minWidth }}>
+        <priceCols.ColGroup />
+        <priceCols.Head />
         <tbody>
           {adding && editorRow()}
-          {ingredients.map(ing => editing === ing.id ? (
+          {priceCols.sortRows(ingredients).map(ing => editing === ing.id ? (
             <EditKeyed key={ing.id}>{editorRow(ing.id)}</EditKeyed>
           ) : (
             <tr key={ing.id} style={{ borderTop: '1px solid #f9fafb' }}>

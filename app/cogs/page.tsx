@@ -11,6 +11,30 @@ import { getProducts } from '@/lib/firestore/catalog'
 import { getIngredients } from '@/lib/firestore/ingredients'
 import { toBaseAmount, matchIngredient } from '@/lib/costing'
 import { Ingredient, Recipe, Product, Order } from '@/types'
+import { useTable, ColumnDef } from '@/hooks/useTable'
+
+interface DrinkRow {
+  product: Product
+  recipe?: Recipe
+  litres: number
+  revenue: number
+  baseSell: number
+  sell: number
+  baseCost: number | null
+  whatIfCost: number | null
+  ourGpBase: number | null
+  ourGpWhatIf: number | null
+  venueGp: number | null
+}
+
+const DRINK_COLUMNS: ColumnDef<DrinkRow>[] = [
+  { key: 'drink',  label: 'Drink',    width: 240, sortValue: (d) => d.product.name },
+  { key: 'litres', label: 'Litres',   width: 96,  align: 'right', sortValue: (d) => d.litres, descFirst: true },
+  { key: 'sell',   label: 'Sell £/L', width: 104, align: 'right', sortValue: (d) => d.sell, descFirst: true },
+  { key: 'cost',   label: 'Cost £/L', width: 104, align: 'right', sortValue: (d) => d.whatIfCost ?? d.baseCost, descFirst: true },
+  { key: 'ourGp',  label: 'Our GP',   width: 100, align: 'right', sortValue: (d) => d.ourGpWhatIf, descFirst: true },
+  { key: 'venue',  label: 'Venue GP', width: 104, align: 'right', sortValue: (d) => d.venueGp, descFirst: true },
+]
 
 function r2(n: number) { return Math.round(n * 100) / 100 }
 function r1(n: number) { return Math.round(n * 10) / 10 }
@@ -42,6 +66,7 @@ export default function CogsPage() {
   const [ingredients, setIngredients] = useState<Ingredient[]>([])
   const [pricing, setPricing] = useState<{ productId: string; pricePerLitre: number; rrp: number }[]>([])
   const [loading, setLoading] = useState(true)
+  const cols = useTable<DrinkRow>('cogs-drinks', DRINK_COLUMNS)
 
   // WHAT-IF state (nothing is saved — assumptions only)
   const [packOverrides, setPackOverrides] = useState<Record<string, string>>({})   // ingredientId → £/pack
@@ -240,18 +265,10 @@ export default function CogsPage() {
           </div>
           <div style={{ maxHeight: '520px', overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead style={{ position: 'sticky', top: 0, background: '#f9fafb', zIndex: 5 }}>
-                <tr>
-                  <th style={{ ...th, textAlign: 'left' }}>Drink</th>
-                  <th style={th}>Litres</th>
-                  <th style={th}>Sell £/L</th>
-                  <th style={th}>Cost £/L</th>
-                  <th style={th}>Our GP</th>
-                  <th style={th}>Venue GP</th>
-                </tr>
-              </thead>
+              <cols.ColGroup />
+              <cols.Head />
               <tbody>
-                {drinks.filter(d => d.litres > 0 || d.recipe).map(d => {
+                {cols.sortRows(drinks.filter(d => d.litres > 0 || d.recipe)).map(d => {
                   const costChanged = d.baseCost !== null && d.whatIfCost !== null && Math.abs(d.baseCost - d.whatIfCost) > 0.005
                   return (
                     <tr key={d.product.id} style={{ borderTop: '1px solid #f9fafb' }}>

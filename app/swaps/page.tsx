@@ -10,11 +10,39 @@ import { matchIngredient } from '@/lib/costing'
 import { SWAPS, swapTotals, QUARTER_SPEND, Swap, SwapVerdict } from '@/lib/data/swaps'
 import { findIngredientMatch } from '@/lib/costing'
 import { Product, Recipe, Ingredient } from '@/types'
+import { useTable, ColumnDef } from '@/hooks/useTable'
 
-const th: React.CSSProperties = {
-  padding: '9px 12px', fontSize: '10px', fontWeight: 600, color: '#9ca3af',
-  textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right', whiteSpace: 'nowrap',
+const SWAP_COLUMNS: ColumnDef<Swap>[] = [
+  { key: 'take',    label: 'Take',        width: 46,  align: 'center', sortValue: (s) => (s.verdict === 'mandated' ? 0 : 1) },
+  { key: 'from',    label: 'From',        width: 380, sortValue: (s) => s.from },
+  { key: 'to',      label: 'To',          width: 200, sortValue: (s) => s.to },
+  { key: 'btl',     label: 'Btl',         width: 66,  align: 'right', sortValue: (s) => s.bottles, descFirst: true },
+  { key: 'saving',  label: 'Unit saving', width: 108, align: 'right', sortValue: (s) => (s.fromPrice - s.toPrice) * s.bottles, descFirst: true },
+  { key: 'retro',   label: 'Retro',       width: 88,  align: 'right', sortValue: (s) => s.retroPerBottle * s.bottles, descFirst: true },
+  { key: 'total',   label: 'Total',       width: 96,  align: 'right', sortValue: (s) => (s.fromPrice - s.toPrice) * s.bottles + s.retroPerBottle * s.bottles, descFirst: true },
+  { key: 'verdict', label: 'Verdict',     width: 96,  sortValue: (s) => s.verdict },
+]
+
+interface GpRow {
+  product: Product
+  costNow: number | null
+  costAfter: number | null
+  sellPerLitre: number
+  gpNow: number | null
+  gpAfter: number | null
+  delta: number | null
 }
+
+const GP_COLUMNS: ColumnDef<GpRow>[] = [
+  { key: 'drink', label: 'Drink',          width: 220, sortValue: (d) => d.product.name },
+  { key: 'sell',  label: 'Our sell £/L',   width: 116, align: 'right', sortValue: (d) => d.sellPerLitre, descFirst: true },
+  { key: 'now',   label: 'Cost now',       width: 104, align: 'right', sortValue: (d) => d.costNow, descFirst: true },
+  { key: 'after', label: 'Cost after',     width: 108, align: 'right', sortValue: (d) => d.costAfter, descFirst: true },
+  { key: 'delta', label: 'Change',         width: 96,  align: 'right', sortValue: (d) => d.delta },
+  { key: 'gpNow', label: 'Foodlab GP now', width: 126, align: 'right', sortValue: (d) => d.gpNow, descFirst: true },
+  { key: 'gpAft', label: 'After',          width: 92,  align: 'right', sortValue: (d) => d.gpAfter, descFirst: true },
+]
+
 const td: React.CSSProperties = {
   padding: '11px 12px', fontSize: '13px', color: '#374151', textAlign: 'right',
   whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
@@ -38,6 +66,8 @@ export default function SwapsPage() {
   const [taken, setTaken] = useState<Record<string, boolean>>({})
   const [brief, setBrief] = useState<string | null>(null)
   const [thinking, setThinking] = useState(false)
+  const swapCols = useTable<Swap>('swaps', SWAP_COLUMNS)
+  const gpCols = useTable<GpRow>('swaps-gp', GP_COLUMNS)
 
   useEffect(() => {
     Promise.all([getProducts(), getRecipes(), getIngredients()])
@@ -180,21 +210,11 @@ export default function SwapsPage() {
 
       {/* The swaps */}
       <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #f3f4f6', overflowX: 'auto', marginBottom: '18px' }}>
-        <table style={{ width: '100%', minWidth: '940px', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid #f3f4f6', background: '#fafafa' }}>
-              <th style={{ ...th, width: '40px', textAlign: 'center' }}>Take</th>
-              <th style={{ ...th, textAlign: 'left' }}>From</th>
-              <th style={{ ...th, textAlign: 'left' }}>To</th>
-              <th style={th}>Btl</th>
-              <th style={th}>Unit saving</th>
-              <th style={th}>Retro</th>
-              <th style={th}>Total</th>
-              <th style={{ ...th, textAlign: 'left', width: '96px' }}>Verdict</th>
-            </tr>
-          </thead>
+        <table className="dt" style={{ minWidth: swapCols.minWidth }}>
+          <swapCols.ColGroup />
+          <swapCols.Head />
           <tbody>
-            {SWAPS.map((s) => {
+            {swapCols.sortRows(SWAPS).map((s) => {
               const saving = r2((s.fromPrice - s.toPrice) * s.bottles)
               const retro = r2(s.retroPerBottle * s.bottles)
               const v = VERDICT[s.verdict]
@@ -250,20 +270,11 @@ export default function SwapsPage() {
         </div>
       ) : (
         <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #f3f4f6', overflowX: 'auto' }}>
-          <table style={{ width: '100%', minWidth: '820px', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #f3f4f6', background: '#fafafa' }}>
-                <th style={{ ...th, textAlign: 'left' }}>Drink</th>
-                <th style={th}>Our sell £/L</th>
-                <th style={th}>Cost now</th>
-                <th style={th}>Cost after</th>
-                <th style={th}>Change</th>
-                <th style={{ ...th, borderLeft: '1px solid #f3f4f6' }}>Foodlab GP now</th>
-                <th style={th}>After</th>
-              </tr>
-            </thead>
+          <table className="dt" style={{ minWidth: gpCols.minWidth }}>
+            <gpCols.ColGroup />
+            <gpCols.Head />
             <tbody>
-              {drinks.map((d) => {
+              {gpCols.sortRows(drinks).map((d) => {
                 const better = (d.delta ?? 0) < 0
                 return (
                   <tr key={d.product.id} style={{ borderBottom: '1px solid #f9fafb' }}>

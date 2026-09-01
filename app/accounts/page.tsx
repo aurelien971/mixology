@@ -9,9 +9,21 @@ import NewAccountModal from '@/components/accounts/NewAccountModal'
 import { getAccounts } from '@/lib/firestore/accounts'
 import { copyPortalLink } from '@/lib/portal'
 import { Account, PAYMENT_TERMS_LABELS } from '@/types'
+import { useTable, ColumnDef } from '@/hooks/useTable'
+
+const COLUMNS: ColumnDef<Account>[] = [
+  { key: 'legal',   label: 'Legal name',   width: 220, sortValue: (a) => a.legalName },
+  { key: 'trading', label: 'Trading name', width: 200, sortValue: (a) => a.tradingName },
+  { key: 'group',   label: 'Group',        width: 160, sortValue: (a) => a.groupName },
+  { key: 'email',   label: 'Email',        width: 220, sortValue: (a) => a.email },
+  { key: 'terms',   label: 'Terms',        width: 130, sortValue: (a) => a.paymentTerms },
+  { key: 'portal',  label: 'Portal',       width: 110, sortValue: (a) => (a.clientToken ? 1 : 0), descFirst: true },
+  { key: 'go',      label: '',             width: 84 },
+]
 import toast from 'react-hot-toast'
 
 export default function AccountsPage() {
+  const cols = useTable<Account>('accounts', COLUMNS)
   const [accounts, setAccounts]   = useState<Account[]>([])
   const [loading, setLoading]     = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -80,21 +92,12 @@ export default function AccountsPage() {
           <Button size="sm" onClick={() => setShowModal(true)}>Create first account</Button>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="text-xs text-gray-400 border-b border-gray-100 bg-gray-50">
-                <th className="text-left px-5 py-3 font-medium">Legal name</th>
-                <th className="text-left px-5 py-3 font-medium">Trading name</th>
-                <th className="text-left px-5 py-3 font-medium">Group</th>
-                <th className="text-left px-5 py-3 font-medium">Email</th>
-                <th className="text-left px-5 py-3 font-medium">Terms</th>
-                <th className="text-left px-5 py-3 font-medium">Portal</th>
-                <th className="px-5 py-3" />
-              </tr>
-            </thead>
+        <div className="bg-white rounded-xl border border-gray-100" style={{ overflowX: 'auto' }}>
+                    <table className="dt" style={{ minWidth: cols.minWidth }}>
+              <cols.ColGroup />
+              <cols.Head />
             <tbody>
-              {displayed.map((account) => (
+              {cols.sortRows(displayed).map((account) => (
                 <tr key={account.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => window.location.href = `/accounts/${account.id}`}>
                   <td className="px-5 py-3.5">
                     <p className="text-sm font-medium text-gray-900">{account.legalName}</p>
