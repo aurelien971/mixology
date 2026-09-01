@@ -9,6 +9,19 @@ import AddProductModal from '@/components/catalog/AddProductModal'
 import EditProductModal from '@/components/catalog/EditProductModal'
 import { getProducts, getAllPricing } from '@/lib/firestore/catalog'
 import { Product, AccountPricing } from '@/types'
+import { useTable, ColumnDef } from '@/hooks/useTable'
+
+const COLUMNS: ColumnDef<Product>[] = [
+  { key: 'code',     label: 'Code',            width: 110, sortValue: (p) => p.productCode },
+  { key: 'name',     label: 'Cocktail',        width: 240, sortValue: (p) => p.name },
+  { key: 'cat',      label: 'Category',        width: 130, sortValue: (p) => p.category },
+  { key: 'serve',    label: 'Serve size',      width: 100, align: 'right', sortValue: (p) => p.recommendedServingG, descFirst: true },
+  { key: 'perLitre', label: 'Servings / litre',width: 128, align: 'right', sortValue: (p) => 1000 / (p.recommendedServingG || 100), descFirst: true },
+  { key: 'costUnit', label: 'Cost / unit',     width: 108, align: 'right', sortValue: (p) => p.costToMake, descFirst: true },
+  { key: 'costL',    label: 'Cost / litre',    width: 108, align: 'right', sortValue: (p) => (p.costToMake / (p.recommendedServingG || 100)) * 1000, descFirst: true },
+  { key: 'type',     label: 'Type',            width: 108, sortValue: (p) => (p.isNonAlcoholic ? 'Non-alc' : 'Alcoholic') },
+  { key: 'go',       label: '',                width: 74 },
+]
 
 const CATEGORIES = [
   'All', 'Highball', 'Martini', 'Sour', 'Negroni', 'Margarita',
@@ -28,6 +41,7 @@ export default function CatalogPage() {
   const [hidden, setHidden] = useState(true)
   const [missingOnly, setMissingOnly] = useState(searchParams.get('missing') === '1')
   const [allPricing, setAllPricing] = useState<AccountPricing[]>([])
+  const cols = useTable<Product>('catalog', COLUMNS)
 
   function load() {
     Promise.all([getProducts(), getAllPricing()])
@@ -45,7 +59,7 @@ export default function CatalogPage() {
     ? null
     : new Set(allPricing.filter(p => p.accountName === accountFilter).map(p => p.productId))
 
-  const filtered = products.filter((p) => {
+  const rowsUnsorted = products.filter((p) => {
     const matchSearch =
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.productCode.toLowerCase().includes(search.toLowerCase())
@@ -54,6 +68,7 @@ export default function CatalogPage() {
     const matchAccount = !pricedForAccount || pricedForAccount.has(p.id)
     return matchSearch && matchCat && matchMissing && matchAccount
   })
+  const filtered = cols.sortRows(rowsUnsorted)
 
   const missingTotal = products.filter(p => p.costMissing).length
 
@@ -185,21 +200,10 @@ export default function CatalogPage() {
           {!search && categoryFilter === 'All' && <Button size="sm">Add first product</Button>}
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="text-xs text-gray-400 border-b border-gray-100 bg-gray-50">
-                <th className="text-left px-5 py-3 font-medium">Code</th>
-                <th className="text-left px-5 py-3 font-medium">Cocktail</th>
-                <th className="text-left px-5 py-3 font-medium">Category</th>
-                <th className="text-right px-5 py-3 font-medium">Serve size</th>
-                <th className="text-right px-5 py-3 font-medium">Servings / litre</th>
-                <th className="text-right px-5 py-3 font-medium" style={{ color: hidden ? '#e5e7eb' : undefined }}>Cost / unit</th>
-                <th className="text-right px-5 py-3 font-medium" style={{ color: hidden ? '#e5e7eb' : undefined }}>Cost / litre</th>
-                <th className="text-left px-5 py-3 font-medium">Type</th>
-                <th className="px-5 py-3" />
-              </tr>
-            </thead>
+        <div className="bg-white rounded-xl border border-gray-100" style={{ overflowX: 'auto' }}>
+          <table className="dt" style={{ minWidth: cols.minWidth }}>
+              <cols.ColGroup />
+              <cols.Head />
             <tbody>
               {filtered.map((product) => (
                 <tr

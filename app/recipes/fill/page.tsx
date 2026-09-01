@@ -19,6 +19,7 @@ const CATEGORIES = [
 // Every serving size the range actually uses, so the common answer is one click.
 const COMMON_SERVES = [
   { ml: 100, label: '100ml', hint: 'short, stirred' },
+  { ml: 110, label: '110ml', hint: 'mezcal serves' },
   { ml: 120, label: '120ml', hint: 'martini, negroni' },
   { ml: 136, label: '136ml', hint: 'old fashioned' },
   { ml: 160, label: '160ml', hint: 'sour' },

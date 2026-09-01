@@ -9,6 +9,20 @@ import Button from '@/components/ui/Button'
 import NoryImportModal from '@/components/orders/NoryImportModal'
 import { getAllOrders } from '@/lib/firestore/orders'
 import { Order, OrderStatus, OrderCategory } from '@/types'
+import { useTable, ColumnDef } from '@/hooks/useTable'
+
+const COLUMNS: ColumnDef<Order>[] = [
+  { key: 'no',       label: 'Order no.', width: 118, sortValue: (o) => o.orderNumber },
+  { key: 'account',  label: 'Account',   width: 200, sortValue: (o) => o.accountName },
+  { key: 'category', label: 'Category',  width: 132, sortValue: (o) => (o.category ? CATEGORY_LABELS[o.category]?.label : '') },
+  { key: 'po',       label: 'PO ref',    width: 110, sortValue: (o) => o.poReference },
+  { key: 'date',     label: 'Date',      width: 118, sortValue: (o) => o.createdAt, descFirst: true },
+  { key: 'status',   label: 'Status',    width: 112, sortValue: (o) => o.status },
+  { key: 'items',    label: 'Items',     width: 70,  align: 'right', sortValue: (o) => o.lineItems.length, descFirst: true },
+  { key: 'total',    label: 'Total',     width: 100, align: 'right', sortValue: (o) => o.total, descFirst: true },
+  { key: 'signed',   label: 'Signed DN', width: 92,  align: 'center', sortValue: (o) => (o.signedDeliveryNoteUrl ? 1 : 0), descFirst: true },
+  { key: 'go',       label: '',          width: 74 },
+]
 
 const CATEGORY_LABELS: Record<OrderCategory, { label: string; color: string; bg: string }> = {
   cocktail_production: { label: 'Cocktail Prod.',  color: '#0369a1', bg: '#e0f2fe' },
@@ -35,6 +49,7 @@ export default function OrdersPage() {
   const [search, setSearch] = useState('')
   const [showNoryModal,  setShowNoryModal]  = useState(false)
   const [typeFilter, setTypeFilter] = useState<'all' | 'order' | 'rd'>('all')
+  const cols = useTable<Order>('orders', COLUMNS)
 
   function load() {
     getAllOrders().then(setOrders).finally(() => setLoading(false))
@@ -42,7 +57,7 @@ export default function OrdersPage() {
 
   useEffect(() => { load() }, [])
 
-  const filtered = orders.filter((o) => {
+  const rows = orders.filter((o) => {
     const matchStatus = filter === 'all' || o.status === filter
     const matchSearch =
       o.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
@@ -51,6 +66,7 @@ export default function OrdersPage() {
     const matchType = typeFilter === 'all' || (typeFilter === 'rd' ? o.type === 'rd' : o.type !== 'rd')
     return matchStatus && matchSearch && matchType
   })
+  const filtered = cols.sortRows(rows)
 
   return (
     <div style={{ position: 'relative' }}>
@@ -112,6 +128,7 @@ export default function OrdersPage() {
             </button>
           ))}
         </div>
+        <cols.ResetButton />
       </div>
 
       {loading ? (
@@ -130,22 +147,10 @@ export default function OrdersPage() {
       ) : (
         <>
           {/* Desktop table */}
-          <div className="hidden md:block bg-white rounded-xl border border-gray-100 overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="text-xs text-gray-400 border-b border-gray-100 bg-gray-50">
-                  <th className="text-left px-5 py-3 font-medium">Order no.</th>
-                  <th className="text-left px-5 py-3 font-medium">Account</th>
-                  <th className="text-left px-5 py-3 font-medium">Category</th>
-                  <th className="text-left px-5 py-3 font-medium">PO ref</th>
-                  <th className="text-left px-5 py-3 font-medium">Date</th>
-                  <th className="text-left px-5 py-3 font-medium">Status</th>
-                  <th className="text-right px-5 py-3 font-medium">Items</th>
-                  <th className="text-right px-5 py-3 font-medium">Total</th>
-                  <th className="text-center px-5 py-3 font-medium">Signed DN</th>
-                  <th className="px-5 py-3" />
-                </tr>
-              </thead>
+          <div className="hidden md:block bg-white rounded-xl border border-gray-100" style={{ overflowX: 'auto' }}>
+            <table className="dt" style={{ minWidth: cols.minWidth }}>
+              <cols.ColGroup />
+              <cols.Head />
               <tbody>
                 {filtered.map((order) => {
                   const badge = orderStatusBadge(order.status)
