@@ -82,7 +82,11 @@ export interface PricingInputs {
   venueGpTarget: number    // 0.80
   ourGpTarget: number      // the margin we will not go below
   servingMl: number
+  mode: PriceMode
 }
+
+/** Whose margin gets protected when both targets cannot hold at once. */
+export type PriceMode = 'venue' | 'ours' | 'split'
 
 export interface FormatResult {
   /** What we can charge the venue per serve and still leave them their target GP. */
@@ -96,6 +100,10 @@ export interface FormatResult {
   works: boolean
   /** Menu price at which both targets hold. */
   menuPriceNeeded: number
+  /** The GP the venue is actually left with at `ourPrice`. */
+  venueGpPercent: number
+  /** The most we could charge before the venue drops below its target. */
+  ourCeiling: number
 }
 
 export interface DrinkPricing {
@@ -117,23 +125,40 @@ export function priceDrink(split: CostSplit, i: PricingInputs): DrinkPricing {
   // What the venue can spend in total and still hold its GP.
   const venueBudget = net * (1 - i.venueGpTarget)
 
-  const format = (ourCost: number, venuePaysUs: number): FormatResult => {
+  const format = (ourCost: number, ceiling: number, theirSpirit: number): FormatResult => {
+    // Ceiling: the most we can charge before the venue drops below its target.
+    // Floor: the least we can charge and still clear ours. When the floor is
+    // above the ceiling the two targets are incompatible at this menu price,
+    // and `mode` decides which one gives.
     const floor = i.ourGpTarget < 1 ? ourCost / (1 - i.ourGpTarget) : Infinity
-    const ourGp = venuePaysUs > 0 ? ((venuePaysUs - ourCost) / venuePaysUs) * 100 : 0
+    const works = ceiling >= floor
+
+    const price =
+      i.mode === 'venue' ? ceiling
+      : i.mode === 'ours' ? floor
+      : works ? (ceiling + floor) / 2 : (ceiling + floor) / 2
+
+    const safe = Math.max(0, price)
+    const ourGp = safe > 0 ? ((safe - ourCost) / safe) * 100 : 0
+    // Whatever we charge, the venue also pays for its own spirit on the syrup.
+    const venueGp = net > 0 ? ((net - safe - theirSpirit) / net) * 100 : 0
+
     return {
-      ourPrice: round(Math.max(0, venuePaysUs)),
+      ourPrice: round(safe),
       ourCost: round(ourCost),
       ourGpPercent: Math.round(ourGp * 10) / 10,
       ourFloor: round(floor),
-      works: venuePaysUs >= floor,
+      ourCeiling: round(Math.max(0, ceiling)),
+      venueGpPercent: Math.round(venueGp * 10) / 10,
+      works,
       menuPriceNeeded: 0,   // filled below
     }
   }
 
   // Pre-mix: we supply everything, so the venue's whole budget comes to us.
-  const premix = format(total, venueBudget)
+  const premix = format(total, venueBudget, 0)
   // Syrup: the venue buys its own spirit out of the same budget first.
-  const syrup = format(mixer, venueBudget - spirit)
+  const syrup = format(mixer, venueBudget - spirit, spirit)
 
   // The menu price at which both our floor and their target hold.
   const needed = (ourCost: number, theirSpirit: number) => {

@@ -6,7 +6,7 @@ import Button from '@/components/ui/Button'
 import { getProducts } from '@/lib/firestore/catalog'
 import { getRecipes } from '@/lib/firestore/recipes'
 import { getIngredients } from '@/lib/firestore/ingredients'
-import { splitRecipeCost, priceDrink, PricingInputs } from '@/lib/pricing'
+import { splitRecipeCost, priceDrink, PricingInputs, PriceMode } from '@/lib/pricing'
 import { useTable, ColumnDef } from '@/hooks/useTable'
 import { Product, Recipe, Ingredient } from '@/types'
 
@@ -30,6 +30,8 @@ interface Row {
   ourCost: number
   ourPrice: number
   ourGp: number
+  venueGp: number
+  ourCeiling: number
   ourFloor: number
   works: boolean
   menuNeeded: number
@@ -43,6 +45,7 @@ const COLUMNS: ColumnDef<Row>[] = [
   { key: 'spirit', label: 'Their spirit', width: 106, align: 'right', sortValue: (r) => r.spiritPerServe, descFirst: true },
   { key: 'price',  label: 'We charge',    width: 104, align: 'right', sortValue: (r) => r.ourPrice, descFirst: true },
   { key: 'cost',   label: 'Costs us',     width: 96,  align: 'right', sortValue: (r) => r.ourCost, descFirst: true },
+  { key: 'vgp',    label: 'Venue GP',     width: 96,  align: 'right', sortValue: (r) => r.venueGp, descFirst: true },
   { key: 'gp',     label: 'Our GP',       width: 92,  align: 'right', sortValue: (r) => r.ourGp, descFirst: true },
   { key: 'needed', label: 'Menu needed',  width: 116, align: 'right', sortValue: (r) => r.menuNeeded, descFirst: true },
   { key: 'verdict',label: 'Verdict',      width: 110, sortValue: (r) => (r.works ? 0 : 1) },
@@ -59,6 +62,7 @@ export default function PricingPage() {
   const [ourGp, setOurGp] = useState(60)
   const [vat, setVat] = useState(20)
   const [classicsOnly, setClassicsOnly] = useState(true)
+  const [mode, setMode] = useState<PriceMode>('venue')
   // Menu price per drink, so you can play with one without moving the rest.
   const [menu, setMenu] = useState<Record<string, string>>({})
   const [defaultMenu, setDefaultMenu] = useState('13')
@@ -84,7 +88,7 @@ export default function PricingPage() {
         const split = splitRecipeCost(recipe, ingredients)
         const inputs: PricingInputs = {
           menuPrice, vatRate: vat / 100,
-          venueGpTarget: venueGp / 100, ourGpTarget: ourGp / 100, servingMl,
+          venueGpTarget: venueGp / 100, ourGpTarget: ourGp / 100, servingMl, mode,
         }
         const priced = priceDrink(split, inputs)
         const f = format === 'premix' ? priced.premix : priced.syrup
@@ -93,12 +97,13 @@ export default function PricingPage() {
           product: p, servingMl, menuPrice,
           spiritPerServe: format === 'syrup' ? priced.spiritPerServe : 0,
           ourCost: f.ourCost, ourPrice: f.ourPrice, ourGp: f.ourGpPercent,
+          venueGp: f.venueGpPercent, ourCeiling: f.ourCeiling,
           ourFloor: f.ourFloor, works: f.works, menuNeeded: f.menuPriceNeeded,
           complete: split.complete,
         }
       })
       .filter((r): r is Row => r !== null)
-  }, [products, recipes, ingredients, format, venueGp, ourGp, vat, classicsOnly, menu, defaultMenu])
+  }, [products, recipes, ingredients, format, venueGp, ourGp, vat, classicsOnly, menu, defaultMenu, mode])
 
   const summary = useMemo(() => {
     const ok = rows.filter((r) => r.works)
@@ -115,12 +120,12 @@ export default function PricingPage() {
     const head = [
       'Drink', 'Format', 'Serve (ml)', 'Menu price inc VAT',
       format === 'syrup' ? 'Venue spirit cost' : 'Venue buys spirit',
-      'Our price per serve', 'Venue GP target %', 'Menu price needed', 'Holds?',
+      'Our price per serve', 'Venue GP achieved %', 'Menu price needed', 'Holds?',
     ]
     const lines = rows.map((r) => [
       `"${r.product.name}"`, format === 'syrup' ? 'Syrup' : 'Pre-mix', r.servingMl,
       r.menuPrice.toFixed(2), format === 'syrup' ? r.spiritPerServe.toFixed(2) : 'n/a',
-      r.ourPrice.toFixed(2), venueGp, r.menuNeeded.toFixed(2), r.works ? 'Yes' : 'No',
+      r.ourPrice.toFixed(2), r.venueGp.toFixed(1), r.menuNeeded.toFixed(2), r.works ? 'Yes' : 'No',
     ].join(','))
     // Our cost and our GP stay out — this file is for a client.
     const blob = new Blob(['﻿' + [head.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' })
@@ -189,6 +194,23 @@ export default function PricingPage() {
       </div>
 
       {/* the levers */}
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '12px' }}>
+        <span style={{ fontSize: '12px', color: '#9ca3af' }}>When both cannot hold —</span>
+        {([
+          ['venue', 'Protect their GP'],
+          ['ours',  'Protect ours'],
+          ['split', 'Split the gap'],
+        ] as const).map(([v, l]) => (
+          <button
+            key={v}
+            onClick={() => setMode(v)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              mode === v ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100'
+            }`}
+          >{l}</button>
+        ))}
+      </div>
+
       <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '14px' }}>
         <label style={{ fontSize: '13px', color: '#374151', display: 'flex', alignItems: 'center', gap: '8px' }}>
           Venue GP
@@ -262,6 +284,13 @@ export default function PricingPage() {
                   </td>
                   <td style={{ ...td, fontWeight: 700, color: r.works ? '#111827' : '#b45309' }}>{money(r.ourPrice)}</td>
                   <td style={{ ...td, color: '#6b7280' }}>{money(r.ourCost)}</td>
+                  <td style={td}>
+                    <span style={{
+                      fontSize: '12px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
+                      background: r.venueGp >= venueGp ? '#f0fdf4' : r.venueGp >= venueGp - 10 ? '#fefce8' : '#fef2f2',
+                      color: r.venueGp >= venueGp ? '#166534' : r.venueGp >= venueGp - 10 ? '#854d0e' : '#991b1b',
+                    }}>{r.venueGp.toFixed(0)}%</span>
+                  </td>
                   <td style={td}>
                     <span style={{
                       fontSize: '12px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
