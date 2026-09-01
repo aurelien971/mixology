@@ -8,8 +8,8 @@ import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import { getProject, updateProject, updateProjectLogged, deleteProject } from '@/lib/firestore/projects'
 import {
-  Project, ProjectKind, ProjectStage, ChecklistItem,
-  PROJECT_KIND_LABELS, PROJECT_STAGES, projectScore, projectProgress,
+  Project, ProjectKind, ProjectStage, ProjectCategory, ChecklistItem,
+  PROJECT_KIND_LABELS, PROJECT_STAGES, PROJECT_CATEGORIES, projectScore, projectProgress,
 } from '@/types'
 
 const card: React.CSSProperties = {
@@ -276,6 +276,18 @@ export default function ProjectDetailPage() {
                   style={{ ...input, cursor: 'pointer' }}
                 >
                   {Object.entries(PROJECT_KIND_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <span style={label}>Programme</span>
+                <select
+                  value={p.category ?? ''}
+                  onChange={(e) => quiet({ category: (e.target.value || undefined) as ProjectCategory })}
+                  style={{ ...input, cursor: 'pointer' }}
+                >
+                  <option value="">— none —</option>
+                  {PROJECT_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </div>
 

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { format, formatDistanceToNow, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths } from 'date-fns'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
-import { getProjects, createProject, updateProjectLogged, deleteProject } from '@/lib/firestore/projects'
+import { getProjects, createProject, updateProject, updateProjectLogged, deleteProject } from '@/lib/firestore/projects'
 import { SEED_PROJECTS } from '@/lib/data/seedProjects'
 import { getAllOrders } from '@/lib/firestore/orders'
 import {
@@ -14,6 +14,8 @@ import {
   ProjectStage,
   PROJECT_KIND_LABELS,
   PROJECT_STAGES,
+  ProjectCategory,
+  PROJECT_CATEGORIES,
   projectScore,
   projectProgress,
   Order,
@@ -122,7 +124,8 @@ interface Col { key: string; label: string; sort?: SortKey; w: number; align?: '
 const COLUMNS: Col[] = [
   { key: 'top',        label: '★',          w: 38,  align: 'center' },
   { key: 'title',      label: 'Project',    sort: 'title',       w: 320 },
-  { key: 'kind',       label: 'Type',       sort: 'kind',        w: 104 },
+  { key: 'kind',       label: 'Type',       sort: 'kind',        w: 96 },
+  { key: 'category',   label: 'Programme',  sort: 'category',    w: 124 },
   { key: 'stage',      label: 'Stage',      sort: 'stage',       w: 124 },
   { key: 'owner',      label: 'Owner',      sort: 'owner',       w: 108 },
   { key: 'due',        label: 'Due',        sort: 'dueDate',     w: 124 },
@@ -141,7 +144,7 @@ const WIDTH_KEY = 'foodlab-project-cols'
 
 type SortKey =
   | 'title' | 'kind' | 'stage' | 'owner' | 'dueDate' | 'nextStep'
-  | 'blocker' | 'gatekeeper' | 'opportunity' | 'prizeGbp' | 'effortDays' | 'score' | 'updatedAt'
+  | 'blocker' | 'gatekeeper' | 'opportunity' | 'prizeGbp' | 'effortDays' | 'score' | 'updatedAt' | 'category'
 
 // Blanks always sink to the bottom whichever way the column is pointing —
 // an empty owner is never the most interesting row.
@@ -261,10 +264,15 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [rdOrders, setRdOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<Tab>('all')
+  const VIEW_KEY = 'foodlab-project-view'
+  const savedView = (() => {
+    try { return JSON.parse(localStorage.getItem(VIEW_KEY) || '{}') } catch { return {} }
+  })()
+  const [tab, setTab] = useState<Tab>(savedView.tab ?? 'all')
+  const [programme, setProgramme] = useState<ProjectCategory | 'all'>(savedView.programme ?? 'all')
   const [saving, setSaving] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null)
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(savedView.sort ?? null)
   const [bulk, setBulk] = useState<string | null>(null)
   const [widths, setWidths] = useState<Record<string, number>>(() => {
     try {
@@ -296,6 +304,13 @@ export default function ProjectsPage() {
     document.addEventListener('mouseup', up)
   }
 
+  // The view you left is the view you come back to.
+  function saveView(next: Partial<{ tab: Tab; programme: ProjectCategory | 'all'; sort: { key: SortKey; dir: 1 | -1 } | null }>) {
+    try {
+      localStorage.setItem(VIEW_KEY, JSON.stringify({ tab, programme, sort, ...next }))
+    } catch { /* private mode */ }
+  }
+
   function resetWidths() {
     const base = Object.fromEntries(COLUMNS.map((c) => [c.key, c.w]))
     setWidths(base)
@@ -324,6 +339,15 @@ export default function ProjectsPage() {
       try {
         const existing = await getProjects()
         const have = new Set(existing.map((p) => p.title.trim().toLowerCase()))
+        // Projects seeded before programmes existed get theirs filled in once.
+        const byTitle = new Map(SEED_PROJECTS.map((sp) => [sp.title.trim().toLowerCase(), sp]))
+        for (const p of existing) {
+          if (p.category) continue
+          const seed = byTitle.get(p.title.trim().toLowerCase())
+          const category = seed?.category ?? (p.accountName === 'Bloomin' ? 'bloomin' : undefined)
+          if (category) await updateProject(p.id, { category })
+        }
+
         const todo = SEED_PROJECTS.filter((sp) => !have.has(sp.title.trim().toLowerCase()))
         for (const sp of todo) {
           const { checklistText, ...rest } = sp
@@ -481,13 +505,15 @@ export default function ProjectsPage() {
   function toggleSort(key: SortKey) {
     const numeric = key === 'score' || key === 'opportunity' || key === 'prizeGbp' || key === 'effortDays'
     setSort((cur) => {
-      if (!cur || cur.key !== key) return { key, dir: numeric ? -1 : 1 }
-      if (cur.dir === (numeric ? -1 : 1)) return { key, dir: numeric ? 1 : -1 }
+      if (!cur || cur.key !== key) { const n = { key, dir: (numeric ? -1 : 1) as 1 | -1 }; saveView({ sort: n }); return n }
+      if (cur.dir === (numeric ? -1 : 1)) { const n = { key, dir: (numeric ? 1 : -1) as 1 | -1 }; saveView({ sort: n }); return n }
+      saveView({ sort: null })
       return null
     })
   }
 
   const visible = ranked.filter(({ p }) => {
+    if (programme !== 'all' && p.category !== programme) return false
     if (tab === 'top') return p.decision === 'top'
     if (tab === 'parked') return p.decision === 'parked' || p.stage === 'parked'
     if (tab === 'gaps') return !p.owner || !p.dueDate || projectScore(p) === null
@@ -591,7 +617,7 @@ export default function ProjectsPage() {
           {([['all', `All ${projects.length}`], ['top', `This month ${stats.top}`], ['parked', 'Parked'], ['gaps', `Missing ${projects.filter(p => !p.owner || !p.dueDate || projectScore(p) === null).length}`]] as const).map(([v, l]) => (
             <button
               key={v}
-              onClick={() => setTab(v as Tab)}
+              onClick={() => { setTab(v as Tab); saveView({ tab: v as Tab }) }}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 tab === v ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100'
               }`}
@@ -607,6 +633,23 @@ export default function ProjectsPage() {
         >
           Reset columns
         </button>
+        <select
+          value={programme}
+          onChange={(e) => {
+            const v = e.target.value as ProjectCategory | 'all'
+            setProgramme(v); saveView({ programme: v })
+          }}
+          style={{
+            padding: '6px 9px', border: '1px solid #e5e7eb', borderRadius: '8px',
+            fontSize: '12px', background: '#fff', color: '#374151', cursor: 'pointer',
+          }}
+        >
+          <option value="all">All programmes</option>
+          {PROJECT_CATEGORIES.map((c) => {
+            const n = projects.filter((p) => p.category === c.value).length
+            return <option key={c.value} value={c.value}>{c.label}{n ? ` (${n})` : ''}</option>
+          })}
+        </select>
         <span style={{ fontSize: '11.5px', color: '#9ca3af' }}>
           {saving
             ? 'Saving…'
@@ -749,6 +792,21 @@ export default function ProjectsPage() {
                         style={{ ...field, fontSize: '12px', cursor: 'pointer' }}
                       >
                         {Object.entries(PROJECT_KIND_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                      </select>
+                    </td>
+                    <td style={cell}>
+                      <select
+                        value={p.category ?? ''}
+                        onChange={(e) => patch(p.id, { category: (e.target.value || undefined) as ProjectCategory })}
+                        style={{
+                          ...field, fontSize: '11.5px', fontWeight: 600, cursor: 'pointer', textAlign: 'center',
+                          borderRadius: '20px',
+                          background: p.category ? PROJECT_CATEGORIES.find((c) => c.value === p.category)?.bg : 'transparent',
+                          color: p.category ? PROJECT_CATEGORIES.find((c) => c.value === p.category)?.fg : '#d1d5db',
+                        }}
+                      >
+                        <option value="">— none —</option>
+                        {PROJECT_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                       </select>
                     </td>
                     <td style={cell}>

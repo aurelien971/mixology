@@ -345,6 +345,34 @@ export const PROJECT_KIND_LABELS: Record<ProjectKind, string> = {
   other:      'Other',
 }
 
+// The programme a project belongs to — the workstream, not the client. Several
+// of these run to their own timeline and get reviewed separately.
+export type ProjectCategory =
+  | 'cocktails'
+  | 'bloomin'
+  | 'aguapro'
+  | 'baek'
+  | 'casa_alegria'
+  | 'syrups'
+  | 'popsicles'
+  | 'consulting'
+  | 'other'
+
+export const PROJECT_CATEGORIES: { value: ProjectCategory; label: string; bg: string; fg: string }[] = [
+  { value: 'cocktails',    label: 'Cocktails',    bg: '#e0f2fe', fg: '#0369a1' },
+  { value: 'bloomin',      label: 'Bloomin',      bg: '#fce7f3', fg: '#9d174d' },
+  { value: 'aguapro',      label: 'AguaPro',      bg: '#ccfbf1', fg: '#0f766e' },
+  { value: 'baek',         label: 'BAEK',         bg: '#fef3c7', fg: '#92400e' },
+  { value: 'casa_alegria', label: 'Casa Alegría', bg: '#ffedd5', fg: '#c2410c' },
+  { value: 'syrups',       label: 'Syrups',       bg: '#f3e8ff', fg: '#7e22ce' },
+  { value: 'popsicles',    label: 'Popsicles',    bg: '#dbeafe', fg: '#1d4ed8' },
+  { value: 'consulting',   label: 'Consulting',   bg: '#e0e7ff', fg: '#4338ca' },
+  { value: 'other',        label: 'Other',        bg: '#f3f4f6', fg: '#4b5563' },
+]
+
+export const PROJECT_CATEGORY_LABELS: Record<ProjectCategory, string> =
+  Object.fromEntries(PROJECT_CATEGORIES.map((c) => [c.value, c.label])) as Record<ProjectCategory, string>
+
 export type ProjectStage =
   | 'brief'
   | 'development'
@@ -391,6 +419,7 @@ export interface Project {
   id: string
   title: string
   kind: ProjectKind
+  category?: ProjectCategory    // the programme it sits in
   accountName?: string
   stage: ProjectStage
 

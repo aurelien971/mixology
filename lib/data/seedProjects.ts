@@ -14,6 +14,7 @@ export const SEED_PROJECTS: ProjectSeed[] = [
   {
     title: 'Just-add-alcohol range — ten classics as syrups',
     kind: 'range',
+    category: 'syrups',
     stage: 'development',
     accountName: 'Foodlab',
     scope:
@@ -32,23 +33,24 @@ export const SEED_PROJECTS: ProjectSeed[] = [
   },
 
   // ── Bloomin ───────────────────────────────────────────────────────────────
-  { title: 'Custard Syrup',                   kind: 'rd', stage: 'brief',       accountName: 'Bloomin' },
-  { title: 'White choc sauce',                kind: 'rd', stage: 'brief',       accountName: 'Bloomin' },
-  { title: 'Jabuticaba syrup / Lucuma Syrup', kind: 'rd', stage: 'brief',       accountName: 'Bloomin',
+  { title: 'Custard Syrup',                   kind: 'rd', category: 'bloomin', stage: 'brief',       accountName: 'Bloomin' },
+  { title: 'White choc sauce',                kind: 'rd', category: 'bloomin', stage: 'brief',       accountName: 'Bloomin' },
+  { title: 'Jabuticaba syrup / Lucuma Syrup', kind: 'rd', category: 'bloomin', stage: 'brief',       accountName: 'Bloomin',
     scope: 'Two syrups briefed together. Split into separate projects if they diverge on timing or spec.' },
-  { title: 'Recovery blend',                  kind: 'rd', stage: 'brief',       accountName: 'Bloomin' },
-  { title: 'Tangerine syrup',                 kind: 'rd', stage: 'brief',       accountName: 'Bloomin' },
-  { title: "S'mores + Sticky Toffee",         kind: 'rd', stage: 'development', accountName: 'Bloomin',
+  { title: 'Recovery blend',                  kind: 'rd', category: 'bloomin', stage: 'brief',       accountName: 'Bloomin' },
+  { title: 'Tangerine syrup',                 kind: 'rd', category: 'bloomin', stage: 'brief',       accountName: 'Bloomin' },
+  { title: "S'mores + Sticky Toffee",         kind: 'rd', category: 'bloomin', stage: 'development', accountName: 'Bloomin',
     dueDate: new Date('2026-09-11T12:00:00'), nextStep: 'Finish up R&D', scope: 'R&D finishing 11 September.' },
-  { title: 'Crackle Cup R&D',                 kind: 'rd', stage: 'development', accountName: 'Bloomin' },
-  { title: 'Madeline / SS / Blondie',         kind: 'rd', stage: 'brief',       accountName: 'Bloomin',
+  { title: 'Crackle Cup R&D',                 kind: 'rd', category: 'bloomin', stage: 'development', accountName: 'Bloomin' },
+  { title: 'Madeline / SS / Blondie',         kind: 'rd', category: 'bloomin', stage: 'brief',       accountName: 'Bloomin',
     scope: 'Three briefed together. Split if they diverge on timing or spec.' },
-  { title: 'Date Spread',                     kind: 'rd', stage: 'brief',       accountName: 'Bloomin' },
+  { title: 'Date Spread',                     kind: 'rd', category: 'bloomin', stage: 'brief',       accountName: 'Bloomin' },
 
   // ── Flat Iron ─────────────────────────────────────────────────────────────
   {
     title: 'Flat Iron trial — syrup vs finished cocktail',
     kind: 'rd',
+    category: 'cocktails',
     stage: 'development',
     accountName: 'Flat Iron Square',
     scope:
