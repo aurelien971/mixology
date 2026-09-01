@@ -70,6 +70,7 @@ export default function SwapsPage() {
   })
   const [brief, setBrief] = useState<string | null>(null)
   const [thinking, setThinking] = useState(false)
+  const [coreOnly, setCoreOnly] = useState(true)
   const swapCols = useTable<Swap>('swaps', SWAP_COLUMNS)
   const gpCols = useTable<GpRow>('swaps-gp', GP_COLUMNS)
 
@@ -113,6 +114,7 @@ export default function SwapsPage() {
 
     return products
       .filter((p) => p.isActive !== false)
+      .filter((p) => (coreOnly ? p.isClassic : true))
       .map((p) => {
         const recipe = recipes.find((r) => r.productId === p.id)
         const costNow = costOf(recipe, ingredients)
@@ -127,7 +129,7 @@ export default function SwapsPage() {
       })
       .filter((d) => d.delta !== null && Math.abs(d.delta) > 0.005)
       .sort((a, b) => (a.delta ?? 0) - (b.delta ?? 0))
-  }, [products, recipes, ingredients, active])
+  }, [products, recipes, ingredients, active, coreOnly])
 
   const router = useRouter()
 
@@ -280,6 +282,10 @@ export default function SwapsPage() {
         <span style={{ fontSize: '12.5px', color: '#9ca3af' }}>
           Foodlab GP against our own sell price, before and after the ticked swaps
         </span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12.5px', color: '#374151', cursor: 'pointer' }}>
+          <input type="checkbox" checked={coreOnly} onChange={(e) => setCoreOnly(e.target.checked)} />
+          Core classics only
+        </label>
       </div>
 
       {loading ? (

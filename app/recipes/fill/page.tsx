@@ -67,6 +67,8 @@ export default function FillPage() {
   const [i, setI] = useState(0)
   const [saving, setSaving] = useState(false)
   const [filled, setFilled] = useState<Set<string>>(new Set())
+  // The eleven are what gets priced, so they are what is worth filling first.
+  const [coreOnly, setCoreOnly] = useState(true)
 
   // Draft for the card on screen
   const [serving, setServing] = useState('')
@@ -82,6 +84,7 @@ export default function FillPage() {
   const gaps = useMemo<Gap[]>(() => {
     return products
       .filter((p) => p.isActive !== false)
+      .filter((p) => (coreOnly ? p.isClassic : true))
       .map((p) => {
         const recipe = recipes.find((r) => r.productId === p.id)
         const missing: GapKind[] = []
@@ -101,7 +104,7 @@ export default function FillPage() {
       })
       .filter((g) => g.missing.length > 0)
       .sort((a, b) => b.missing.length - a.missing.length)
-  }, [products, recipes, ingredients])
+  }, [products, recipes, ingredients, coreOnly])
 
   const remaining = gaps.filter((g) => !filled.has(g.product.id))
   const current = remaining[Math.min(i, Math.max(0, remaining.length - 1))]
@@ -151,14 +154,23 @@ export default function FillPage() {
       <Header
         title="Fill the gaps"
         subtitle="Every drink missing something the costing needs. One at a time."
-        action={<Link href="/recipes"><Button size="sm" variant="secondary">← Recipes</Button></Link>}
+        action={
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '13px', color: '#374151', cursor: 'pointer' }}>
+              <input type="checkbox" checked={coreOnly} onChange={(e) => { setCoreOnly(e.target.checked); setI(0) }} />
+              Core classics only
+            </label>
+            <Link href="/recipes"><Button size="sm" variant="secondary">← Recipes</Button></Link>
+          </div>
+        }
       />
 
       {total === 0 ? (
         <div style={card}>
           <p style={{ margin: 0, fontSize: '15px', color: '#166534', fontWeight: 600 }}>Nothing missing.</p>
           <p style={{ margin: '6px 0 0', fontSize: '13.5px', color: '#6b7280' }}>
-            Every active drink has a serving size, a category, a recipe and priced ingredients.
+            {coreOnly ? 'All eleven classics have' : 'Every active drink has'} a serving size, a category, a recipe
+            and priced ingredients.
           </p>
         </div>
       ) : (
