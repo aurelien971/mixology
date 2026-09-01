@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import { getProducts } from '@/lib/firestore/catalog'
@@ -142,7 +143,13 @@ export default function PricingPage() {
       <Header
         title="Pricing finalizer"
         subtitle="What we charge so the venue keeps its GP and we still make money — on both formats."
-        action={<Button size="sm" onClick={exportCsv}>↓ Export this scenario</Button>}
+        action={
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Link href="/range"><Button size="sm" variant="ghost">Change the range</Button></Link>
+            <Link href="/pricing/alcohol"><Button size="sm" variant="secondary">Mark the spirits</Button></Link>
+            <Button size="sm" onClick={exportCsv}>↓ Export this scenario</Button>
+          </div>
+        }
       />
 
       {/* format switch */}

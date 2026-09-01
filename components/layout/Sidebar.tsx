@@ -108,6 +108,15 @@ const nav = [
     ),
   },
   {
+    label: 'Core classics',
+    href: '/range',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+        <path d="M9 2.5l1.9 3.9 4.3.6-3.1 3 .7 4.3L9 12.3l-3.8 2 .7-4.3-3.1-3 4.3-.6L9 2.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" fill="none"/>
+      </svg>
+    ),
+  },
+  {
     label: 'Pricing',
     href: '/pricing',
     icon: (

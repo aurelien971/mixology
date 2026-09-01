@@ -76,6 +76,9 @@ export default function RecipesPage() {
         subtitle="Master recipe file — every drink, its ingredients and cost"
         action={
           <div style={{ display: 'flex', gap: '8px' }}>
+            <Link href="/range">
+              <Button size="sm" variant="secondary">★ Core classics</Button>
+            </Link>
             <Link href="/recipes/fill">
               <Button size="sm" variant="secondary">◇ Fill the gaps</Button>
             </Link>
