@@ -35,8 +35,30 @@ export default function EditProductModal({ product, onClose, onSaved }: Props) {
     isActive:            product.isActive,
   })
   const [saving, setSaving] = useState(false)
+  const [removing, setRemoving] = useState(false)
 
-  function set(field: string, value: any) {
+  // Soft remove, matching the missing-recipe chips: the product leaves the
+  // catalog, the rate card and pricing, but past orders keep their line items
+  // and their totals. A hard delete would orphan those.
+  async function handleRemove() {
+    if (!confirm(
+      `Remove “${product.name}” (${product.productCode}) from the platform?\n\n` +
+      'It disappears from the catalog, recipes and pricing — past orders keep their numbers.'
+    )) return
+    setRemoving(true)
+    try {
+      await updateProduct(product.id, { isActive: false })
+      toast.success(`${product.name} removed`)
+      onSaved()
+      onClose()
+    } catch {
+      toast.error('Failed to remove')
+    } finally {
+      setRemoving(false)
+    }
+  }
+
+  function set(field: string, value: string | number | boolean) {
     setForm(f => ({ ...f, [field]: value }))
   }
 
@@ -226,7 +248,18 @@ export default function EditProductModal({ product, onClose, onSaved }: Props) {
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '8px', marginTop: '20px', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '20px', alignItems: 'center' }}>
+            <button
+              onClick={handleRemove}
+              disabled={removing || saving}
+              style={{
+                background: 'none', border: 'none', padding: '6px 2px', cursor: removing ? 'default' : 'pointer',
+                fontSize: '13px', color: '#dc2626', opacity: removing ? 0.5 : 1,
+              }}
+            >
+              {removing ? 'Removing…' : 'Remove from platform'}
+            </button>
+            <div style={{ flex: 1 }} />
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
             <Button onClick={handleSave} loading={saving}>Save changes</Button>
           </div>

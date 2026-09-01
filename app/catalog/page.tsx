@@ -7,9 +7,20 @@ import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import AddProductModal from '@/components/catalog/AddProductModal'
 import EditProductModal from '@/components/catalog/EditProductModal'
-import { getProducts, getAllPricing } from '@/lib/firestore/catalog'
+import { getProducts, getAllPricing, updateProduct } from '@/lib/firestore/catalog'
 import { Product, AccountPricing } from '@/types'
 import { useTable, ColumnDef } from '@/hooks/useTable'
+import toast from 'react-hot-toast'
+
+// Both of these mirror what the cells render, so a column always sorts by the
+// thing you can actually see in it.
+function productType(p: Product): string {
+  return p.isNonAlcoholic ? 'N/A' : p.isCoreRange ? 'Core' : 'Venue'
+}
+
+function unitCost(p: Product): number {
+  return p.costToMake ?? (p as Product & { costPerUnit?: number }).costPerUnit ?? 0
+}
 
 const COLUMNS: ColumnDef<Product>[] = [
   { key: 'code',     label: 'Code',            width: 110, sortValue: (p) => p.productCode },
@@ -17,9 +28,9 @@ const COLUMNS: ColumnDef<Product>[] = [
   { key: 'cat',      label: 'Category',        width: 130, sortValue: (p) => p.category },
   { key: 'serve',    label: 'Serve size',      width: 100, align: 'right', sortValue: (p) => p.recommendedServingG, descFirst: true },
   { key: 'perLitre', label: 'Servings / litre',width: 128, align: 'right', sortValue: (p) => 1000 / (p.recommendedServingG || 100), descFirst: true },
-  { key: 'costUnit', label: 'Cost / unit',     width: 108, align: 'right', sortValue: (p) => p.costToMake, descFirst: true },
-  { key: 'costL',    label: 'Cost / litre',    width: 108, align: 'right', sortValue: (p) => (p.costToMake / (p.recommendedServingG || 100)) * 1000, descFirst: true },
-  { key: 'type',     label: 'Type',            width: 108, sortValue: (p) => (p.isNonAlcoholic ? 'Non-alc' : 'Alcoholic') },
+  { key: 'costUnit', label: 'Cost / unit',     width: 108, align: 'right', sortValue: (p) => (p.costMissing ? null : unitCost(p)), descFirst: true },
+  { key: 'costL',    label: 'Cost / litre',    width: 108, align: 'right', sortValue: (p) => (p.costMissing ? null : (unitCost(p) / (p.recommendedServingG || 100)) * 1000), descFirst: true },
+  { key: 'type',     label: 'Type',            width: 108, sortValue: (p) => productType(p) },
   { key: 'go',       label: '',                width: 74 },
 ]
 
@@ -235,13 +246,13 @@ export default function CatalogPage() {
                     <span style={hidden ? { filter: 'blur(6px)', userSelect: 'none', display: 'inline-block' } : {}}>
                       {product.costMissing
                         ? <span style={{ color: '#92400e', fontSize: '11px', fontWeight: 600 }}>not set</span>
-                        : `£${((product.costToMake ?? (product as any).costPerUnit) ?? 0).toFixed(2)}`
+                        : `£${unitCost(product).toFixed(2)}`
                       }
                     </span>
                   </td>
                   <td className="px-5 py-3 text-sm text-right font-medium text-gray-700">
                     <span style={hidden ? { filter: 'blur(6px)', userSelect: 'none', display: 'inline-block' } : {}}>
-                      {product.costMissing ? '—' : pricePerLitre(product.costToMake ?? (product as any).costPerUnit ?? 0, product.recommendedServingG)}
+                      {product.costMissing ? '—' : pricePerLitre(unitCost(product), product.recommendedServingG)}
                     </span>
                   </td>
                   <td className="px-5 py-3">
@@ -255,16 +266,33 @@ export default function CatalogPage() {
                   </td>
                   <td className="px-5 py-3 text-right">
                     {product.costMissing ? (
-                      <button
-                        onClick={() => setEditingProduct(product)}
-                        style={{
-                          padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
-                          background: '#92400e', color: '#fff', border: 'none', cursor: 'pointer',
-                          whiteSpace: 'nowrap' as const,
-                        }}
-                      >
-                        + Add cost
-                      </button>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                        <button
+                          onClick={() => setEditingProduct(product)}
+                          style={{
+                            padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                            background: '#92400e', color: '#fff', border: 'none', cursor: 'pointer',
+                            whiteSpace: 'nowrap' as const,
+                          }}
+                        >
+                          + Add cost
+                        </button>
+                        <button
+                          title="Remove from the platform"
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            if (!confirm(`Remove “${product.name}” (${product.productCode}) from the platform?\n\nIt disappears from the catalog, recipes and pricing — past orders keep their numbers.`)) return
+                            try {
+                              await updateProduct(product.id, { isActive: false })
+                              toast.success(`${product.name} removed`)
+                              load()
+                            } catch { toast.error('Failed to remove') }
+                          }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d97706', fontSize: '15px', padding: '2px 4px', lineHeight: 1 }}
+                          onMouseEnter={e => (e.currentTarget.style.color = '#dc2626')}
+                          onMouseLeave={e => (e.currentTarget.style.color = '#d97706')}
+                        >×</button>
+                      </div>
                     ) : (
                       <Button variant="ghost" size="sm" onClick={() => setEditingProduct(product)}>Edit</Button>
                     )}
