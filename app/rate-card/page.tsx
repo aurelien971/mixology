@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import { getProducts, updateProduct } from '@/lib/firestore/catalog'
 import { getRecipes } from '@/lib/firestore/recipes'
 import { getIngredients } from '@/lib/firestore/ingredients'
-import { computeRecipeCost } from '@/lib/costing'
+import { computeRecipeCost, RecipeCostLine } from '@/lib/costing'
 import { Product, Recipe, Ingredient, CLASSIC_COCKTAILS, matchesClassic } from '@/types'
 
 const th: React.CSSProperties = {
@@ -23,6 +23,92 @@ function toMenuPrice(n: number): number {
   return Math.max(0, Math.round(n * 2) / 2)
 }
 
+/**
+ * Where a drink's cost actually comes from.
+ *
+ * A single mispriced ingredient — usually a pack size entered in millilitres
+ * where the field wants litres — can put a recipe out by orders of magnitude
+ * without anything else looking wrong. Sorting by contribution makes that
+ * obvious in one glance, so the answer to "why is this drink £38?" is a click
+ * rather than an afternoon.
+ */
+function CostBreakdown({ lines, costPerLitre, servingMl }: {
+  lines: RecipeCostLine[]
+  costPerLitre: number
+  servingMl: number
+}) {
+  const priced = lines.filter((l) => l.costPer1L !== null && l.costPer1L > 0)
+  const sorted = [...priced].sort((a, b) => (b.costPer1L ?? 0) - (a.costPer1L ?? 0))
+  const unpriced = lines.filter((l) => l.costPer1L === null)
+  const worst = sorted[0]
+  // One line carrying nearly the whole cost is the signature of a bad price.
+  const dominant = worst && costPerLitre > 0 && (worst.costPer1L ?? 0) / costPerLitre > 0.7
+
+  return (
+    <div style={{ padding: '16px 20px 20px' }}>
+      {dominant && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px 13px', marginBottom: '14px' }}>
+          <p style={{ margin: 0, fontSize: '12.5px', color: '#991b1b', lineHeight: 1.55 }}>
+            <strong>{worst.name}</strong> is {Math.round(((worst.costPer1L ?? 0) / costPerLitre) * 100)}% of this drink&apos;s cost,
+            at {money(worst.pricePerUnit ?? 0)} per kg or litre. If that price looks wrong, it almost always is —
+            check the pack size on the ingredient: a 70cl bottle entered as <code>70</code> instead of <code>0.7</code>
+            makes it a hundred times too expensive.
+          </p>
+        </div>
+      )}
+
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', maxWidth: '760px' }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: 'left', padding: '0 12px 7px 0', fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #f3f4f6' }}>Ingredient</th>
+            <th style={{ textAlign: 'right', padding: '0 12px 7px', fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #f3f4f6' }}>Per litre</th>
+            <th style={{ textAlign: 'right', padding: '0 12px 7px', fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #f3f4f6' }}>£/kg or L</th>
+            <th style={{ textAlign: 'right', padding: '0 12px 7px', fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #f3f4f6' }}>Cost/L</th>
+            <th style={{ textAlign: 'right', padding: '0 0 7px 12px', fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #f3f4f6' }}>Share</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((l, n) => {
+            const share = costPerLitre > 0 ? ((l.costPer1L ?? 0) / costPerLitre) * 100 : 0
+            const odd = share > 70
+            return (
+              <tr key={l.name + n}>
+                <td style={{ padding: '6px 12px 6px 0', color: odd ? '#991b1b' : '#374151', fontWeight: odd ? 700 : 400 }}>{l.name}</td>
+                <td style={{ padding: '6px 12px', textAlign: 'right', color: '#9ca3af', fontVariantNumeric: 'tabular-nums' }}>{l.qtyPer1L} {l.unit}</td>
+                <td style={{ padding: '6px 12px', textAlign: 'right', color: odd ? '#991b1b' : '#6b7280', fontVariantNumeric: 'tabular-nums' }}>{money(l.pricePerUnit ?? 0)}</td>
+                <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{money(l.costPer1L ?? 0)}</td>
+                <td style={{ padding: '6px 0 6px 12px', textAlign: 'right', color: odd ? '#991b1b' : '#9ca3af', fontVariantNumeric: 'tabular-nums' }}>{share.toFixed(0)}%</td>
+              </tr>
+            )
+          })}
+          <tr>
+            <td colSpan={3} style={{ padding: '9px 12px 0 0', borderTop: '1px solid #f3f4f6', color: '#111827', fontWeight: 600 }}>
+              Total, per litre
+            </td>
+            <td style={{ padding: '9px 12px 0', borderTop: '1px solid #f3f4f6', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{money(costPerLitre)}</td>
+            <td style={{ padding: '9px 0 0 12px', borderTop: '1px solid #f3f4f6' }} />
+          </tr>
+          <tr>
+            <td colSpan={3} style={{ padding: '3px 12px 0 0', color: '#6b7280' }}>
+              At a {servingMl}ml serve
+            </td>
+            <td style={{ padding: '3px 12px 0', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+              {money(r2((costPerLitre * servingMl) / 1000))}
+            </td>
+            <td />
+          </tr>
+        </tbody>
+      </table>
+
+      {unpriced.length > 0 && (
+        <p style={{ margin: '12px 0 0', fontSize: '12px', color: '#92400e' }}>
+          <strong>No price yet:</strong> {unpriced.map((l) => l.name).join(' · ')}
+        </p>
+      )}
+    </div>
+  )
+}
+
 export default function RateCardPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [recipes, setRecipes] = useState<Recipe[]>([])
@@ -36,6 +122,7 @@ export default function RateCardPage() {
   const [classicsOnly, setClassicsOnly] = useState(false)
   const [category, setCategory] = useState('All')
   const [busy, setBusy] = useState(false)
+  const [openId, setOpenId] = useState<string | null>(null)
 
   useEffect(() => {
     Promise.all([getProducts(), getRecipes(), getIngredients()])
@@ -100,6 +187,7 @@ export default function RateCardPage() {
           product: p, servingMl, costPerServe, sellPerLitre, sellPerServe,
           rrp, venueGp, foodlabGp, complete: cost?.complete ?? false,
           missing: cost?.missingIngredients ?? [],
+          lines: cost?.lines ?? [], costPerLitre: cost?.costPerLitre ?? 0,
         }
       })
       .sort((a, b) => b.rrp - a.rrp)
@@ -236,7 +324,8 @@ export default function RateCardPage() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.product.id} style={{ borderBottom: '1px solid #f9fafb' }}>
+                <Fragment key={r.product.id}>
+                <tr style={{ borderBottom: '1px solid #f9fafb' }}>
                   <td style={{ ...td, textAlign: 'center', padding: '10px 4px' }}>
                     <button
                       onClick={() => toggleClassic(r.product)}
@@ -276,12 +365,34 @@ export default function RateCardPage() {
                     }}>{r.venueGp ? r.venueGp.toFixed(0) + '%' : '—'}</span>
                   </td>
                   <td style={{ ...td, borderLeft: '1px solid #f3f4f6', color: '#6b7280' }}>
-                    {r.costPerServe !== null ? money(r2(r.costPerServe)) : '—'}
+                    {r.costPerServe !== null ? (
+                      <button
+                        onClick={() => setOpenId(openId === r.product.id ? null : r.product.id)}
+                        title="Show what makes up this cost"
+                        style={{
+                          border: 'none', background: 'none', cursor: 'pointer', padding: 0,
+                          font: 'inherit', fontVariantNumeric: 'tabular-nums',
+                          color: r.costPerServe > r.sellPerServe ? '#b91c1c' : '#6b7280',
+                          fontWeight: r.costPerServe > r.sellPerServe ? 700 : 400,
+                          borderBottom: '1px dotted #d1d5db',
+                        }}
+                      >
+                        {money(r2(r.costPerServe))}
+                      </button>
+                    ) : '—'}
                   </td>
-                  <td style={{ ...td, color: '#6b7280' }}>
+                  <td style={{ ...td, color: r.foodlabGp !== null && r.foodlabGp < 0 ? '#b91c1c' : '#6b7280', fontWeight: r.foodlabGp !== null && r.foodlabGp < 0 ? 700 : 400 }}>
                     {r.foodlabGp !== null ? r.foodlabGp.toFixed(0) + '%' : '—'}
                   </td>
                 </tr>
+                {openId === r.product.id && (
+                  <tr key={r.product.id + '-breakdown'}>
+                    <td colSpan={10} style={{ padding: 0, background: '#fbfbfc', borderBottom: '1px solid #f3f4f6' }}>
+                      <CostBreakdown lines={r.lines} costPerLitre={r.costPerLitre} servingMl={r.servingMl} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
               ))}
               {rows.length === 0 && (
                 <tr><td colSpan={8} style={{ padding: '36px', textAlign: 'center', fontSize: '13px', color: '#9ca3af' }}>

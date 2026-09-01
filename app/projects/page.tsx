@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { format, formatDistanceToNow, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths } from 'date-fns'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import { getProjects, createProject, updateProjectLogged, deleteProject } from '@/lib/firestore/projects'
+import { SEED_PROJECTS } from '@/lib/data/seedProjects'
 import { getAllOrders } from '@/lib/firestore/orders'
 import {
   Project,
@@ -113,6 +114,30 @@ function DateField({ value, onSave }: { value?: Date; onSave: (d: Date | undefin
 
 // ── page ─────────────────────────────────────────────────────────────────────
 type Tab = 'all' | 'top' | 'parked' | 'gaps'
+
+// Column widths are the user's, not ours — titles are the whole point of the
+// board and they were being squeezed by columns nobody needed wide.
+interface Col { key: string; label: string; sort?: SortKey; w: number; align?: 'right' | 'center' }
+
+const COLUMNS: Col[] = [
+  { key: 'top',        label: '★',          w: 38,  align: 'center' },
+  { key: 'title',      label: 'Project',    sort: 'title',       w: 320 },
+  { key: 'kind',       label: 'Type',       sort: 'kind',        w: 104 },
+  { key: 'stage',      label: 'Stage',      sort: 'stage',       w: 124 },
+  { key: 'owner',      label: 'Owner',      sort: 'owner',       w: 108 },
+  { key: 'due',        label: 'Due',        sort: 'dueDate',     w: 124 },
+  { key: 'nextStep',   label: 'Next step',  sort: 'nextStep',    w: 180 },
+  { key: 'blocker',    label: 'Blocker',    sort: 'blocker',     w: 160 },
+  { key: 'gatekeeper', label: 'Gatekeeper', sort: 'gatekeeper',  w: 108 },
+  { key: 'opp',        label: 'Opp',        sort: 'opportunity', w: 60,  align: 'right' },
+  { key: 'prize',      label: 'Prize',      sort: 'prizeGbp',    w: 84,  align: 'right' },
+  { key: 'days',       label: 'Days',       sort: 'effortDays',  w: 60,  align: 'right' },
+  { key: 'score',      label: 'Score',      sort: 'score',       w: 64,  align: 'right' },
+  { key: 'updated',    label: 'Updated',    sort: 'updatedAt',   w: 92,  align: 'right' },
+  { key: 'del',        label: '',           w: 34,  align: 'center' },
+]
+
+const WIDTH_KEY = 'foodlab-project-cols'
 
 type SortKey =
   | 'title' | 'kind' | 'stage' | 'owner' | 'dueDate' | 'nextStep'
@@ -232,35 +257,6 @@ function Calendar({ projects, month, onMonth }: {
   )
 }
 
-function SortHead({ label, k, sort, onSort, style }: {
-  label: string
-  k: SortKey
-  sort: { key: SortKey; dir: 1 | -1 } | null
-  onSort: (k: SortKey) => void
-  style?: React.CSSProperties
-}) {
-  const active = sort?.key === k
-  return (
-    <th style={{ ...th, ...style }}>
-      <button
-        onClick={() => onSort(k)}
-        style={{
-          border: 'none', background: 'none', padding: 0, cursor: 'pointer',
-          font: 'inherit', letterSpacing: 'inherit', textTransform: 'inherit',
-          color: active ? '#111827' : 'inherit',
-          display: 'inline-flex', alignItems: 'center', gap: '3px',
-          width: '100%', justifyContent: style?.textAlign === 'right' ? 'flex-end' : 'flex-start',
-        }}
-      >
-        {label}
-        <span style={{ fontSize: '9px', opacity: active ? 1 : 0.28 }}>
-          {active ? (sort!.dir === 1 ? '▲' : '▼') : '▾'}
-        </span>
-      </button>
-    </th>
-  )
-}
-
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [rdOrders, setRdOrders] = useState<Order[]>([])
@@ -270,6 +266,41 @@ export default function ProjectsPage() {
   const [busy, setBusy] = useState(false)
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null)
   const [bulk, setBulk] = useState<string | null>(null)
+  const [widths, setWidths] = useState<Record<string, number>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(WIDTH_KEY) || '{}')
+      return { ...Object.fromEntries(COLUMNS.map((c) => [c.key, c.w])), ...saved }
+    } catch {
+      return Object.fromEntries(COLUMNS.map((c) => [c.key, c.w]))
+    }
+  })
+
+  function startResize(key: string, e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.clientX
+    const startW = widths[key] ?? 120
+    const move = (ev: MouseEvent) => {
+      const next = Math.max(38, startW + (ev.clientX - startX))
+      setWidths((w) => ({ ...w, [key]: next }))
+    }
+    const up = () => {
+      document.removeEventListener('mousemove', move)
+      document.removeEventListener('mouseup', up)
+      setWidths((w) => {
+        try { localStorage.setItem(WIDTH_KEY, JSON.stringify(w)) } catch {}
+        return w
+      })
+    }
+    document.addEventListener('mousemove', move)
+    document.addEventListener('mouseup', up)
+  }
+
+  function resetWidths() {
+    const base = Object.fromEntries(COLUMNS.map((c) => [c.key, c.w]))
+    setWidths(base)
+    try { localStorage.setItem(WIDTH_KEY, JSON.stringify(base)) } catch {}
+  }
   const [view, setView] = useState<'board' | 'calendar'>('board')
   const [month, setMonth] = useState(() => startOfMonth(new Date()))
 
@@ -281,7 +312,38 @@ export default function ProjectsPage() {
       })
       .finally(() => setLoading(false))
   }
-  useEffect(() => { load() }, [])
+
+  // Work that arrived by email gets onto the board on its own. Matched on title,
+  // so this is safe to run every load and impossible to duplicate — no URL to
+  // remember and nothing to ask for twice.
+  const seeded = useRef(false)
+  useEffect(() => {
+    if (seeded.current) return
+    seeded.current = true
+    ;(async () => {
+      try {
+        const existing = await getProjects()
+        const have = new Set(existing.map((p) => p.title.trim().toLowerCase()))
+        const todo = SEED_PROJECTS.filter((sp) => !have.has(sp.title.trim().toLowerCase()))
+        for (const sp of todo) {
+          const { checklistText, ...rest } = sp
+          await createProject({
+            ...rest,
+            checklist: (checklistText ?? []).map((text, i) => ({
+              id: `s${i}${Math.random().toString(36).slice(2, 8)}`,
+              text,
+              done: false,
+            })),
+            updates: [{ at: new Date().toISOString(), text: 'Added to the board', kind: 'auto' as const }],
+          })
+        }
+      } catch {
+        // A failed seed must never stop the board loading.
+      } finally {
+        load()
+      }
+    })()
+  }, [])
 
   // R&D orders that have not been adopted onto the board yet
   const unclaimed = useMemo(() => {
@@ -538,6 +600,13 @@ export default function ProjectsPage() {
             </button>
           ))}
         </div>
+        <button
+          onClick={resetWidths}
+          style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '11.5px', color: '#9ca3af', padding: 0, textDecoration: 'underline' }}
+          title="Reset column widths"
+        >
+          Reset columns
+        </button>
         <span style={{ fontSize: '11.5px', color: '#9ca3af' }}>
           {saving
             ? 'Saving…'
@@ -579,24 +648,48 @@ export default function ProjectsPage() {
         <Calendar projects={visible.map((v) => v.p)} month={month} onMonth={setMonth} />
       ) : (
         <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #f3f4f6', overflowX: 'auto' }}>
-          <table style={{ width: '100%', minWidth: '1400px', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', minWidth: '980px', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+            <colgroup>
+              {COLUMNS.map((c) => <col key={c.key} style={{ width: (widths[c.key] ?? c.w) + 'px' }} />)}
+            </colgroup>
             <thead>
               <tr style={{ borderBottom: '1px solid #f3f4f6', background: '#fafafa' }}>
-                <th style={{ ...th, width: '38px', textAlign: 'center' }}>Top</th>
-                <SortHead label="Project"    k="title"       sort={sort} onSort={toggleSort} style={{ minWidth: '230px' }} />
-                <SortHead label="Type"       k="kind"        sort={sort} onSort={toggleSort} style={{ width: '110px' }} />
-                <SortHead label="Stage"      k="stage"       sort={sort} onSort={toggleSort} style={{ width: '128px' }} />
-                <SortHead label="Owner"      k="owner"       sort={sort} onSort={toggleSort} style={{ width: '110px' }} />
-                <SortHead label="Due"        k="dueDate"     sort={sort} onSort={toggleSort} style={{ width: '128px' }} />
-                <SortHead label="Next step"  k="nextStep"    sort={sort} onSort={toggleSort} style={{ minWidth: '150px' }} />
-                <SortHead label="Blocker"    k="blocker"     sort={sort} onSort={toggleSort} style={{ minWidth: '140px' }} />
-                <SortHead label="Gatekeeper" k="gatekeeper"  sort={sort} onSort={toggleSort} style={{ width: '110px' }} />
-                <SortHead label="Opp"        k="opportunity" sort={sort} onSort={toggleSort} style={{ width: '62px', textAlign: 'right' }} />
-                <SortHead label="Prize"      k="prizeGbp"    sort={sort} onSort={toggleSort} style={{ width: '86px', textAlign: 'right' }} />
-                <SortHead label="Days"       k="effortDays"  sort={sort} onSort={toggleSort} style={{ width: '62px', textAlign: 'right' }} />
-                <SortHead label="Score"      k="score"       sort={sort} onSort={toggleSort} style={{ width: '66px', textAlign: 'right' }} />
-                <SortHead label="Updated"    k="updatedAt"   sort={sort} onSort={toggleSort} style={{ width: '96px', textAlign: 'right' }} />
-                <th style={{ ...th, width: '34px' }} />
+                {COLUMNS.map((c) => {
+                  const active = c.sort && sort?.key === c.sort
+                  return (
+                    <th key={c.key} style={{ ...th, textAlign: c.align ?? 'left', position: 'relative' }}>
+                      {c.sort ? (
+                        <button
+                          onClick={() => toggleSort(c.sort as SortKey)}
+                          style={{
+                            border: 'none', background: 'none', padding: 0, cursor: 'pointer',
+                            font: 'inherit', letterSpacing: 'inherit', textTransform: 'inherit',
+                            color: active ? '#111827' : 'inherit',
+                            display: 'inline-flex', alignItems: 'center', gap: '3px',
+                            width: '100%', justifyContent: c.align === 'right' ? 'flex-end' : 'flex-start',
+                          }}
+                        >
+                          {c.label}
+                          <span style={{ fontSize: '9px', opacity: active ? 1 : 0.28 }}>
+                            {active ? (sort!.dir === 1 ? '▲' : '▼') : '▾'}
+                          </span>
+                        </button>
+                      ) : c.label}
+
+                      {c.key !== 'del' && (
+                        <span
+                          onMouseDown={(e) => startResize(c.key, e)}
+                          title="Drag to resize"
+                          style={{
+                            position: 'absolute', top: 0, right: 0, width: '7px', height: '100%',
+                            cursor: 'col-resize', userSelect: 'none',
+                            borderRight: '1px solid #e5e7eb',
+                          }}
+                        />
+                      )}
+                    </th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody>
@@ -626,7 +719,7 @@ export default function ProjectsPage() {
                     </td>
                     <td style={cell}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Text value={p.title} onSave={(v) => patch(p.id, { title: v })} style={{ fontWeight: 600, color: '#111827' }} />
+                        <Text value={p.title} onSave={(v) => patch(p.id, { title: v })} style={{ fontWeight: 600, color: '#111827', minWidth: 0 }} />
                         <Link
                           href={`/projects/${p.id}`}
                           title="Open scope, to-do list and updates"

@@ -5,13 +5,110 @@ import { useParams, useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
-import { getRecipe, updateRecipe, deleteRecipe } from '@/lib/firestore/recipes'
+import { getRecipe, getRecipes, updateRecipe, deleteRecipe } from '@/lib/firestore/recipes'
 import { getProducts } from '@/lib/firestore/catalog'
-import { getIngredients } from '@/lib/firestore/ingredients'
-import { computeRecipeCost } from '@/lib/costing'
+import { getIngredients, updateIngredient } from '@/lib/firestore/ingredients'
+import { computeRecipeCost, matchIngredient } from '@/lib/costing'
 import RecipeEditor from '@/components/recipes/RecipeEditor'
 import { Recipe, Product, Ingredient } from '@/types'
 import toast from 'react-hot-toast'
+
+/**
+ * Correct an ingredient's price without leaving the recipe you found it in.
+ *
+ * The price lives on the ingredient, not the recipe, so this is a global edit
+ * wearing a local disguise — fix it here and every other recipe using it moves
+ * too. That is usually what you want and always what you should be told, so the
+ * blast radius is named before the button is pressed.
+ */
+function PriceFix({ ingredient, recipes, allIngredients, onDone }: {
+  ingredient: Ingredient
+  recipes: Recipe[]
+  allIngredients: Ingredient[]
+  onDone: () => void
+}) {
+  const [price, setPrice] = useState(String(ingredient.packPrice ?? 0))
+  const [size, setSize]   = useState(String(ingredient.packSize ?? 0))
+  const [saving, setSaving] = useState(false)
+
+  const p = parseFloat(price)
+  const sz = parseFloat(size)
+  const perUnit = sz > 0 && isFinite(p) ? p / sz : 0
+  const changed = p !== ingredient.packPrice || sz !== ingredient.packSize
+
+  const alsoUsedBy = recipes.filter(
+    (r) => r.ingredients.some((row) => matchIngredient(row, allIngredients)?.id === ingredient.id)
+  )
+
+  async function save() {
+    if (!isFinite(p) || !(sz > 0)) return
+    setSaving(true)
+    try {
+      await updateIngredient(ingredient.id, { packPrice: p, packSize: sz })
+      toast.success(`${ingredient.name} repriced`)
+      onDone()
+    } catch {
+      toast.error('Could not save')
+    } finally { setSaving(false) }
+  }
+
+  const field: React.CSSProperties = {
+    width: '110px', padding: '6px 9px', border: '1px solid #e5e7eb', borderRadius: '7px',
+    fontSize: '13px', outline: 'none', textAlign: 'right', fontFamily: 'monospace',
+  }
+
+  return (
+    <div style={{ padding: '16px 18px 18px' }}>
+      <p style={{ margin: '0 0 3px', fontSize: '13px', fontWeight: 700, color: '#111827' }}>{ingredient.name}</p>
+      <p style={{ margin: '0 0 14px', fontSize: '12.5px', color: '#9ca3af' }}>
+        Currently {ingredient.packDescription || 'no pack described'} · {ingredient.supplier || 'no supplier'}
+      </p>
+
+      <div style={{ display: 'flex', gap: '18px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <label>
+          <span style={{ display: 'block', fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>What you pay per pack</span>
+          <input value={price} onChange={(e) => setPrice(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" style={field} />
+        </label>
+        <label>
+          <span style={{ display: 'block', fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>
+            Pack size in {ingredient.packUnit === 'kg' ? 'kg' : ingredient.packUnit === 'L' ? 'litres' : 'units'}
+          </span>
+          <input value={size} onChange={(e) => setSize(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" style={field} />
+        </label>
+        <div style={{ paddingBottom: '6px' }}>
+          <span style={{ display: 'block', fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>Works out at</span>
+          <span style={{ fontSize: '17px', fontWeight: 700, fontFamily: 'monospace', color: '#111827' }}>
+            £{perUnit.toFixed(2)}
+          </span>
+          <span style={{ fontSize: '12px', color: '#9ca3af', marginLeft: '4px' }}>/ {ingredient.packUnit}</span>
+        </div>
+      </div>
+
+      <p style={{ margin: '12px 0 0', fontSize: '12.5px', color: '#6b7280', lineHeight: 1.55, maxWidth: '62ch' }}>
+        A 70cl bottle is <strong>0.7</strong> litres, not 70. That single slip is the usual cause of a drink costing a
+        hundred times what it should.
+      </p>
+
+      {alsoUsedBy.length > 1 && (
+        <div style={{ marginTop: '12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '10px 13px' }}>
+          <p style={{ margin: '0 0 4px', fontSize: '12.5px', fontWeight: 700, color: '#92400e' }}>
+            This price is shared with {alsoUsedBy.length - 1} other recipe{alsoUsedBy.length - 1 === 1 ? '' : 's'}
+          </p>
+          <p style={{ margin: 0, fontSize: '12.5px', color: '#a16207', lineHeight: 1.5 }}>
+            {alsoUsedBy.map((r) => r.name).join(' · ')} — all of them re-cost when you save.
+          </p>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
+        <Button size="sm" onClick={save} loading={saving} disabled={!changed || !(sz > 0) || !isFinite(p)}>
+          Save price
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onDone} disabled={saving}>Cancel</Button>
+      </div>
+    </div>
+  )
+}
 
 export default function RecipeDetailPage() {
   const { id }  = useParams<{ id: string }>()
@@ -25,12 +122,15 @@ export default function RecipeDetailPage() {
   const [showEdit, setShowEdit] = useState(false)
   const [linking, setLinking]   = useState(false)
   const [selectedProduct, setSelectedProduct] = useState('')
+  const [allRecipes, setAllRecipes] = useState<Recipe[]>([])
+  const [fixing, setFixing] = useState<string | null>(null)   // ingredientId being repriced
 
   async function load() {
-    const [r, p, ings] = await Promise.all([getRecipe(id), getProducts(), getIngredients()])
+    const [r, p, ings, all] = await Promise.all([getRecipe(id), getProducts(), getIngredients(), getRecipes()])
     setRecipe(r)
     setProducts(p)
     setIngredients(ings)
+    setAllRecipes(all)
     if (r?.productId) setSelectedProduct(r.productId)
     setLoading(false)
   }
@@ -137,20 +237,59 @@ export default function RecipeDetailPage() {
                   <th style={{ textAlign: 'left', padding: '8px 18px', color: '#9ca3af', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ingredient</th>
                   <th style={{ textAlign: 'right', padding: '8px 12px', color: '#9ca3af', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Per 1000L</th>
                   <th style={{ textAlign: 'right', padding: '8px 18px', color: '#9ca3af', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>For {litres}L</th>
+                  <th style={{ textAlign: 'right', padding: '8px 12px', color: '#9ca3af', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>£/unit</th>
+                  <th style={{ textAlign: 'right', padding: '8px 18px', color: '#9ca3af', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cost / L</th>
                 </tr>
               </thead>
               <tbody>
                 {recipe.ingredients.map((ing, i) => {
                   const qty = Math.round(ing.qtyPer1000L * scale * 1000) / 1000
+                  const line = cost.lines[i]
+                  const lib  = matchIngredient(ing, ingredients)
+                  const share = cost.costPerLitre > 0 && line?.costPer1L ? (line.costPer1L / cost.costPerLitre) * 100 : 0
+                  // One line carrying almost the whole cost is the signature of a
+                  // bad pack size, not an expensive ingredient.
+                  const suspect = share > 70
                   return (
-                    <tr key={i} style={{ borderTop: '1px solid #f9fafb' }}>
-                      <td style={{ padding: '10px 18px', color: '#111827', fontWeight: 500 }}>
-                        {ing.name}
-                        {ing.supplier && <span style={{ marginLeft: '6px', fontSize: '11px', color: '#9ca3af' }}>{ing.supplier}</span>}
-                      </td>
-                      <td style={{ padding: '10px 12px', color: '#6b7280', textAlign: 'right', fontFamily: 'monospace', fontSize: '12px' }}>{ing.qtyPer1000L}</td>
-                      <td style={{ padding: '10px 18px', color: '#111827', textAlign: 'right', fontWeight: 600, fontFamily: 'monospace' }}>{qty} {ing.unit === 'L' ? 'L' : ing.unit === 'UNIT' ? 'units' : 'kg'}</td>
-                    </tr>
+                    <React.Fragment key={i}>
+                      <tr style={{ borderTop: '1px solid #f9fafb', background: suspect ? '#fef2f2' : undefined }}>
+                        <td style={{ padding: '10px 18px', color: suspect ? '#991b1b' : '#111827', fontWeight: suspect ? 700 : 500 }}>
+                          {ing.name}
+                          {ing.supplier && <span style={{ marginLeft: '6px', fontSize: '11px', color: '#9ca3af' }}>{ing.supplier}</span>}
+                        </td>
+                        <td style={{ padding: '10px 12px', color: '#6b7280', textAlign: 'right', fontFamily: 'monospace', fontSize: '12px' }}>{ing.qtyPer1000L}</td>
+                        <td style={{ padding: '10px 18px', color: '#111827', textAlign: 'right', fontWeight: 600, fontFamily: 'monospace' }}>{qty} {ing.unit === 'L' ? 'L' : ing.unit === 'UNIT' ? 'units' : 'kg'}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: '12px' }}>
+                          {lib ? (
+                            <button
+                              onClick={() => setFixing(fixing === lib.id ? null : lib.id)}
+                              title="Check or correct this price"
+                              style={{
+                                border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit',
+                                color: suspect ? '#991b1b' : '#6b7280', fontWeight: suspect ? 700 : 400,
+                                borderBottom: '1px dotted #d1d5db',
+                              }}
+                            >£{(line?.pricePerUnit ?? 0).toFixed(2)}</button>
+                          ) : <span style={{ color: '#d1d5db' }}>—</span>}
+                        </td>
+                        <td style={{ padding: '10px 18px', textAlign: 'right', fontFamily: 'monospace', fontSize: '12px', color: suspect ? '#991b1b' : '#374151', fontWeight: suspect ? 700 : 400 }}>
+                          {line?.costPer1L != null ? '£' + line.costPer1L.toFixed(2) : '—'}
+                          {share > 0 && <span style={{ marginLeft: '6px', fontSize: '11px', color: suspect ? '#b91c1c' : '#c4c4c4' }}>{share.toFixed(0)}%</span>}
+                        </td>
+                      </tr>
+                      {lib && fixing === lib.id && (
+                        <tr>
+                          <td colSpan={5} style={{ padding: 0, background: '#fbfbfc', borderTop: '1px solid #f3f4f6' }}>
+                            <PriceFix
+                              ingredient={lib}
+                              recipes={allRecipes}
+                              allIngredients={ingredients}
+                              onDone={async () => { setFixing(null); await load() }}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   )
                 })}
               </tbody>
