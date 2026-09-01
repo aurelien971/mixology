@@ -7,6 +7,7 @@ import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import AddProductModal from '@/components/catalog/AddProductModal'
 import EditProductModal from '@/components/catalog/EditProductModal'
+import ProductPricingModal from '@/components/catalog/ProductPricingModal'
 import { getProducts, getAllPricing, updateProduct } from '@/lib/firestore/catalog'
 import { Product, AccountPricing } from '@/types'
 import { useTable, ColumnDef } from '@/hooks/useTable'
@@ -49,6 +50,7 @@ export default function CatalogPage() {
   const [accountFilter, setAccountFilter] = useState('All')
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [pricingProduct, setPricingProduct] = useState<Product | null>(null)
   const [hidden, setHidden] = useState(true)
   const [missingOnly, setMissingOnly] = useState(searchParams.get('missing') === '1')
   const [allPricing, setAllPricing] = useState<AccountPricing[]>([])
@@ -101,6 +103,12 @@ export default function CatalogPage() {
         <AddProductModal
           onClose={() => setShowAddModal(false)}
           onSaved={() => { load() }}
+        />
+      )}
+      {pricingProduct && (
+        <ProductPricingModal
+          product={pricingProduct}
+          onClose={() => { setPricingProduct(null); load() }}
         />
       )}
       {editingProduct && (
@@ -294,7 +302,10 @@ export default function CatalogPage() {
                         >×</button>
                       </div>
                     ) : (
-                      <Button variant="ghost" size="sm" onClick={() => setEditingProduct(product)}>Edit</Button>
+                      <div style={{ display: 'inline-flex', gap: '2px' }}>
+                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setPricingProduct(product) }}>Price</Button>
+                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setEditingProduct(product) }}>Edit</Button>
+                      </div>
                     )}
                   </td>
                 </tr>
