@@ -1,13 +1,15 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import { getProducts } from '@/lib/firestore/catalog'
 import { getRecipes } from '@/lib/firestore/recipes'
 import { getIngredients } from '@/lib/firestore/ingredients'
-import { splitRecipeCost, priceDrink, PricingInputs, PriceMode } from '@/lib/pricing'
+import { splitRecipeCost, priceDrink, PricingInputs, PriceMode, isAlcoholicIngredient } from '@/lib/pricing'
+import { computeRecipeCost, findIngredientMatch, matchIngredient } from '@/lib/costing'
+import { SWAPS } from '@/lib/data/swaps'
 import { useTable, ColumnDef } from '@/hooks/useTable'
 import { Product, Recipe, Ingredient } from '@/types'
 
@@ -25,6 +27,7 @@ type Format = 'premix' | 'syrup'
 
 interface Row {
   product: Product
+  recipe: Recipe
   servingMl: number
   menuPrice: number
   spiritPerServe: number
@@ -52,6 +55,147 @@ const COLUMNS: ColumnDef<Row>[] = [
   { key: 'verdict',label: 'Verdict',      width: 110, sortValue: (r) => (r.works ? 0 : 1) },
 ]
 
+/**
+ * Why a drink's margin is what it is, and what would move it.
+ *
+ * A red percentage on its own is an accusation, not information. This names the
+ * line carrying the cost, whether it is spirit the venue could buy instead, what
+ * the contract swaps would do to it, and the two prices that would fix it.
+ */
+function WhyPanel({ row, ingredients, targetGp, vat, venueGp }: {
+  row: Row
+  ingredients: Ingredient[]
+  targetGp: number
+  vat: number
+  venueGp: number
+}) {
+  const cost = computeRecipeCost(row.recipe, ingredients)
+  const per = row.servingMl / 1000
+
+  const lines = cost.lines
+    .filter((l) => (l.costPer1L ?? 0) > 0)
+    .map((l) => {
+      const ing = matchIngredient({ name: l.name, ingredientId: l.ingredientId }, ingredients)
+      const swap = SWAPS.find((sw) => findIngredientMatch(sw.from, ing ? [ing] : []))
+      const perServe = (l.costPer1L ?? 0) * per
+      const afterSwap = swap && swap.fromPrice > 0 ? perServe * (swap.toPrice / swap.fromPrice) : perServe
+      return {
+        name: l.name,
+        perServe,
+        share: cost.costPerLitre > 0 ? ((l.costPer1L ?? 0) / cost.costPerLitre) * 100 : 0,
+        alcoholic: isAlcoholicIngredient(ing, l.name),
+        swap, afterSwap, saving: perServe - afterSwap,
+      }
+    })
+    .sort((a, b) => b.perServe - a.perServe)
+
+  const withSwaps = lines.reduce((s, l) => s + l.afterSwap, 0)
+  const swapSaving = row.ourCost - withSwaps
+  const gpAfterSwaps = row.ourPrice > 0 ? ((row.ourPrice - withSwaps) / row.ourPrice) * 100 : 0
+  const spiritShare = lines.filter((l) => l.alcoholic).reduce((s, l) => s + l.share, 0)
+
+  // The two ways out: charge more, or cost less.
+  const priceToHit = targetGp < 100 ? row.ourCost / (1 - targetGp / 100) : Infinity
+  const menuToHit = (priceToHit / (1 - venueGp / 100)) * (1 + vat / 100)
+
+  const box: React.CSSProperties = { background: '#fff', border: '1px solid #f3f4f6', borderRadius: '10px', padding: '14px 16px' }
+  const h: React.CSSProperties = { fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 9px' }
+
+  return (
+    <div style={{ padding: '16px 20px 20px', display: 'grid', gridTemplateColumns: 'minmax(0,1.3fr) minmax(0,1fr)', gap: '14px' }}>
+
+      <div style={box}>
+        <p style={h}>Where the cost goes, per {row.servingMl}ml serve</p>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+          <tbody>
+            {lines.map((l, i) => (
+              <tr key={l.name + i}>
+                <td style={{ padding: '5px 10px 5px 0', color: l.share > 50 ? '#991b1b' : '#374151', fontWeight: l.share > 50 ? 700 : 400 }}>
+                  {l.name}
+                  {l.alcoholic && <span style={{ marginLeft: '6px', fontSize: '9.5px', fontWeight: 700, color: '#b45309' }}>SPIRIT</span>}
+                </td>
+                <td style={{ padding: '5px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#6b7280' }}>{money(l.perServe)}</td>
+                <td style={{ padding: '5px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: l.share > 50 ? '#991b1b' : '#9ca3af', width: '44px' }}>
+                  {l.share.toFixed(0)}%
+                </td>
+              </tr>
+            ))}
+            <tr>
+              <td style={{ padding: '8px 10px 0 0', borderTop: '1px solid #f3f4f6', fontWeight: 700 }}>Cost per serve</td>
+              <td style={{ padding: '8px 10px 0', borderTop: '1px solid #f3f4f6', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{money(row.ourCost)}</td>
+              <td style={{ borderTop: '1px solid #f3f4f6' }} />
+            </tr>
+          </tbody>
+        </table>
+        <p style={{ margin: '10px 0 0', fontSize: '12px', color: '#6b7280', lineHeight: 1.5 }}>
+          <strong>{spiritShare.toFixed(0)}% of this drink is spirit.</strong>{' '}
+          {spiritShare > 60
+            ? 'That is the whole problem — there is no recipe change that gets round the base pour.'
+            : 'Low enough that the recipe, not the spirit, is where the money is.'}
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={box}>
+          <p style={h}>What would fix it</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+              <span style={{ color: '#6b7280' }}>Charge {money(priceToHit)} instead of {money(row.ourPrice)}</span>
+              <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{targetGp}% for us</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+              <span style={{ color: '#6b7280' }}>…which needs a menu price of</span>
+              <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: menuToHit > 16 ? '#b45309' : '#166534' }}>
+                {money(menuToHit)}
+              </span>
+            </div>
+            {swapSaving > 0.005 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', paddingTop: '8px', borderTop: '1px solid #f3f4f6' }}>
+                <span style={{ color: '#6b7280' }}>…or take the contract swaps</span>
+                <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#166534' }}>
+                  {money(withSwaps)} · {gpAfterSwaps.toFixed(0)}%
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {lines.some((l) => l.swap) && (
+          <div style={box}>
+            <p style={h}>Swaps on this drink</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
+              {lines.filter((l) => l.swap).map((l) => (
+                <div key={l.name} style={{ fontSize: '12.5px', lineHeight: 1.45 }}>
+                  <span style={{ color: '#374151' }}>{l.swap!.from} → <strong>{l.swap!.to}</strong></span>
+                  <span style={{
+                    marginLeft: '7px', fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+                    color: l.saving > 0 ? '#166534' : '#b91c1c',
+                  }}>
+                    {l.saving > 0 ? '−' : '+'}{money(Math.abs(l.saving))}
+                  </span>
+                  <span style={{
+                    marginLeft: '6px', fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: '20px',
+                    background: l.swap!.verdict === 'mandated' ? '#dcfce7' : l.swap!.verdict === 'refuse' ? '#fee2e2' : '#fef3c7',
+                    color: l.swap!.verdict === 'mandated' ? '#166534' : l.swap!.verdict === 'refuse' ? '#991b1b' : '#92400e',
+                  }}>
+                    {l.swap!.verdict === 'mandated' ? 'take it' : l.swap!.verdict === 'refuse' ? 'refuse' : 'tasting'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: '7px', flexWrap: 'wrap' }}>
+          <Link href={`/recipes/${row.recipe.id}`}><Button size="sm" variant="secondary">Open the recipe</Button></Link>
+          <Link href="/swaps"><Button size="sm" variant="secondary">All swaps</Button></Link>
+          <Link href="/lwc"><Button size="sm" variant="secondary">Fix prices</Button></Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function PricingPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [recipes, setRecipes] = useState<Recipe[]>([])
@@ -67,6 +211,7 @@ export default function PricingPage() {
   // Menu price per drink, so you can play with one without moving the rest.
   const [menu, setMenu] = useState<Record<string, string>>({})
   const [defaultMenu, setDefaultMenu] = useState('13')
+  const [openId, setOpenId] = useState<string | null>(null)
 
   const cols = useTable<Row>('pricing', COLUMNS)
 
@@ -95,7 +240,7 @@ export default function PricingPage() {
         const f = format === 'premix' ? priced.premix : priced.syrup
 
         return {
-          product: p, servingMl, menuPrice,
+          product: p, recipe, servingMl, menuPrice,
           spiritPerServe: format === 'syrup' ? priced.spiritPerServe : 0,
           ourCost: f.ourCost, ourPrice: f.ourPrice, ourGp: f.ourGpPercent,
           venueGp: f.venueGpPercent, ourCeiling: f.ourCeiling,
@@ -275,7 +420,15 @@ export default function PricingPage() {
             <cols.Head />
             <tbody>
               {cols.sortRows(rows).map((r) => (
-                <tr key={r.product.id} style={{ borderBottom: '1px solid #f9fafb', background: r.works ? undefined : '#fffbf7' }}>
+                <Fragment key={r.product.id}>
+                <tr
+                  onClick={() => setOpenId(openId === r.product.id ? null : r.product.id)}
+                  title="Why this margin, and what would move it"
+                  style={{
+                    borderBottom: '1px solid #f9fafb', cursor: 'pointer',
+                    background: openId === r.product.id ? '#f9fafb' : r.works ? undefined : '#fffbf7',
+                  }}
+                >
                   <td style={{ ...td, textAlign: 'left', fontWeight: 600, color: '#111827' }}>
                     {r.product.name}
                     {!r.complete && (
@@ -288,6 +441,7 @@ export default function PricingPage() {
                   <td style={td}>
                     <input
                       value={menu[r.product.id] ?? defaultMenu}
+                      onClick={(e) => e.stopPropagation()}
                       onChange={(e) => setMenu({ ...menu, [r.product.id]: e.target.value.replace(/[^0-9.]/g, '') })}
                       style={{
                         width: '100%', padding: '3px 6px', border: '1px solid transparent', borderRadius: '6px',
@@ -327,6 +481,14 @@ export default function PricingPage() {
                     }}>{r.works ? 'Holds' : 'Needs more'}</span>
                   </td>
                 </tr>
+                {openId === r.product.id && (
+                  <tr>
+                    <td colSpan={11} style={{ padding: 0, background: '#fbfbfc', borderBottom: '1px solid #f3f4f6' }}>
+                      <WhyPanel row={r} ingredients={ingredients} targetGp={ourGp} vat={vat} venueGp={venueGp} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>
