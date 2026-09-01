@@ -181,12 +181,12 @@ export default function RangePage() {
             volumeLitres: 5,
             baseCode: productCode,
             isNonAlcoholic: false,
-            isCoreRange: false,
+            isCoreRange: true,
             isClassic: true,
             isActive: true,
           } as Parameters<typeof createProduct>[0])
         } else {
-          await updateProduct(productId, { isClassic: true })
+          await updateProduct(productId, { isClassic: true, isCoreRange: true })
         }
         keep.add(productId)
 
@@ -219,7 +219,7 @@ export default function RangePage() {
 
       // The core range is these eleven and nothing else.
       for (const p of products) {
-        if (p.isClassic && !keep.has(p.id)) await updateProduct(p.id, { isClassic: false })
+        if (p.isClassic && !keep.has(p.id)) await updateProduct(p.id, { isClassic: false, isCoreRange: false })
       }
 
       load()
@@ -232,7 +232,8 @@ export default function RangePage() {
   async function toggle(p: Product) {
     setBusy(true)
     setProducts((prev) => prev.map((x) => (x.id === p.id ? { ...x, isClassic: !p.isClassic } : x)))
-    try { await updateProduct(p.id, { isClassic: !p.isClassic }) } finally { setBusy(false) }
+    // The two flags are one range now, so they move together.
+    try { await updateProduct(p.id, { isClassic: !p.isClassic, isCoreRange: !p.isClassic }) } finally { setBusy(false) }
   }
 
   async function clearAll() {

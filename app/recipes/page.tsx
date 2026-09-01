@@ -56,7 +56,6 @@ export default function RecipesPage() {
   })
 
   const classicCount = recipes.filter(r => productOf(r)?.isClassic).length
-  const coreCount    = recipes.filter(r => productOf(r)?.isCoreRange).length
 
   return (
     <div>
@@ -154,8 +153,7 @@ export default function RecipesPage() {
               <div style={{ display: 'flex', gap: '4px' }}>
                 {([
                   ['all', `All ${recipes.length}`],
-                  ['classics', `Classics ${classicCount}`],
-                  ['core', `Core ${coreCount}`],
+                  ['classics', `Core classics ${classicCount}`],
                 ] as const).map(([v, l]) => (
                   <button
                     key={v}

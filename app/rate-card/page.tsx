@@ -143,7 +143,6 @@ export default function RateCardPage() {
   // The two levers Mark named: venue GP low-to-mid 80s, RRP £12–16.
   const [targetGp, setTargetGp] = useState(82)
   const [vat, setVat] = useState(20)
-  const [coreOnly, setCoreOnly] = useState(false)
   const [classicsOnly, setClassicsOnly] = useState(false)
   const [category, setCategory] = useState('All')
   const [busy, setBusy] = useState(false)
@@ -183,7 +182,6 @@ export default function RateCardPage() {
   const rows = useMemo(() => {
     return products
       .filter((p) => p.isActive !== false)
-      .filter((p) => (coreOnly ? p.isCoreRange : true))
       .filter((p) => (classicsOnly ? p.isClassic : true))
       .filter((p) => (category === 'All' ? true : p.category === category))
       .map((p) => {
@@ -217,7 +215,7 @@ export default function RateCardPage() {
         }
       })
       .sort((a, b) => b.rrp - a.rrp) as CardRow[]
-  }, [products, recipes, ingredients, targetGp, vat, coreOnly, classicsOnly, category])
+  }, [products, recipes, ingredients, targetGp, vat, classicsOnly, category])
 
   const priced = rows.filter((r) => r.costPerServe !== null)
   const summary = useMemo(() => ({
@@ -282,14 +280,13 @@ export default function RateCardPage() {
       <div className="flex gap-1 mb-4">
         {([
           ['all', `Everything ${products.filter(p => p.isActive !== false).length}`],
-          ['classics', `Classics ${classicCount}`],
-          ['core', 'Core range'],
+          ['classics', `Core classics ${classicCount}`],
         ] as const).map(([v, l]) => {
-          const active = v === 'classics' ? classicsOnly : v === 'core' ? coreOnly : !classicsOnly && !coreOnly
+          const active = v === 'classics' ? classicsOnly : !classicsOnly
           return (
             <button
               key={v}
-              onClick={() => { setClassicsOnly(v === 'classics'); setCoreOnly(v === 'core') }}
+              onClick={() => setClassicsOnly(v === 'classics')}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 active ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100'
               }`}

@@ -244,7 +244,7 @@ export default function PricingPage() {
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '13px', color: '#374151', cursor: 'pointer' }}>
           <input type="checkbox" checked={classicsOnly} onChange={(e) => setClassicsOnly(e.target.checked)} />
-          Classics only
+          Core classics only
         </label>
         <cols.ResetButton />
       </div>
@@ -254,7 +254,7 @@ export default function PricingPage() {
       ) : rows.length === 0 ? (
         <div style={card}>
           <p style={{ margin: 0, fontSize: '13px', color: '#9ca3af' }}>
-            No costed drinks here. Star some classics on the rate card, or turn off &ldquo;Classics only&rdquo;.
+            No costed drinks here. Set the range up on Core classics, or turn the filter off.
           </p>
         </div>
       ) : (

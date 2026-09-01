@@ -1,5 +1,6 @@
 import lwcPrices from '@/lib/data/lwcPrices.json'
 import { Ingredient } from '@/types'
+import { retroFor, RetroLine } from '@/lib/data/pernodRetro'
 
 // LWC's own trade list. Prices are list — the 2% Pernod rebate is NOT included,
 // confirmed with Jambo, so it gets applied here rather than assumed.
@@ -86,6 +87,8 @@ export interface PriceProposal {
   newPackPrice: number | null
   delta: number | null          // £ change on the pack
   deltaPct: number | null
+  /** Contract retro on this line, when Pernod covers it. */
+  retro: RetroLine | null
 }
 
 /**
@@ -93,16 +96,27 @@ export interface PriceProposal {
  * Only ingredients measured in litres can be re-priced from a bottle list —
  * anything sold by weight or by unit is left alone.
  */
-export function proposePrices(ingredients: Ingredient[], applyRebate: boolean): PriceProposal[] {
+export function proposePrices(
+  ingredients: Ingredient[],
+  applyRebate: boolean,
+  applyRetro = false
+): PriceProposal[] {
   return ingredients.map((ingredient) => {
-    if (ingredient.isProcess || ingredient.packUnit !== 'L') {
-      return { ingredient, match: null, newPackPrice: null, delta: null, deltaPct: null }
-    }
+    const retro = retroFor(ingredient.name)
+    const none = { ingredient, match: null, newPackPrice: null, delta: null, deltaPct: null, retro }
+    if (ingredient.isProcess || ingredient.packUnit !== 'L') return none
+
     const match = matchLwc(ingredient.name)
-    if (!match || !ingredient.packSize) {
-      return { ingredient, match: null, newPackPrice: null, delta: null, deltaPct: null }
-    }
-    const perLitre = match.pricePerLitre * (applyRebate ? 1 - LWC_REBATE : 1)
+    if (!match || !ingredient.packSize) return { ...none, match: null }
+
+    // The retro is per bottle as the contract lists it, so it comes off the
+    // line at the pack the trade list quotes, then scales with our pack size.
+    const bottleLitres = match.line.litres || 0.7
+    const retroPerLitre = retro && bottleLitres > 0 ? retro.perBottle / bottleLitres : 0
+
+    let perLitre = match.pricePerLitre * (applyRebate ? 1 - LWC_REBATE : 1)
+    if (applyRetro) perLitre = Math.max(0, perLitre - retroPerLitre)
+
     const newPackPrice = Math.round(perLitre * ingredient.packSize * 100) / 100
     const delta = Math.round((newPackPrice - ingredient.packPrice) * 100) / 100
     return {
@@ -111,6 +125,7 @@ export function proposePrices(ingredients: Ingredient[], applyRebate: boolean): 
       newPackPrice,
       delta,
       deltaPct: ingredient.packPrice > 0 ? (delta / ingredient.packPrice) * 100 : null,
+      retro,
     }
   })
 }

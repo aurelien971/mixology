@@ -23,10 +23,11 @@ export default function LwcPage() {
   const [applying, setApplying] = useState(false)
   const [done, setDone] = useState<number | null>(null)
   const [onlyChanges, setOnlyChanges] = useState(true)
+  const [retro, setRetro] = useState(true)
 
   useEffect(() => { getIngredients().then(setIngredients).finally(() => setLoading(false)) }, [])
 
-  const proposals = useMemo(() => proposePrices(ingredients, rebate), [ingredients, rebate])
+  const proposals = useMemo(() => proposePrices(ingredients, rebate, retro), [ingredients, rebate, retro])
 
   const matched = proposals.filter((p) => p.match && p.newPackPrice !== null)
   const changed = matched.filter((p) => Math.abs(p.delta ?? 0) >= 0.01)
@@ -62,10 +63,10 @@ export default function LwcPage() {
     <div>
       <Header
         title="LWC pricing"
-        subtitle={`${LWC_LINES.length} trade lines. Re-price the ingredient library, then COGS re-costs every drink.`}
+        subtitle={`${LWC_LINES.length} trade lines and the Pernod retro schedule. Re-price the library and every drink re-costs behind it.`}
         action={
           <Button size="sm" onClick={apply} loading={applying} disabled={!selected.length}>
-            Apply {selected.length || ''} price{selected.length === 1 ? '' : 's'}
+            Fix {selected.length || ''} price{selected.length === 1 ? '' : 's'}
           </Button>
         }
       />
@@ -82,6 +83,10 @@ export default function LwcPage() {
         <label style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '13px', color: '#374151', cursor: 'pointer' }}>
           <input type="checkbox" checked={rebate} onChange={(e) => { setRebate(e.target.checked); setPicked({}) }} />
           Apply the {(LWC_REBATE * 100).toFixed(0)}% rebate
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '13px', color: '#374151', cursor: 'pointer' }}>
+          <input type="checkbox" checked={retro} onChange={(e) => { setRetro(e.target.checked); setPicked({}) }} />
+          Net off the Pernod retro
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '13px', color: '#374151', cursor: 'pointer' }}>
           <input type="checkbox" checked={onlyChanges} onChange={(e) => setOnlyChanges(e.target.checked)} />
@@ -116,6 +121,7 @@ export default function LwcPage() {
                 </th>
                 <th style={{ ...th, textAlign: 'left' }}>Ingredient</th>
                 <th style={{ ...th, textAlign: 'left' }}>Matched LWC line</th>
+                <th style={th}>Retro</th>
                 <th style={th}>Pack</th>
                 <th style={th}>Now</th>
                 <th style={th}>LWC</th>
@@ -144,6 +150,9 @@ export default function LwcPage() {
                       }}>
                         {Math.round((p.match?.confidence ?? 0) * 100)}%
                       </span>
+                    </td>
+                    <td style={{ ...td, fontSize: '12px', color: p.retro ? '#166534' : '#d1d5db' }}>
+                      {p.retro ? `−${money(p.retro.perBottle)}` : '—'}
                     </td>
                     <td style={{ ...td, color: '#9ca3af', fontSize: '12px' }}>{p.ingredient.packDescription}</td>
                     <td style={{ ...td, fontFamily: 'monospace' }}>{money(p.ingredient.packPrice)}</td>
