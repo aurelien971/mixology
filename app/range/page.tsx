@@ -138,64 +138,94 @@ export default function RangePage() {
 
   const needsWork = reconciled.filter((r) => r.state !== 'ok')
 
-  // Give the classic its own product and move the existing recipe onto it. The
-  // recipe is never copied, so the drink it was wrongly attached to keeps its own.
-  async function fixOne(entry: (typeof reconciled)[number]) {
+  /**
+   * Put all eleven classics on the platform and make them the range, in one go.
+   *
+   * Whatever state each one is in: give it a product if it has none, move its
+   * existing recipe onto that product rather than copying it, build the recipe
+   * from the costing sheet only when there genuinely is not one, star it, and
+   * unstar everything else so the core range is exactly these eleven.
+   */
+  async function setUpClassics() {
+    if (!confirm(
+      'Set up all eleven classics as the core range?\n\n' +
+      '· Missing ones get a product and a recipe from the costing sheet\n' +
+      '· Recipes sitting on the wrong product are moved onto their own\n' +
+      '· All eleven are starred, and everything else is unstarred\n\n' +
+      'No recipe is copied and nothing is deleted.'
+    )) return
+
     setBusy(true)
     try {
-      const next = products
+      let next = products
         .map((p) => Number(/FL-(\d+)/.exec(p.productCode)?.[1] ?? 0))
         .filter((n) => n >= 100000 && n < 200000)
-        .reduce((a, b) => Math.max(a, b), 100000) + 1
+        .reduce((a, b) => Math.max(a, b), 100000)
 
-      const productCode = `FL-${next}`
-      const productId = entry.product?.id ?? await createProduct({
-        productCode,
-        name: entry.classic.name,
-        category: 'Other',
-        costToMake: 0,
-        costMissing: true,
-        recommendedServingG: 100,
-        volumeLitres: 5,
-        baseCode: productCode,
-        isNonAlcoholic: false,
-        isCoreRange: false,
-        isClassic: true,
-        isActive: true,
-      } as Parameters<typeof createProduct>[0])
+      const keep = new Set<string>()
 
-      if (entry.recipe) {
-        // Move it. Nothing is duplicated.
-        await updateRecipe(entry.recipe.id, {
-          productId,
-          productName: entry.classic.name,
-          productCode: entry.product?.productCode ?? productCode,
-        })
-      } else {
-        await createRecipe({
-          name: entry.classic.name,
-          productId,
-          productName: entry.classic.name,
-          productCode: entry.product?.productCode ?? productCode,
-          ingredients: entry.classic.ingredients.map((i) => ({
-            name: i.name,
-            unit: 'L',
-            qtyPer1000L: (i.amountPerBatchMl / entry.classic.batchMl) * 1000,
-            qtyPer1L: i.amountPerBatchMl / entry.classic.batchMl,
-          })),
-          analyticalValues: [],
-          cookingInstructions: '',
-          status: 'active',
-        } as Parameters<typeof createRecipe>[0])
+      for (const e of reconciled) {
+        let productId = e.product?.id
+        let productCode = e.product?.productCode
+
+        if (!productId) {
+          next += 1
+          productCode = `FL-${next}`
+          productId = await createProduct({
+            productCode,
+            name: e.classic.name,
+            category: 'Other',
+            costToMake: 0,
+            costMissing: true,
+            recommendedServingG: 100,
+            volumeLitres: 5,
+            baseCode: productCode,
+            isNonAlcoholic: false,
+            isCoreRange: false,
+            isClassic: true,
+            isActive: true,
+          } as Parameters<typeof createProduct>[0])
+        } else {
+          await updateProduct(productId, { isClassic: true })
+        }
+        keep.add(productId)
+
+        if (e.recipe) {
+          if (e.recipe.productId !== productId) {
+            await updateRecipe(e.recipe.id, {
+              productId,
+              productName: e.classic.name,
+              productCode,
+            })
+          }
+        } else {
+          await createRecipe({
+            name: e.classic.name,
+            productId,
+            productName: e.classic.name,
+            productCode,
+            ingredients: e.classic.ingredients.map((i) => ({
+              name: i.name,
+              unit: 'L',
+              qtyPer1000L: (i.amountPerBatchMl / e.classic.batchMl) * 1000,
+              qtyPer1L: i.amountPerBatchMl / e.classic.batchMl,
+            })),
+            analyticalValues: [],
+            cookingInstructions: '',
+            status: 'active',
+          } as Parameters<typeof createRecipe>[0])
+        }
       }
 
-      if (entry.product && !entry.product.isClassic) {
-        await updateProduct(entry.product.id, { isClassic: true })
+      // The core range is these eleven and nothing else.
+      for (const p of products) {
+        if (p.isClassic && !keep.has(p.id)) await updateProduct(p.id, { isClassic: false })
       }
+
       load()
-      toast.success(`${entry.classic.name} sorted`)
-    } catch (e) {
-      toast.error(String(e))
+      toast.success('The eleven classics are your core range')
+    } catch (err) {
+      toast.error(String(err))
     } finally { setBusy(false) }
   }
 
@@ -248,55 +278,51 @@ export default function RangePage() {
         ))}
       </div>
 
-      {needsWork.length > 0 && (
-        <div style={{ background: '#fff', border: '1px solid #fecaca', borderRadius: '12px', padding: '18px 20px', marginBottom: '16px' }}>
-          <p style={{ margin: '0 0 3px', fontSize: '14px', fontWeight: 700, color: '#991b1b' }}>
-            {needsWork.length} of the eleven classics are not where they should be
-          </p>
-          <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#b91c1c', lineHeight: 1.55, maxWidth: '82ch' }}>
-            The recipes mostly exist — they are just attached to another drink&apos;s product, which is why they cannot
-            be starred or priced under their own name. Fixing one <strong>moves</strong> the recipe onto a product of
-            its own; the drink it was wrongly attached to keeps whatever else it had.
-          </p>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-            {needsWork.map((e) => (
-              <div
-                key={e.classic.name}
-                style={{
-                  display: 'grid', gridTemplateColumns: '160px 1fr 100px 190px',
-                  gap: '12px', alignItems: 'center', padding: '9px 4px', borderBottom: '1px solid #fafafa',
-                }}
-              >
-                <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#111827' }}>{e.classic.name}</span>
-                <span style={{ fontSize: '12.5px', color: '#6b7280', lineHeight: 1.45 }}>
-                  {e.state === 'mislinked' ? (
-                    <>Recipe <strong style={{ color: '#374151' }}>&ldquo;{e.recipe!.name}&rdquo;</strong> sits on{' '}
-                      <strong style={{ color: '#b45309' }}>{e.host!.productCode} {e.host!.name}</strong></>
-                  ) : e.state === 'orphan' ? (
-                    <>Recipe exists but is attached to nothing</>
-                  ) : (
-                    <>No recipe here — it would be built from the costing sheet</>
-                  )}
-                </span>
-                <span style={{ fontSize: '12.5px', color: '#9ca3af', textAlign: 'right', fontFamily: 'monospace' }}>
-                  {e.costPerLitre !== null ? money(e.costPerLitre) + '/L' : '—'}
-                </span>
-                <Button size="sm" variant="secondary" onClick={() => fixOne(e)} loading={busy} disabled={busy}>
-                  {e.state === 'missing' ? 'Create it' : 'Give it its own product'}
-                </Button>
-              </div>
-            ))}
+      <div style={{
+        background: needsWork.length ? '#fffbeb' : '#f0fdf4',
+        border: `1px solid ${needsWork.length ? '#fde68a' : '#bbf7d0'}`,
+        borderRadius: '12px', padding: '18px 20px', marginBottom: '16px',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '18px', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: '300px' }}>
+            <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: 700, color: needsWork.length ? '#92400e' : '#166534' }}>
+              {needsWork.length === 0
+                ? 'All eleven classics are here and starred'
+                : `${needsWork.length} of the eleven classics are not set up yet`}
+            </p>
+            <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.55, color: needsWork.length ? '#a16207' : '#3f6212', maxWidth: '78ch' }}>
+              {needsWork.length === 0
+                ? 'The core range is exactly the eleven off the costing sheet. Pricing, swaps and the rate card all read from it.'
+                : 'One click gives each of them a product and a code, moves its recipe onto it, builds one from the costing sheet where there is none, and makes the eleven the core range.'}
+            </p>
           </div>
-
-          <p style={{ margin: '14px 0 0', fontSize: '12.5px', color: '#a16207', lineHeight: 1.55, maxWidth: '82ch' }}>
-            <strong>One I cannot decide for you:</strong> the recipe named <strong>G+T</strong> is on{' '}
-            <strong>Aegeas G+T</strong>. It is either the classic wrongly attached, or Aegeas&apos;s own drink loosely
-            named. It pours Beefeater with house bitters and tonic, and Aegeas has a second recipe of its own — so it
-            reads like the classic — but that is a call for you or Dima, not a rule I should guess at.
-          </p>
+          <Button size="sm" onClick={setUpClassics} loading={busy} disabled={busy}>
+            {needsWork.length === 0 ? 'Re-sync the eleven' : 'Set up all eleven'}
+          </Button>
         </div>
-      )}
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '14px' }}>
+          {reconciled.map((e) => (
+            <span
+              key={e.classic.name}
+              title={
+                e.state === 'ok' ? 'Ready'
+                : e.state === 'mislinked' ? `Recipe sits on ${e.host?.name}`
+                : e.state === 'orphan' ? 'Recipe attached to nothing'
+                : 'No recipe — will be built from the sheet'
+              }
+              style={{
+                fontSize: '11.5px', fontWeight: 600, padding: '3px 10px', borderRadius: '20px',
+                background: e.state === 'ok' ? '#dcfce7' : '#fff',
+                border: `1px solid ${e.state === 'ok' ? '#bbf7d0' : '#fde68a'}`,
+                color: e.state === 'ok' ? '#166534' : '#92400e',
+              }}
+            >
+              {e.state === 'ok' ? '✓ ' : ''}{e.classic.name}
+            </span>
+          ))}
+        </div>
+      </div>
 
       <div style={{ background: '#fff', border: '1px solid #f3f4f6', borderRadius: '12px', padding: '16px 18px', marginBottom: '16px' }}>
         <p style={{ margin: 0, fontSize: '13.5px', lineHeight: 1.6, color: '#4b5563', maxWidth: '84ch' }}>
