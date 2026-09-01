@@ -182,6 +182,10 @@ export interface Ingredient {
   packUnit: PackUnit            // what the pack is measured in
   packPrice: number             // £ per pack (what you pay the supplier)
   pricePerUnit: number          // derived: £ per kg / L — used for recipe COGS
+  // Whether this line is the spirit. Drives the just-add-alcohol split: the
+  // venue buys these itself, we supply everything else. Inferred from the name
+  // on first read and overridable per ingredient.
+  isAlcoholic?: boolean
   currentStock: number          // stock on hand, in packs (fractional allowed)
   stockUpdatedAt?: Date
   createdAt: Date

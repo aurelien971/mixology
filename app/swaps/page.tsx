@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import { getProducts } from '@/lib/firestore/catalog'
@@ -63,7 +65,9 @@ export default function SwapsPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [ingredients, setIngredients] = useState<Ingredient[]>([])
   const [loading, setLoading] = useState(true)
-  const [taken, setTaken] = useState<Record<string, boolean>>({})
+  const [taken, setTaken] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem('foodlab-swaps-taken') || '{}') } catch { return {} }
+  })
   const [brief, setBrief] = useState<string | null>(null)
   const [thinking, setThinking] = useState(false)
   const swapCols = useTable<Swap>('swaps', SWAP_COLUMNS)
@@ -125,6 +129,19 @@ export default function SwapsPage() {
       .sort((a, b) => (a.delta ?? 0) - (b.delta ?? 0))
   }, [products, recipes, ingredients, active])
 
+  const router = useRouter()
+
+  // The decision has to survive the page. Which swaps we are taking is an input
+  // to the pricing, so it is stored rather than re-ticked every time.
+  function commit() {
+    try {
+      localStorage.setItem('foodlab-swaps-taken', JSON.stringify(
+        Object.fromEntries(SWAPS.map((s) => [s.from, isTaken(s)]))
+      ))
+    } catch { /* private mode */ }
+    router.push('/pricing')
+  }
+
   async function generate() {
     setThinking(true)
     setBrief(null)
@@ -162,7 +179,13 @@ export default function SwapsPage() {
       <Header
         title="Swaps & re-cost"
         subtitle="Which spirits we move, what it is worth, and what it does to our own margin."
-        action={<Button size="sm" onClick={generate} loading={thinking}>✦ Write the outcome</Button>}
+        action={
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Button size="sm" variant="secondary" onClick={generate} loading={thinking}>✦ Write the outcome</Button>
+            <Link href="/lwc"><Button size="sm" variant="secondary">Apply prices →</Button></Link>
+            <Button size="sm" onClick={commit}>Lock in {active.length} &amp; price them up →</Button>
+          </div>
+        }
       />
 
       {/* What this page is, in plain words */}

@@ -108,6 +108,15 @@ const nav = [
     ),
   },
   {
+    label: 'Pricing',
+    href: '/pricing',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+        <path d="M9 2v14M6 5.5h4.5a2 2 0 010 4h-3a2 2 0 000 4H12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
+      </svg>
+    ),
+  },
+  {
     label: 'Rate card',
     href: '/rate-card',
     icon: (
