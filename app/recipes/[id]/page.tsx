@@ -6,7 +6,7 @@ import { format } from 'date-fns'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import { getRecipe, getRecipes, updateRecipe, deleteRecipe } from '@/lib/firestore/recipes'
-import { getProducts } from '@/lib/firestore/catalog'
+import { getProducts, updateProduct } from '@/lib/firestore/catalog'
 import { getIngredients, updateIngredient } from '@/lib/firestore/ingredients'
 import { computeRecipeCost, matchIngredient } from '@/lib/costing'
 import RecipeEditor from '@/components/recipes/RecipeEditor'
@@ -351,7 +351,37 @@ export default function RecipeDetailPage() {
             {linkedProduct ? (
               <div style={{ marginBottom: '10px', padding: '8px 10px', background: '#eff6ff', borderRadius: '8px' }}>
                 <p style={{ fontSize: '12px', fontWeight: 700, color: '#1d4ed8', fontFamily: 'monospace', margin: '0 0 2px' }}>{linkedProduct.productCode}</p>
-                <p style={{ fontSize: '13px', color: '#374151', margin: 0 }}>{linkedProduct.name}</p>
+                <p style={{ fontSize: '13px', color: '#374151', margin: '0 0 8px' }}>{linkedProduct.name}</p>
+
+                {/* Range lives on the product, so tagging it here is the same
+                    switch as the catalog and the rate card — just reachable
+                    from the recipe you happen to be looking at. */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', paddingTop: '8px', borderTop: '1px solid #dbeafe' }}>
+                  {([
+                    ['isClassic',   'Classic — one of the ten'] as const,
+                    ['isCoreRange', 'Core range — any client'] as const,
+                  ]).map(([field, label]) => (
+                    <label key={field} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12.5px', color: '#1e40af', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={!!linkedProduct[field]}
+                        onChange={async (e) => {
+                          const next = e.target.checked
+                          setProducts(prev => prev.map(x => x.id === linkedProduct.id ? { ...x, [field]: next } : x))
+                          try {
+                            await updateProduct(linkedProduct.id, { [field]: next })
+                            toast.success(next ? `Added to ${field === 'isClassic' ? 'the classics' : 'the core range'}` : 'Removed')
+                          } catch {
+                            toast.error('Could not save')
+                            setProducts(prev => prev.map(x => x.id === linkedProduct.id ? { ...x, [field]: !next } : x))
+                          }
+                        }}
+                        style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
               </div>
             ) : (
               <p style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '10px' }}>No product linked</p>
