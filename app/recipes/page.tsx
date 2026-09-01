@@ -55,7 +55,8 @@ export default function RecipesPage() {
     return matchSearch && matchRange
   })
 
-  const classicCount = recipes.filter(r => productOf(r)?.isClassic).length
+  const classicDrinks = products.filter(p => p.isActive !== false && p.isClassic).length
+  const classicRecipes = recipes.filter(r => productOf(r)?.isClassic).length
 
   return (
     <div>
@@ -153,7 +154,7 @@ export default function RecipesPage() {
               <div style={{ display: 'flex', gap: '4px' }}>
                 {([
                   ['all', `All ${recipes.length}`],
-                  ['classics', `Core classics ${classicCount}`],
+                  ['classics', `Core classics ${classicDrinks}`],
                 ] as const).map(([v, l]) => (
                   <button
                     key={v}
@@ -167,7 +168,12 @@ export default function RecipesPage() {
                   >{l}</button>
                 ))}
               </div>
-              <span style={{ fontSize: '12px', color: '#9ca3af' }}>{filtered.length} recipe{filtered.length !== 1 ? 's' : ''}</span>
+              <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+                {filtered.length} recipe{filtered.length !== 1 ? 's' : ''}
+                {range === 'classics' && classicRecipes !== classicDrinks && (
+                  <> across {classicDrinks} drinks</>
+                )}
+              </span>
             </div>
           )}
 
@@ -215,7 +221,7 @@ export default function RecipesPage() {
                         <span style={{ fontSize: '11px', color: '#3b82f6' }}>{linkedProduct.name}</span>
                       </div>
                     ) : (
-                      <p style={{ fontSize: '11px', color: '#d1d5db', margin: 0 }}>No product linked — cost won't flow to finances</p>
+                      <p style={{ fontSize: '11px', color: '#d1d5db', margin: 0 }}>No product linked — cost won&apos;t flow to finances</p>
                     )}
                   </div>
                 </Link>
