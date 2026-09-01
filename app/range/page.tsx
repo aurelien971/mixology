@@ -5,7 +5,7 @@ import Link from 'next/link'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import { getProducts, updateProduct, createProduct } from '@/lib/firestore/catalog'
-import { getRecipes, createRecipe } from '@/lib/firestore/recipes'
+import { getRecipes, createRecipe, updateRecipe } from '@/lib/firestore/recipes'
 import { CLASSIC_RECIPES, classicKey } from '@/lib/data/classicRecipes'
 import { getIngredients } from '@/lib/firestore/ingredients'
 import { computeRecipeCost } from '@/lib/costing'
@@ -109,68 +109,93 @@ export default function RangePage() {
 
   const picked = products.filter((p) => p.isActive !== false && p.isClassic)
 
-  // The costing sheet's eleven against what actually exists as a product here.
-  // Several of the classics have only ever been a row in a spreadsheet.
-  const missingClassics = useMemo(() => {
-    const have = new Set(products.filter((p) => p.isActive !== false).map((p) => classicKey(p.name)))
-    return CLASSIC_RECIPES.filter((c) => !have.has(classicKey(c.name)))
-  }, [products])
+  /**
+   * Reconcile the costing sheet against what is here.
+   *
+   * A classic can be in three states, and they need different fixes: the recipe
+   * exists on a product of the same name (fine), the recipe exists but hangs off
+   * somebody else's product (relink it — creating a new one would duplicate the
+   * recipe), or there is no recipe at all (build both).
+   */
+  const reconciled = useMemo(() => {
+    const live = products.filter((p) => p.isActive !== false)
+    return CLASSIC_RECIPES.map((c) => {
+      const key = classicKey(c.name)
+      const product = live.find((p) => classicKey(p.name) === key)
+      const recipe = recipes.find((r) => classicKey(r.name) === key)
+      const host = recipe?.productId ? live.find((p) => p.id === recipe.productId) : undefined
+      const cost = recipe ? computeRecipeCost(recipe, ingredients) : null
 
-  // Build the product and its recipe from the sheet, then star it.
-  async function createMissing() {
-    if (!missingClassics.length) return
-    if (!confirm(
-      `Create ${missingClassics.length} product${missingClassics.length === 1 ? '' : 's'} from the costing sheet?\n\n` +
-      missingClassics.map((c) => '· ' + c.name).join('\n') +
-      '\n\nEach gets its recipe and is added to the range. Ingredient prices come from the library, so anything unpriced shows as unpriced.'
-    )) return
+      const state: 'ok' | 'mislinked' | 'orphan' | 'missing' =
+        product && recipe && recipe.productId === product.id ? 'ok'
+        : recipe && host ? 'mislinked'
+        : recipe ? 'orphan'
+        : 'missing'
 
+      return { classic: c, product, recipe, host, state, costPerLitre: cost?.complete ? cost.costPerLitre : null }
+    })
+  }, [products, recipes, ingredients])
+
+  const needsWork = reconciled.filter((r) => r.state !== 'ok')
+
+  // Give the classic its own product and move the existing recipe onto it. The
+  // recipe is never copied, so the drink it was wrongly attached to keeps its own.
+  async function fixOne(entry: (typeof reconciled)[number]) {
     setBusy(true)
     try {
-      // Codes are not generated for us, so continue the FL-1000xx series.
-      let next = products
+      const next = products
         .map((p) => Number(/FL-(\d+)/.exec(p.productCode)?.[1] ?? 0))
         .filter((n) => n >= 100000 && n < 200000)
-        .reduce((a, b) => Math.max(a, b), 100000)
+        .reduce((a, b) => Math.max(a, b), 100000) + 1
 
-      for (const c of missingClassics) {
-        next += 1
-        const productCode = `FL-${next}`
-        const productId = await createProduct({
-          productCode,
-          name: c.name,
-          category: 'Other',
-          costToMake: 0,
-          costMissing: true,
-          recommendedServingG: 100,
-          volumeLitres: 5,
-          baseCode: productCode,
-          isNonAlcoholic: false,
-          isCoreRange: false,
-          isClassic: true,
-          isActive: true,
-        } as Parameters<typeof createProduct>[0])
+      const productCode = `FL-${next}`
+      const productId = entry.product?.id ?? await createProduct({
+        productCode,
+        name: entry.classic.name,
+        category: 'Other',
+        costToMake: 0,
+        costMissing: true,
+        recommendedServingG: 100,
+        volumeLitres: 5,
+        baseCode: productCode,
+        isNonAlcoholic: false,
+        isCoreRange: false,
+        isClassic: true,
+        isActive: true,
+      } as Parameters<typeof createProduct>[0])
 
-        await createRecipe({
-          name: c.name,
+      if (entry.recipe) {
+        // Move it. Nothing is duplicated.
+        await updateRecipe(entry.recipe.id, {
           productId,
-          productName: c.name,
-          productCode,
-          ingredients: c.ingredients.map((i) => ({
+          productName: entry.classic.name,
+          productCode: entry.product?.productCode ?? productCode,
+        })
+      } else {
+        await createRecipe({
+          name: entry.classic.name,
+          productId,
+          productName: entry.classic.name,
+          productCode: entry.product?.productCode ?? productCode,
+          ingredients: entry.classic.ingredients.map((i) => ({
             name: i.name,
             unit: 'L',
-            qtyPer1000L: (i.amountPerBatchMl / c.batchMl) * 1000,
-            qtyPer1L: i.amountPerBatchMl / c.batchMl,
+            qtyPer1000L: (i.amountPerBatchMl / entry.classic.batchMl) * 1000,
+            qtyPer1L: i.amountPerBatchMl / entry.classic.batchMl,
           })),
           analyticalValues: [],
           cookingInstructions: '',
           status: 'active',
         } as Parameters<typeof createRecipe>[0])
       }
+
+      if (entry.product && !entry.product.isClassic) {
+        await updateProduct(entry.product.id, { isClassic: true })
+      }
       load()
-      toast.success(`${missingClassics.length} created`)
+      toast.success(`${entry.classic.name} sorted`)
     } catch (e) {
-      toast.error('Could not create them all — ' + String(e))
+      toast.error(String(e))
     } finally { setBusy(false) }
   }
 
@@ -223,18 +248,53 @@ export default function RangePage() {
         ))}
       </div>
 
-      {missingClassics.length > 0 && (
-        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', padding: '16px 18px', marginBottom: '16px' }}>
-          <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: 700, color: '#991b1b' }}>
-            {missingClassics.length} of the eleven classics on your costing sheet do not exist here
+      {needsWork.length > 0 && (
+        <div style={{ background: '#fff', border: '1px solid #fecaca', borderRadius: '12px', padding: '18px 20px', marginBottom: '16px' }}>
+          <p style={{ margin: '0 0 3px', fontSize: '14px', fontWeight: 700, color: '#991b1b' }}>
+            {needsWork.length} of the eleven classics are not where they should be
           </p>
-          <p style={{ margin: '0 0 10px', fontSize: '13px', color: '#b91c1c', lineHeight: 1.55, maxWidth: '80ch' }}>
-            {missingClassics.map((c) => c.name).join(' · ')} — they are costed on the sheet but have no product,
-            so they cannot be starred, priced or put on a rate card. That is why the range looks incomplete.
+          <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#b91c1c', lineHeight: 1.55, maxWidth: '82ch' }}>
+            The recipes mostly exist — they are just attached to another drink&apos;s product, which is why they cannot
+            be starred or priced under their own name. Fixing one <strong>moves</strong> the recipe onto a product of
+            its own; the drink it was wrongly attached to keeps whatever else it had.
           </p>
-          <Button size="sm" onClick={createMissing} loading={busy} disabled={busy}>
-            Create them from the costing sheet
-          </Button>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            {needsWork.map((e) => (
+              <div
+                key={e.classic.name}
+                style={{
+                  display: 'grid', gridTemplateColumns: '160px 1fr 100px 190px',
+                  gap: '12px', alignItems: 'center', padding: '9px 4px', borderBottom: '1px solid #fafafa',
+                }}
+              >
+                <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#111827' }}>{e.classic.name}</span>
+                <span style={{ fontSize: '12.5px', color: '#6b7280', lineHeight: 1.45 }}>
+                  {e.state === 'mislinked' ? (
+                    <>Recipe <strong style={{ color: '#374151' }}>&ldquo;{e.recipe!.name}&rdquo;</strong> sits on{' '}
+                      <strong style={{ color: '#b45309' }}>{e.host!.productCode} {e.host!.name}</strong></>
+                  ) : e.state === 'orphan' ? (
+                    <>Recipe exists but is attached to nothing</>
+                  ) : (
+                    <>No recipe here — it would be built from the costing sheet</>
+                  )}
+                </span>
+                <span style={{ fontSize: '12.5px', color: '#9ca3af', textAlign: 'right', fontFamily: 'monospace' }}>
+                  {e.costPerLitre !== null ? money(e.costPerLitre) + '/L' : '—'}
+                </span>
+                <Button size="sm" variant="secondary" onClick={() => fixOne(e)} loading={busy} disabled={busy}>
+                  {e.state === 'missing' ? 'Create it' : 'Give it its own product'}
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          <p style={{ margin: '14px 0 0', fontSize: '12.5px', color: '#a16207', lineHeight: 1.55, maxWidth: '82ch' }}>
+            <strong>One I cannot decide for you:</strong> the recipe named <strong>G+T</strong> is on{' '}
+            <strong>Aegeas G+T</strong>. It is either the classic wrongly attached, or Aegeas&apos;s own drink loosely
+            named. It pours Beefeater with house bitters and tonic, and Aegeas has a second recipe of its own — so it
+            reads like the classic — but that is a call for you or Dima, not a rule I should guess at.
+          </p>
         </div>
       )}
 
