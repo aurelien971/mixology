@@ -59,7 +59,12 @@ export default function RecipesPage() {
         title="Recipes"
         subtitle="Master recipe file — every drink, its ingredients and cost"
         action={
-          <Button size="sm" onClick={() => setEditorState({})}>+ New recipe</Button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Link href="/recipes/fill">
+              <Button size="sm" variant="secondary">◇ Fill the gaps</Button>
+            </Link>
+            <Button size="sm" onClick={() => setEditorState({})}>+ New recipe</Button>
+          </div>
         }
       />
 

@@ -29,6 +29,7 @@ export default function EditProductModal({ product, onClose, onSaved }: Props) {
       : Number(((product.costToMake / product.recommendedServingG) * 1000).toFixed(4)),
     isNonAlcoholic:      product.isNonAlcoholic,
     isCoreRange:         product.isCoreRange ?? false,
+    isClassic:           product.isClassic ?? false,
     defaultPricePerLitre:product.defaultPricePerLitre ?? 0,
     servingNotes:        product.servingNotes ?? '',
     isActive:            product.isActive,
@@ -63,6 +64,7 @@ export default function EditProductModal({ product, onClose, onSaved }: Props) {
         costMissing,
         isNonAlcoholic:      form.isNonAlcoholic,
         isCoreRange:         form.isCoreRange,
+        isClassic:           form.isClassic,
         isActive:            form.isActive,
       }
       if (form.servingNotes.trim()) updates.servingNotes = form.servingNotes.trim()
@@ -191,6 +193,7 @@ export default function EditProductModal({ product, onClose, onSaved }: Props) {
               {[
                 { id: 'na', label: 'Non-alcoholic', field: 'isNonAlcoholic', value: form.isNonAlcoholic },
                 { id: 'cr', label: 'Core range (available to all clients)', field: 'isCoreRange', value: form.isCoreRange },
+                { id: 'cl', label: 'Classic (one of the ten we cost and price on)', field: 'isClassic', value: form.isClassic },
                 { id: 'ac', label: 'Active', field: 'isActive', value: form.isActive },
               ].map(({ id, label, field, value }) => (
                 <label key={id} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '13px', color: '#374151', cursor: 'pointer' }}>

@@ -52,6 +52,18 @@ const nav = [
     ),
   },
   {
+    label: 'Projects',
+    href: '/projects',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+        <line x1="3" y1="4" x2="3" y2="15" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity=".5" />
+        <rect x="5" y="3" width="8" height="3" rx="1.2" fill="currentColor" opacity=".9" />
+        <rect x="5" y="7.5" width="11" height="3" rx="1.2" fill="currentColor" opacity=".55" />
+        <rect x="5" y="12" width="6" height="3" rx="1.2" fill="currentColor" opacity=".35" />
+      </svg>
+    ),
+  },
+  {
     label: 'Catalog',
     href: '/catalog',
     icon: (
@@ -87,12 +99,43 @@ const nav = [
     ),
   },
   {
+    label: 'Swaps',
+    href: '/swaps',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+        <path d="M3 6h9l-2.5-2.5M15 12H6l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+      </svg>
+    ),
+  },
+  {
+    label: 'Rate card',
+    href: '/rate-card',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+        <rect x="2" y="4" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.4" fill="none"/>
+        <line x1="2" y1="7.5" x2="16" y2="7.5" stroke="currentColor" strokeWidth="1.2" opacity=".6"/>
+        <line x1="5" y1="11" x2="9" y2="11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
     label: 'Stock take',
     href: '/stocktake',
     icon: (
       <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
         <path d="M2 6l7-4 7 4v7l-7 4-7-4V6z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" fill="none"/>
         <path d="M2 6l7 4 7-4M9 10v7" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+      </svg>
+    ),
+  },
+  {
+    label: 'LWC pricing',
+    href: '/lwc',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+        <path d="M6 2h6l1 3v10a1 1 0 01-1 1H6a1 1 0 01-1-1V5l1-3z" stroke="currentColor" strokeWidth="1.4" fill="none" opacity=".9"/>
+        <line x1="5" y1="8" x2="13" y2="8" stroke="currentColor" strokeWidth="1.2"/>
+        <line x1="7.5" y1="11" x2="10.5" y2="11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity=".5"/>
       </svg>
     ),
   },

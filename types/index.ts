@@ -88,6 +88,7 @@ export interface Product {
   baseCode: string              // groups variants of the same recipe e.g. "FL-100001"
   isNonAlcoholic: boolean
   isCoreRange: boolean          // available to any external client
+  isClassic?: boolean           // one of the ten classics — the range we cost, price and pitch on
   defaultPricePerLitre?: number // standard sell price/L for core range
   isActive: boolean
   createdAt: Date
@@ -327,4 +328,143 @@ export interface DashboardStats {
   totalOutstanding: number
   ordersThisMonth: number
   overdueCount: number
+}
+// ── Projects (pipeline board) ────────────────────────────────────────────────
+// A project is any piece of work with an owner and a date. R&D orders surface
+// here automatically; standalone projects (a range launch, a tasting, a
+// workstream) live only in the `projects` collection.
+
+export type ProjectKind = 'rd' | 'range' | 'commercial' | 'ops' | 'brand' | 'other'
+
+export const PROJECT_KIND_LABELS: Record<ProjectKind, string> = {
+  rd:         'R&D',
+  range:      'Range',
+  commercial: 'Commercial',
+  ops:        'Ops',
+  brand:      'Brand',
+  other:      'Other',
+}
+
+export type ProjectStage =
+  | 'brief'
+  | 'development'
+  | 'tasting'
+  | 'sign_off'
+  | 'launch'
+  | 'done'
+  | 'parked'
+
+export const PROJECT_STAGES: { value: ProjectStage; label: string }[] = [
+  { value: 'brief',       label: 'Brief' },
+  { value: 'development', label: 'Development' },
+  { value: 'tasting',     label: 'Tasting' },
+  { value: 'sign_off',    label: 'Sign-off' },
+  { value: 'launch',      label: 'Launch' },
+  { value: 'done',        label: 'Done' },
+  { value: 'parked',      label: 'Parked' },
+]
+
+// Set in the ranking session: the month's top list, or parked with a date.
+export type ProjectDecision = 'top' | 'parked'
+
+// A step on a project. Dates are ISO strings — they live inside an array, and
+// Firestore Timestamps in arrays have to be converted by hand on every read.
+export interface ChecklistItem {
+  id: string
+  text: string
+  done: boolean
+  doneAt?: string
+  owner?: string
+  due?: string
+}
+
+export type UpdateKind = 'note' | 'auto'
+
+export interface ProjectUpdate {
+  at: string
+  text: string
+  kind: UpdateKind
+  by?: string
+}
+
+export interface Project {
+  id: string
+  title: string
+  kind: ProjectKind
+  accountName?: string
+  stage: ProjectStage
+
+  owner?: string                // single accountable name
+  assignees?: string[]          // everyone else on it
+  dueDate?: Date
+  nextStep?: string
+
+  blocker?: string              // what is actually stopping it
+  gatekeeper?: string           // who has to say yes
+
+  // Ranking criteria — opportunity × size of prize ÷ effort
+  opportunity?: number          // 1–5, does it open a door
+  prizeGbp?: number             // £/yr if it lands — the quote
+  effortDays?: number           // bench days it eats
+
+  scope?: string                // what done looks like, in plain words
+  checklist?: ChecklistItem[]
+  updates?: ProjectUpdate[]     // newest first
+
+  decision?: ProjectDecision
+  parkedUntil?: Date
+  outcome?: string
+
+  linkedOrderId?: string        // the R&D order this came from, if any
+  notes?: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+// Priority score: money (in £k) weighted by how many doors it opens,
+// divided by the bench days it costs. Higher ranks first.
+export function projectScore(p: Pick<Project, 'opportunity' | 'prizeGbp' | 'effortDays'>): number | null {
+  const opp = p.opportunity ?? 0
+  const prize = p.prizeGbp ?? 0
+  const days = p.effortDays ?? 0
+  if (!opp || !prize || !days) return null
+  return Math.round(((prize / 1000) * opp) / Math.max(days, 0.5) * 10) / 10
+}
+
+// ── The ten classics ─────────────────────────────────────────────────────────
+// The range the costing sheet, the rate card and the Pernod menu obligations
+// all hang off. Names here are matched loosely against product names, which
+// carry suffixes like "TMS" and house variations.
+
+export const CLASSIC_COCKTAILS = [
+  'Margarita',
+  'G+T',
+  'Dry Martini',
+  'Dirty Martini',
+  'Negroni',
+  'Old Fashioned',
+  'Manhattan',
+  'Cosmopolitan',
+  'Espresso Martini',
+  'Whiskey Sour',
+] as const
+
+// "Spicy Margarita TMS" → matches "Margarita"; "Lychee Martini" must not.
+export function matchesClassic(productName: string): string | null {
+  const n = productName.toLowerCase().replace(/\btms\b/g, ' ').replace(/[^a-z+ ]/g, ' ').replace(/\s+/g, ' ').trim()
+  // Longest first, so "Dry Martini" wins over a bare "Martini" fragment.
+  const ordered = [...CLASSIC_COCKTAILS].sort((a, b) => b.length - a.length)
+  for (const c of ordered) {
+    const key = c.toLowerCase()
+    if (n === key || n.startsWith(key + ' ') || n.endsWith(' ' + key) || n.includes(' ' + key + ' ')) return c
+  }
+  return null
+}
+
+// Progress from the checklist — the honest "how far along is this".
+export function projectProgress(p: Pick<Project, 'checklist'>): { done: number; total: number; pct: number } | null {
+  const list = p.checklist ?? []
+  if (!list.length) return null
+  const done = list.filter((i) => i.done).length
+  return { done, total: list.length, pct: Math.round((done / list.length) * 100) }
 }

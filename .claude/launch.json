@@ -4,8 +4,25 @@
     {
       "name": "dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 3000
+    },
+    {
+      "name": "foodlab-website",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "/Users/aureliennicolle/Desktop/foodlab-website",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "3100"
+      ],
+      "port": 3100
     }
   ]
 }
