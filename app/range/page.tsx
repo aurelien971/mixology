@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
-import { getProducts, updateProduct } from '@/lib/firestore/catalog'
-import { getRecipes } from '@/lib/firestore/recipes'
+import { getProducts, updateProduct, createProduct } from '@/lib/firestore/catalog'
+import { getRecipes, createRecipe } from '@/lib/firestore/recipes'
+import { CLASSIC_RECIPES, classicKey } from '@/lib/data/classicRecipes'
 import { getIngredients } from '@/lib/firestore/ingredients'
 import { computeRecipeCost } from '@/lib/costing'
 import { useTable, ColumnDef } from '@/hooks/useTable'
@@ -108,6 +109,71 @@ export default function RangePage() {
 
   const picked = products.filter((p) => p.isActive !== false && p.isClassic)
 
+  // The costing sheet's eleven against what actually exists as a product here.
+  // Several of the classics have only ever been a row in a spreadsheet.
+  const missingClassics = useMemo(() => {
+    const have = new Set(products.filter((p) => p.isActive !== false).map((p) => classicKey(p.name)))
+    return CLASSIC_RECIPES.filter((c) => !have.has(classicKey(c.name)))
+  }, [products])
+
+  // Build the product and its recipe from the sheet, then star it.
+  async function createMissing() {
+    if (!missingClassics.length) return
+    if (!confirm(
+      `Create ${missingClassics.length} product${missingClassics.length === 1 ? '' : 's'} from the costing sheet?\n\n` +
+      missingClassics.map((c) => '· ' + c.name).join('\n') +
+      '\n\nEach gets its recipe and is added to the range. Ingredient prices come from the library, so anything unpriced shows as unpriced.'
+    )) return
+
+    setBusy(true)
+    try {
+      // Codes are not generated for us, so continue the FL-1000xx series.
+      let next = products
+        .map((p) => Number(/FL-(\d+)/.exec(p.productCode)?.[1] ?? 0))
+        .filter((n) => n >= 100000 && n < 200000)
+        .reduce((a, b) => Math.max(a, b), 100000)
+
+      for (const c of missingClassics) {
+        next += 1
+        const productCode = `FL-${next}`
+        const productId = await createProduct({
+          productCode,
+          name: c.name,
+          category: 'Other',
+          costToMake: 0,
+          costMissing: true,
+          recommendedServingG: 100,
+          volumeLitres: 5,
+          baseCode: productCode,
+          isNonAlcoholic: false,
+          isCoreRange: false,
+          isClassic: true,
+          isActive: true,
+        } as Parameters<typeof createProduct>[0])
+
+        await createRecipe({
+          name: c.name,
+          productId,
+          productName: c.name,
+          productCode,
+          ingredients: c.ingredients.map((i) => ({
+            name: i.name,
+            unit: 'L',
+            qtyPer1000L: (i.amountPerBatchMl / c.batchMl) * 1000,
+            qtyPer1L: i.amountPerBatchMl / c.batchMl,
+          })),
+          analyticalValues: [],
+          cookingInstructions: '',
+          status: 'active',
+        } as Parameters<typeof createRecipe>[0])
+      }
+      load()
+      toast.success(`${missingClassics.length} created`)
+    } catch (e) {
+      toast.error('Could not create them all — ' + String(e))
+    } finally { setBusy(false) }
+  }
+
   async function toggle(p: Product) {
     setBusy(true)
     setProducts((prev) => prev.map((x) => (x.id === p.id ? { ...x, isClassic: !p.isClassic } : x)))
@@ -156,6 +222,21 @@ export default function RangePage() {
           </div>
         ))}
       </div>
+
+      {missingClassics.length > 0 && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', padding: '16px 18px', marginBottom: '16px' }}>
+          <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: 700, color: '#991b1b' }}>
+            {missingClassics.length} of the eleven classics on your costing sheet do not exist here
+          </p>
+          <p style={{ margin: '0 0 10px', fontSize: '13px', color: '#b91c1c', lineHeight: 1.55, maxWidth: '80ch' }}>
+            {missingClassics.map((c) => c.name).join(' · ')} — they are costed on the sheet but have no product,
+            so they cannot be starred, priced or put on a rate card. That is why the range looks incomplete.
+          </p>
+          <Button size="sm" onClick={createMissing} loading={busy} disabled={busy}>
+            Create them from the costing sheet
+          </Button>
+        </div>
+      )}
 
       <div style={{ background: '#fff', border: '1px solid #f3f4f6', borderRadius: '12px', padding: '16px 18px', marginBottom: '16px' }}>
         <p style={{ margin: 0, fontSize: '13.5px', lineHeight: 1.6, color: '#4b5563', maxWidth: '84ch' }}>
