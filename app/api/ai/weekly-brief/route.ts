@@ -87,11 +87,30 @@ export async function POST(req: Request) {
         pairSeen[k] = p
       }
     }
+    // Quiet means nothing since the period being reported on — so changing the
+    // period changes what counts as having stopped, rather than a fixed 45 days
+    // that ignores which window you asked about.
+    const quietBefore = new Date(Math.min(period.from.getTime(), now.getTime() - 45 * 86400000))
     const stoppedDrinks = Object.values(pairSeen)
-      .filter(p => p.dates.length >= 3 && (now.getTime() - p.dates[p.dates.length - 1].getTime()) / 86400000 > 45)
-      .map(p => ({ account: p.account, drink: p.product, timesOrdered: p.dates.length, lastOrdered: p.dates[p.dates.length - 1].toISOString().slice(0, 10), lifetimeLitres: r2(p.litres) }))
+      .filter(p => p.dates.length >= 3 && p.dates[p.dates.length - 1] < quietBefore)
+      .map(p => {
+        const last = p.dates[p.dates.length - 1]
+        const daysQuiet = Math.round((now.getTime() - last.getTime()) / 86400000)
+        return {
+          account: p.account,
+          drink: p.product,
+          timesOrdered: p.dates.length,
+          lastOrdered: last.toISOString().slice(0, 10),
+          daysQuiet,
+          monthsQuiet: Math.round((daysQuiet / 30.4) * 10) / 10,
+          lifetimeLitres: r2(p.litres),
+          // Pre-April orders are stored as monthly aggregates, so their dates are
+          // month-stamps and "how long quiet" is approximate for those.
+          approximateDate: last < new Date('2026-04-01'),
+        }
+      })
       .sort((a, b) => b.lifetimeLitres - a.lifetimeLitres)
-      .slice(0, 12)
+      .slice(0, 14)
 
     // Product movers last30 vs prev30
     const prodPeriod = (from: Date, to: Date) => {

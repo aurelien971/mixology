@@ -20,12 +20,29 @@ export interface BriefStats {
   monthlyRevenueHistory: Record<string, number>
   currentMonthKey: string
   biggestDrinkMovers: { drink: string; litres: number; litresPrior: number; delta: number }[]
+  stoppedOrderingDrinks: {
+    account: string
+    drink: string
+    timesOrdered: number
+    lastOrdered: string
+    daysQuiet: number
+    monthsQuiet: number
+    lifetimeLitres: number
+    approximateDate: boolean
+  }[]
 }
 
 const INK = '#111827'
 const MUTED = '#d1d5db'
 const UP = '#2a6049'
 const DOWN = '#9c2a20'
+// How long a pairing has been silent, banded so the chart reads at a glance.
+const QUIET_BANDS = [
+  { max: 3, label: 'Under 3 months', fill: '#d6a45c' },
+  { max: 6, label: '3 to 6 months', fill: '#c2410c' },
+  { max: Infinity, label: 'Over 6 months', fill: DOWN },
+]
+const bandFor = (months: number) => QUIET_BANDS.find((b) => months < b.max) ?? QUIET_BANDS[2]
 
 const card: React.CSSProperties = {
   background: '#fff', border: '1px solid #f3f4f6', borderRadius: '12px', padding: '18px 20px 12px',
@@ -97,6 +114,14 @@ export default function BriefCharts({ stats }: { stats: BriefStats }) {
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
     .slice(0, 10)
     .sort((a, b) => a.delta - b.delta)
+
+  // What has gone quiet, biggest volume at stake first.
+  const quiet = [...(stats.stoppedOrderingDrinks ?? [])]
+    .sort((a, b) => b.lifetimeLitres - a.lifetimeLitres)
+    .slice(0, 12)
+    .map((q) => ({ ...q, pair: `${q.account} · ${q.drink}` }))
+    .sort((a, b) => a.lifetimeLitres - b.lifetimeLitres)
+  const quietLitres = quiet.reduce((s, q) => s + q.lifetimeLitres, 0)
 
   const revenueDelta = stats.prior.revenue > 0
     ? ((stats.current.revenue - stats.prior.revenue) / stats.prior.revenue) * 100
@@ -209,6 +234,46 @@ export default function BriefCharts({ stats }: { stats: BriefStats }) {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* ── what has stopped being ordered ──────────────────────────────────── */}
+      {quiet.length > 0 && (
+        <div style={card}>
+          <p style={title}>What has gone quiet</p>
+          <p style={sub}>
+            Account and drink pairings ordered at least three times before, with nothing
+            since {stats.period.label} began. Bars are the lifetime litres each one has been
+            worth — {Math.round(quietLitres).toLocaleString('en-GB')}&nbsp;L across all {quiet.length}.
+          </p>
+          <Legend items={QUIET_BANDS.map((b) => ({ label: b.label, fill: b.fill }))} />
+          <ResponsiveContainer width="100%" height={Math.max(200, quiet.length * 30)}>
+            <BarChart data={quiet} layout="vertical" margin={{ top: 4, right: 96, bottom: 4, left: 8 }}>
+              <CartesianGrid horizontal={false} stroke="#f3f4f6" />
+              <XAxis type="number" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={(v) => v + 'L'} />
+              <YAxis type="category" dataKey="pair" width={230} tick={{ fontSize: 11, fill: '#374151' }} axisLine={false} tickLine={false} />
+              <Tooltip
+                formatter={(v) => num(v) + ' L lifetime'}
+                labelFormatter={(l) => String(l)}
+                contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }}
+              />
+              <Bar dataKey="lifetimeLitres" radius={[0, 3, 3, 0]}>
+                {quiet.map((q) => <Cell key={q.pair} fill={bandFor(q.monthsQuiet).fill} />)}
+                <LabelList
+                  dataKey="monthsQuiet"
+                  position="right"
+                  formatter={(v) => `${num(v).toFixed(0)} mo quiet`}
+                  style={{ fontSize: 10.5, fill: '#6b7280' }}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+          {quiet.some((q) => q.approximateDate) && (
+            <p style={{ fontSize: '11px', color: '#9ca3af', margin: '4px 0 8px', lineHeight: 1.5 }}>
+              Orders before April are stored as monthly totals, so anything over five months quiet is
+              &ldquo;nothing since Q1&rdquo; rather than a precise date.
+            </p>
+          )}
         </div>
       )}
     </div>
