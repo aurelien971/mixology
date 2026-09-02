@@ -42,6 +42,7 @@ const STAGE_COLOR: Record<ProjectStage, { bg: string; fg: string }> = {
   launch:      { bg: '#dbeafe', fg: '#1d4ed8' },
   done:        { bg: '#dcfce7', fg: '#166534' },
   parked:      { bg: '#f3f4f6', fg: '#9ca3af' },
+  cancelled:   { bg: '#fee2e2', fg: '#991b1b' },
 }
 
 function daysUntil(d?: Date): number | null {
@@ -855,10 +856,22 @@ export default function ProjectsPage() {
                         ? <span style={{ fontSize: '11px', color: '#d1d5db' }}>—</span>
                         : <span style={{ fontSize: '13px', fontWeight: 700, fontFamily: 'monospace', color: '#111827' }}>{score}</span>}
                     </td>
-                    <td style={{ ...cell, textAlign: 'right', paddingRight: '10px' }}>
-                      <span style={{ fontSize: '11px', color: '#9ca3af', whiteSpace: 'nowrap' }}>
-                        {formatDistanceToNow(p.updatedAt, { addSuffix: true }).replace('about ', '')}
-                      </span>
+                    <td style={{ ...cell, textAlign: 'right', paddingRight: '4px' }}>
+                      {/* Set by any edit, and overridable — work often moves on
+                          days before anyone types it in. */}
+                      <input
+                        type="date"
+                        value={format(p.updatedAt, 'yyyy-MM-dd')}
+                        onChange={(e) => {
+                          if (!e.target.value) return
+                          patch(p.id, { updatedAt: new Date(e.target.value + 'T12:00:00') })
+                        }}
+                        title={`Last updated ${formatDistanceToNow(p.updatedAt, { addSuffix: true }).replace('about ', '')}`}
+                        style={{
+                          ...field, fontSize: '11px', fontFamily: 'monospace', textAlign: 'right',
+                          color: '#9ca3af', padding: '4px 2px',
+                        }}
+                      />
                     </td>
                     <td style={{ ...cell, textAlign: 'center' }}>
                       <button

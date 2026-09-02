@@ -61,9 +61,13 @@ export async function updateProject(
   id: string,
   data: Partial<Omit<Project, 'id' | 'createdAt'>>
 ): Promise<void> {
+  // "Last updated" is normally the moment of the write, but a project can be
+  // moved on in a conversation days before anyone types it in — so an explicit
+  // date wins over the clock.
+  const patch = clean(data)
   await updateDoc(doc(db, COLLECTION, id), {
-    ...clean(data),
-    updatedAt: Timestamp.now(),
+    ...patch,
+    updatedAt: patch.updatedAt ?? Timestamp.now(),
   })
 }
 

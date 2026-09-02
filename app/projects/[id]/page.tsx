@@ -33,6 +33,7 @@ const STAGE_COLOR: Record<ProjectStage, { bg: string; fg: string }> = {
   launch:      { bg: '#dbeafe', fg: '#1d4ed8' },
   done:        { bg: '#dcfce7', fg: '#166534' },
   parked:      { bg: '#f3f4f6', fg: '#9ca3af' },
+  cancelled:   { bg: '#fee2e2', fg: '#991b1b' },
 }
 
 function newId() {
@@ -277,6 +278,22 @@ export default function ProjectDetailPage() {
                 >
                   {Object.entries(PROJECT_KIND_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
+              </div>
+
+              <div>
+                <span style={label}>Last updated</span>
+                <input
+                  type="date"
+                  value={format(p.updatedAt, 'yyyy-MM-dd')}
+                  onChange={(e) => {
+                    if (!e.target.value) return
+                    quiet({ updatedAt: new Date(e.target.value + 'T12:00:00') })
+                  }}
+                  style={{ ...input, fontFamily: 'monospace' }}
+                />
+                <p style={{ margin: '4px 0 0', fontSize: '11.5px', color: '#9ca3af' }}>
+                  Set by any change or note. Edit it if the work moved before you wrote it down.
+                </p>
               </div>
 
               <div>

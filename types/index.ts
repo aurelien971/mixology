@@ -385,6 +385,7 @@ export type ProjectStage =
   | 'launch'
   | 'done'
   | 'parked'
+  | 'cancelled'
 
 export const PROJECT_STAGES: { value: ProjectStage; label: string }[] = [
   { value: 'brief',       label: 'Brief' },
@@ -394,6 +395,7 @@ export const PROJECT_STAGES: { value: ProjectStage; label: string }[] = [
   { value: 'launch',      label: 'Launch' },
   { value: 'done',        label: 'Done' },
   { value: 'parked',      label: 'Parked' },
+  { value: 'cancelled',   label: 'Cancelled' },
 ]
 
 // Set in the ranking session: the month's top list, or parked with a date.
