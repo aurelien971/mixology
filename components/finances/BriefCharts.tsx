@@ -45,6 +45,27 @@ const monthLabel = (k: string) => {
   return `${MONTHS[Number(m) - 1]} ${y.slice(2)}`
 }
 
+function Legend({ items }: { items: { label: string; fill?: string; outline?: boolean; dashed?: boolean }[] }) {
+  return (
+    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', margin: '0 0 12px' }}>
+      {items.map((i) => (
+        <span key={i.label} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: '#4b5563' }}>
+          {i.dashed ? (
+            <span style={{ width: '16px', height: '0', borderTop: '2px dashed #9ca3af' }} />
+          ) : (
+            <span style={{
+              width: '11px', height: '11px', borderRadius: '2px',
+              background: i.outline ? '#fff' : i.fill,
+              border: i.outline ? `1.5px dashed ${INK}` : 'none',
+            }} />
+          )}
+          {i.label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 export default function BriefCharts({ stats }: { stats: BriefStats }) {
   // ── monthly revenue, most recent 14 ────────────────────────────────────────
   const months = Object.entries(stats.monthlyRevenueHistory)
@@ -111,10 +132,13 @@ export default function BriefCharts({ stats }: { stats: BriefStats }) {
       {/* ── monthly revenue ─────────────────────────────────────────────────── */}
       <div style={card}>
         <p style={title}>Revenue by month</p>
-        <p style={sub}>
-          Last {months.length} months, ex&nbsp;VAT. The dashed line is the {months.length}-month average
-          ({gbp(average)}). Part-months are shown hollow.
-        </p>
+        <p style={sub}>Revenue billed each month, ex&nbsp;VAT.</p>
+        <Legend items={[
+          { label: 'Completed month', fill: INK },
+          { label: `Best month (${gbp(best)})`, fill: UP },
+          { label: 'Month still running', outline: true },
+          { label: `${months.length}-month average (${gbp(average)})`, dashed: true },
+        ]} />
         <ResponsiveContainer width="100%" height={230}>
           <BarChart data={months} margin={{ top: 16, right: 8, bottom: 4, left: 8 }}>
             <CartesianGrid vertical={false} stroke="#f3f4f6" />
@@ -140,18 +164,22 @@ export default function BriefCharts({ stats }: { stats: BriefStats }) {
       {/* ── accounts ────────────────────────────────────────────────────────── */}
       <div style={card}>
         <p style={title}>Revenue by account</p>
-        <p style={sub}>
-          {stats.period.label} in black, {stats.period.priorLabel} behind it in grey.
-        </p>
+        <p style={sub}>Revenue per account, ex&nbsp;VAT.</p>
+        <Legend items={[
+          { label: stats.period.label, fill: INK },
+          { label: stats.period.priorLabel, fill: MUTED },
+        ]} />
         <ResponsiveContainer width="100%" height={Math.max(190, accounts.length * 38)}>
-          <BarChart data={accounts} layout="vertical" margin={{ top: 4, right: 54, bottom: 4, left: 8 }} barGap={2}>
+          <BarChart data={accounts} layout="vertical" margin={{ top: 4, right: 78, bottom: 4, left: 8 }} barGap={3}>
             <CartesianGrid horizontal={false} stroke="#f3f4f6" />
             <XAxis type="number" tickFormatter={(v) => '£' + (v / 1000).toFixed(0) + 'k'} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
             <YAxis type="category" dataKey="name" width={132} tick={{ fontSize: 11.5, fill: '#374151' }} axisLine={false} tickLine={false} />
             <Tooltip formatter={(v) => gbp(num(v))} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }} />
-            <Bar dataKey="before" fill={MUTED} radius={[0, 3, 3, 0]} name="Prior" />
-            <Bar dataKey="now" fill={INK} radius={[0, 3, 3, 0]} name="This period">
-              <LabelList dataKey="now" position="right" formatter={(v) => gbp(num(v))} style={{ fontSize: 10.5, fill: '#6b7280' }} />
+            <Bar dataKey="before" fill={MUTED} radius={[0, 3, 3, 0]} name={stats.period.priorLabel}>
+              <LabelList dataKey="before" position="right" formatter={(v) => (num(v) > 0 ? gbp(num(v)) : '')} style={{ fontSize: 10, fill: '#9ca3af' }} />
+            </Bar>
+            <Bar dataKey="now" fill={INK} radius={[0, 3, 3, 0]} name={stats.period.label}>
+              <LabelList dataKey="now" position="right" formatter={(v) => (num(v) > 0 ? gbp(num(v)) : '')} style={{ fontSize: 10.5, fontWeight: 600, fill: '#374151' }} />
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -161,7 +189,13 @@ export default function BriefCharts({ stats }: { stats: BriefStats }) {
       {movers.length > 0 && (
         <div style={card}>
           <p style={title}>Which drinks moved</p>
-          <p style={sub}>Change in litres, {stats.period.label} against {stats.period.priorLabel}.</p>
+          <p style={sub}>
+            Change in litres ordered, {stats.period.label} against {stats.period.priorLabel}.
+          </p>
+          <Legend items={[
+            { label: 'More ordered', fill: UP },
+            { label: 'Less ordered', fill: DOWN },
+          ]} />
           <ResponsiveContainer width="100%" height={Math.max(190, movers.length * 32)}>
             <BarChart data={movers} layout="vertical" margin={{ top: 4, right: 44, bottom: 4, left: 8 }}>
               <CartesianGrid horizontal={false} stroke="#f3f4f6" />
