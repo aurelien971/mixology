@@ -7,6 +7,8 @@ import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import { getProjects, createProject, updateProject, updateProjectLogged, deleteProject } from '@/lib/firestore/projects'
 import { SEED_PROJECTS } from '@/lib/data/seedProjects'
+import NewProjectModal from '@/components/projects/NewProjectModal'
+import { getStaffUsers, StaffUser } from '@/lib/firestore/staffUsers'
 import { getAllOrders } from '@/lib/firestore/orders'
 import {
   Project,
@@ -275,6 +277,8 @@ export default function ProjectsPage() {
   const [busy, setBusy] = useState(false)
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(savedView.sort ?? null)
   const [bulk, setBulk] = useState<string | null>(null)
+  const [showNew, setShowNew] = useState(false)
+  const [staff, setStaff] = useState<StaffUser[]>([])
   const [widths, setWidths] = useState<Record<string, number>>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(WIDTH_KEY) || '{}')
@@ -332,6 +336,8 @@ export default function ProjectsPage() {
   // Work that arrived by email gets onto the board on its own. Matched on title,
   // so this is safe to run every load and impossible to duplicate — no URL to
   // remember and nothing to ask for twice.
+  useEffect(() => { getStaffUsers().then(setStaff).catch(() => {}) }, [])
+
   const seeded = useRef(false)
   useEffect(() => {
     if (seeded.current) return
@@ -419,10 +425,6 @@ export default function ProjectsPage() {
   }
 
   const adopt = (o: Order) => run(async () => { await createProject(draftFromOrder(o)) })
-
-  const addBlank = () => run(async () => {
-    await createProject({ title: 'New project', kind: 'other', stage: 'brief' })
-  })
 
   const adoptAll = () => run(async () => {
     // Re-check what is claimed at the moment of writing rather than trusting a
@@ -539,6 +541,9 @@ export default function ProjectsPage() {
 
   return (
     <div>
+      {showNew && (
+        <NewProjectModal onClose={() => setShowNew(false)} onCreated={load} />
+      )}
       <Header
         title="Projects"
         subtitle="Every project, an owner and a date. Ranked by prize × opportunity ÷ effort."
@@ -552,7 +557,7 @@ export default function ProjectsPage() {
             <Button size="sm" variant="secondary" onClick={() => setBulk(bulk === null ? '' : null)} disabled={busy}>
               ☰ Paste a list
             </Button>
-            <Button size="sm" onClick={addBlank} disabled={busy}>+ New project</Button>
+            <Button size="sm" onClick={() => setShowNew(true)} disabled={busy}>+ New project</Button>
           </div>
         }
       />
@@ -599,6 +604,10 @@ export default function ProjectsPage() {
           </div>
         ))}
       </div>
+
+      <datalist id="project-owners">
+        {staff.map((u) => <option key={u.id} value={u.displayName} />)}
+      </datalist>
 
       <div className="flex items-center gap-3 mb-3 flex-wrap">
         <div className="flex gap-1 mr-2 border-r border-gray-200 pr-3">
@@ -823,8 +832,19 @@ export default function ProjectsPage() {
                       </select>
                     </td>
                     <td style={cell}>
-                      <Text value={p.owner} placeholder="—" onSave={(v) => patch(p.id, { owner: v })}
-                        style={{ color: p.owner ? '#374151' : '#fca5a5', fontWeight: p.owner ? 500 : 400 }} />
+                      {/* A list, so owners stay consistent — but free text too,
+                          since not everyone with a project has a login. */}
+                      <input
+                        list="project-owners"
+                        value={p.owner ?? ''}
+                        onChange={(e) => patch(p.id, { owner: e.target.value || undefined })}
+                        placeholder="—"
+                        style={{
+                          ...field,
+                          color: p.owner ? '#374151' : '#fca5a5',
+                          fontWeight: p.owner ? 500 : 400,
+                        }}
+                      />
                     </td>
                     <td style={cell}>
                       <DateField value={p.dueDate} onSave={(d) => patch(p.id, { dueDate: d })} />

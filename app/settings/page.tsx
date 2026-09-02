@@ -5,6 +5,7 @@ import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import { getCompanySettings, saveCompanySettings, CompanySettings, DEFAULT_SETTINGS } from '@/lib/firestore/settings'
 import toast from 'react-hot-toast'
+import UserManager from '@/components/settings/UserManager'
 
 export default function SettingsPage() {
   const [form, setForm] = useState<Omit<CompanySettings, 'updatedAt'>>(DEFAULT_SETTINGS)
@@ -45,7 +46,7 @@ export default function SettingsPage() {
   )
 
   return (
-    <div style={{ maxWidth: '640px' }}>
+    <div style={{ maxWidth: '820px' }}>
       <Header
         title="Settings"
         subtitle="Company info used on invoices, delivery notes and PDFs"
@@ -88,6 +89,10 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      <div style={{ marginTop: '24px' }}>
+        <UserManager />
+      </div>
     </div>
   )
 }
