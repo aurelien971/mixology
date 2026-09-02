@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { collection, getDocs, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import Anthropic from '@anthropic-ai/sdk'
+import { resolvePeriod, PeriodKey, defaultPeriod } from '@/lib/reportPeriod'
 
 export const maxDuration = 120
 
@@ -10,7 +11,13 @@ function r2(n: number) { return Math.round(n * 100) / 100 }
 interface Line { productId: string; productName: string; quantity: number; volumeLitres?: number; lineTotal: number }
 interface Ord { accountName: string; createdAt: Date; subtotal: number; lines: Line[] }
 
-export async function POST() {
+export async function POST(req: Request) {
+  let periodKey: PeriodKey = defaultPeriod()
+  try {
+    const body = await req.json()
+    if (body?.period) periodKey = body.period as PeriodKey
+  } catch { /* no body — use the default */ }
+
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured in .env.local' }, { status: 500 })
   }
@@ -28,8 +35,7 @@ export async function POST() {
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
 
     const now = new Date()
-    const d30 = new Date(now.getTime() - 30 * 86400000)
-    const d60 = new Date(now.getTime() - 60 * 86400000)
+    const period = resolvePeriod(periodKey, now)
     const litresOf = (o: Ord) => o.lines.reduce((s, l) => s + l.quantity * (l.volumeLitres ?? 5), 0)
 
     // Period aggregates
@@ -45,8 +51,8 @@ export async function POST() {
       }
       return { revenue: r2(revenue), litres: r2(litres), orders: sel.length, byAccount }
     }
-    const last30 = agg(d30, now)
-    const prev30 = agg(d60, d30)
+    const current = agg(period.from, period.to)
+    const prior = agg(period.priorFrom, period.priorTo)
 
     // Monthly revenue history → record detection
     const monthly: Record<string, number> = {}
@@ -95,9 +101,10 @@ export async function POST() {
       }
       return m
     }
-    const pNow = prodPeriod(d30, now), pPrev = prodPeriod(d60, d30)
+    const pNow = prodPeriod(period.from, period.to)
+    const pPrev = prodPeriod(period.priorFrom, period.priorTo)
     const movers = [...new Set([...Object.keys(pNow), ...Object.keys(pPrev)])]
-      .map(name => ({ drink: name, litresLast30: pNow[name] ?? 0, litresPrev30: pPrev[name] ?? 0, delta: r2((pNow[name] ?? 0) - (pPrev[name] ?? 0)) }))
+      .map(name => ({ drink: name, litres: pNow[name] ?? 0, litresPrior: pPrev[name] ?? 0, delta: r2((pNow[name] ?? 0) - (pPrev[name] ?? 0)) }))
       .filter(x => Math.abs(x.delta) >= 15)
       .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
       .slice(0, 10)
@@ -105,18 +112,26 @@ export async function POST() {
     // First-ever orders in the last 30 days (new drinks / new accounts)
     const firstOrderByAccount: Record<string, Date> = {}
     for (const o of orders) if (!firstOrderByAccount[o.accountName]) firstOrderByAccount[o.accountName] = o.createdAt
-    const newAccounts = Object.entries(firstOrderByAccount).filter(([, d]) => d >= d30).map(([a]) => a)
+    const newAccounts = Object.entries(firstOrderByAccount).filter(([, d]) => d >= period.from).map(([a]) => a)
 
     const stats = {
       generatedAt: now.toISOString().slice(0, 10),
-      last30, prev30,
+      period: {
+        key: period.key,
+        label: period.label,
+        priorLabel: period.priorLabel,
+        partial: period.partial,
+        from: period.from.toISOString().slice(0, 10),
+        to: period.to.toISOString().slice(0, 10),
+      },
+      current, prior,
       monthlyRevenueHistory: monthly,
       currentMonthKey,
       lapsedAccounts: lapsed,
       stoppedOrderingDrinks: stoppedDrinks,
       biggestDrinkMovers: movers,
-      newAccountsLast30: newAccounts,
-      note: 'Historical pre-April orders are monthly aggregates (HIST). Revenue is ex-VAT GBP. Litres ≈ kg.',
+      newAccounts,
+      note: 'Historical pre-April orders are monthly aggregates, so pre-April dates are month-stamps rather than real order dates. Revenue is ex-VAT GBP. Litres ≈ kg.',
     }
 
     const client = new Anthropic()
@@ -129,16 +144,16 @@ export async function POST() {
 
 Structure (markdown, keep the whole thing tight — it gets read aloud in a meeting):
 ## Headline
-2-3 sentences: past-30-days revenue/litres/orders vs previous 30 days (give % change), and whether the current month is tracking towards a record (compare monthly history — only claim a record if the numbers genuinely support it; note the month is partial).
+2-3 sentences: revenue/litres/orders for the period named in stats.period.label, against stats.period.priorLabel, with % change. If stats.period.partial is true, say so plainly and do not project or imply a full-period total. Compare against monthly history for context — only claim a record if the numbers genuinely support it.
 ## By account
-One bullet per active account: revenue & litres last 30 days, vs previous period, anything notable.
+One bullet per active account: revenue & litres for the period, vs the prior period, anything notable.
 ## Drinks watch
-Biggest movers up/down (litres). Then the "stopped ordering" signals: account × drink pairs that used to order regularly but have gone quiet — these are the easy-to-miss ones, call them out with how long it's been.
+Biggest movers up/down (litres) for the period. Then the "stopped ordering" signals: account × drink pairs that used to order regularly but have gone quiet — these are the easy-to-miss ones, call them out with how long it's been.
 ## Flags
-Lapsed accounts (past their usual ordering rhythm), new accounts, anything else material. If nothing, say so in one line.
+Lapsed accounts (past their usual ordering rhythm), new accounts, anything else material. If nothing, say so in one line. Where pre-April dates cluster on the 1st of a month, say that is the aggregate artefact rather than a real date.
 
 No filler, no advice unless a number screams it. Every claim must trace to the provided stats.`,
-      messages: [{ role: 'user', content: JSON.stringify(stats) }],
+      messages: [{ role: 'user', content: `Reporting period: ${period.label}, against ${period.priorLabel}.\n\n${JSON.stringify(stats)}` }],
     })
 
     if (response.stop_reason === 'refusal') {

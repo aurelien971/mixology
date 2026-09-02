@@ -9,6 +9,8 @@ import { getAllOrders } from '@/lib/firestore/orders'
 import { getProducts } from '@/lib/firestore/catalog'
 import { Order, Product } from '@/types'
 import toast from 'react-hot-toast'
+import BriefCharts, { BriefStats } from '@/components/finances/BriefCharts'
+import { PERIOD_OPTIONS, PeriodKey, defaultPeriod } from '@/lib/reportPeriod'
 
 function r2(n: number) { return Math.round(n * 100) / 100 }
 
@@ -225,15 +227,22 @@ export default function FinancesPage() {
   const [modalOrder, setModalOrder] = useState<OrderProfit | null>(null)
   const [exporting, setExporting]   = useState(false)
   const [brief, setBrief]           = useState('')
+  const [briefStats, setBriefStats] = useState<BriefStats | null>(null)
   const [briefLoading, setBriefLoading] = useState(false)
+  const [period, setPeriod] = useState<PeriodKey>(defaultPeriod())
 
-  async function generateBrief() {
+  async function generateBrief(key: PeriodKey = period) {
     setBriefLoading(true)
     try {
-      const res = await fetch('/api/ai/weekly-brief', { method: 'POST' })
+      const res = await fetch('/api/ai/weekly-brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ period: key }),
+      })
       const json = await res.json()
       if (!res.ok || json.error) throw new Error(json.error ?? `API error ${res.status}`)
       setBrief(json.brief)
+      setBriefStats(json.stats ?? null)
     } catch (e) {
       console.error(e)
       toast.error(e instanceof Error ? e.message : 'Failed to generate brief')
@@ -574,15 +583,26 @@ export default function FinancesPage() {
             <div style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: brief || briefLoading ? '1px solid #f3f4f6' : 'none' }}>
               <div>
                 <p style={{ fontSize: '14px', fontWeight: 700, color: '#111827', margin: 0 }}>🤖 Weekly brief</p>
-                <p style={{ fontSize: '12px', color: '#9ca3af', margin: '2px 0 0' }}>AI recap for the Foodlab Weekly call — records, movers, accounts going quiet, drinks that stopped selling</p>
+                <p style={{ fontSize: '12px', color: '#9ca3af', margin: '2px 0 0' }}>Recap and charts for the call and the investor update — movers, accounts going quiet, drinks that stopped selling</p>
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <select
+                  value={period}
+                  onChange={(e) => {
+                    const k = e.target.value as PeriodKey
+                    setPeriod(k)
+                    if (brief) generateBrief(k)
+                  }}
+                  style={{ padding: '5px 9px', borderRadius: '8px', fontSize: '12px', border: '1px solid #e5e7eb', background: '#fff', color: '#374151', cursor: 'pointer' }}
+                >
+                  {PERIOD_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+                </select>
                 {brief && (
                   <button onClick={copyBrief} style={{ padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', border: '1px solid #e5e7eb', background: '#fff', color: '#374151' }}>
                     Copy
                   </button>
                 )}
-                <button onClick={generateBrief} disabled={briefLoading} style={{
+                <button onClick={() => generateBrief()} disabled={briefLoading} style={{
                   padding: '5px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
                   cursor: briefLoading ? 'wait' : 'pointer', border: 'none', background: '#111827', color: '#fff',
                 }}>
@@ -610,6 +630,17 @@ export default function FinancesPage() {
               </div>
             )}
           </div>
+
+          {briefStats && !briefLoading && (
+            <div style={{ marginBottom: '16px' }}>
+              <p style={{ fontSize: '12px', color: '#9ca3af', margin: '0 0 10px' }}>
+                Charts for {briefStats.period.label}
+                {briefStats.period.partial && ' — the period is still running, so the totals are partial'}
+                . Same figures the brief is written from.
+              </p>
+              <BriefCharts stats={briefStats} />
+            </div>
+          )}
 
           {/* ── Revenue over time ───────────────────────────────────────── */}
           {revenueSeries.data.length > 1 && (
