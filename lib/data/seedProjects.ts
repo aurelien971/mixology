@@ -14,7 +14,7 @@ export const SEED_PROJECTS: ProjectSeed[] = [
   {
     title: 'Just-add-alcohol range — ten classics as syrups',
     kind: 'range',
-    category: 'syrups',
+    category: 'cocktails',
     stage: 'development',
     accountName: 'Foodlab',
     scope:

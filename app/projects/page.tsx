@@ -18,6 +18,8 @@ import {
   PROJECT_STAGES,
   ProjectCategory,
   PROJECT_CATEGORIES,
+  ProjectLocation,
+  PROJECT_LOCATIONS,
   projectScore,
   projectProgress,
   Order,
@@ -129,6 +131,7 @@ const COLUMNS: Col[] = [
   { key: 'title',      label: 'Project',    sort: 'title',       w: 320 },
   { key: 'kind',       label: 'Type',       sort: 'kind',        w: 96 },
   { key: 'category',   label: 'Programme',  sort: 'category',    w: 124 },
+  { key: 'location',   label: 'Where',      sort: 'location',    w: 74 },
   { key: 'stage',      label: 'Stage',      sort: 'stage',       w: 124 },
   { key: 'owner',      label: 'Owner',      sort: 'owner',       w: 108 },
   { key: 'due',        label: 'Due',        sort: 'dueDate',     w: 124 },
@@ -147,7 +150,8 @@ const WIDTH_KEY = 'foodlab-project-cols'
 
 type SortKey =
   | 'title' | 'kind' | 'stage' | 'owner' | 'dueDate' | 'nextStep'
-  | 'blocker' | 'gatekeeper' | 'opportunity' | 'prizeGbp' | 'effortDays' | 'score' | 'updatedAt' | 'category'
+  | 'blocker' | 'gatekeeper' | 'opportunity' | 'prizeGbp' | 'effortDays' | 'score' | 'updatedAt'
+  | 'category' | 'location'
 
 // Blanks always sink to the bottom whichever way the column is pointing —
 // an empty owner is never the most interesting row.
@@ -609,6 +613,33 @@ export default function ProjectsPage() {
         {staff.map((u) => <option key={u.id} value={u.displayName} />)}
       </datalist>
 
+      {/* One tab per pillar, so a review can walk the company a section at a time. */}
+      <div className="flex gap-1 mb-3 flex-wrap" style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: '10px' }}>
+        {([{ value: 'all' as const, label: 'Everything' }, ...PROJECT_CATEGORIES]).map((c) => {
+          const n = c.value === 'all'
+            ? projects.length
+            : projects.filter((p) => p.category === c.value).length
+          const active = programme === c.value
+          const tint = c.value === 'all' ? undefined : PROJECT_CATEGORIES.find((x) => x.value === c.value)
+          return (
+            <button
+              key={c.value}
+              onClick={() => { setProgramme(c.value as ProjectCategory | 'all'); saveView({ programme: c.value as ProjectCategory | 'all' }) }}
+              style={{
+                padding: '6px 13px', borderRadius: '20px', fontSize: '12.5px', fontWeight: 600,
+                border: '1px solid', cursor: 'pointer', whiteSpace: 'nowrap',
+                background: active ? (tint?.fg ?? '#111827') : '#fff',
+                borderColor: active ? (tint?.fg ?? '#111827') : '#e5e7eb',
+                color: active ? '#fff' : n === 0 ? '#d1d5db' : '#4b5563',
+              }}
+            >
+              {c.label}
+              <span style={{ marginLeft: '6px', opacity: active ? 0.7 : 0.5, fontVariantNumeric: 'tabular-nums' }}>{n}</span>
+            </button>
+          )
+        })}
+      </div>
+
       <div className="flex items-center gap-3 mb-3 flex-wrap">
         <div className="flex gap-1 mr-2 border-r border-gray-200 pr-3">
           {([['board', 'Board'], ['calendar', 'Calendar']] as const).map(([v, l]) => (
@@ -643,23 +674,6 @@ export default function ProjectsPage() {
         >
           Reset columns
         </button>
-        <select
-          value={programme}
-          onChange={(e) => {
-            const v = e.target.value as ProjectCategory | 'all'
-            setProgramme(v); saveView({ programme: v })
-          }}
-          style={{
-            padding: '6px 9px', border: '1px solid #e5e7eb', borderRadius: '8px',
-            fontSize: '12px', background: '#fff', color: '#374151', cursor: 'pointer',
-          }}
-        >
-          <option value="all">All programmes</option>
-          {PROJECT_CATEGORIES.map((c) => {
-            const n = projects.filter((p) => p.category === c.value).length
-            return <option key={c.value} value={c.value}>{c.label}{n ? ` (${n})` : ''}</option>
-          })}
-        </select>
         <span style={{ fontSize: '11.5px', color: '#9ca3af' }}>
           {saving
             ? 'Saving…'
@@ -817,6 +831,16 @@ export default function ProjectsPage() {
                       >
                         <option value="">— none —</option>
                         {PROJECT_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
+                    </td>
+                    <td style={cell}>
+                      <select
+                        value={p.location ?? ''}
+                        onChange={(e) => patch(p.id, { location: (e.target.value || undefined) as ProjectLocation })}
+                        style={{ ...field, fontSize: '12px', cursor: 'pointer', textAlign: 'center', color: p.location ? '#374151' : '#d1d5db' }}
+                      >
+                        <option value="">—</option>
+                        {PROJECT_LOCATIONS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
                       </select>
                     </td>
                     <td style={cell}>

@@ -6,8 +6,8 @@ import { createProject } from '@/lib/firestore/projects'
 import { getStaffUsers, StaffUser } from '@/lib/firestore/staffUsers'
 import { getAccounts } from '@/lib/firestore/accounts'
 import {
-  Project, ProjectKind, ProjectStage, ProjectCategory,
-  PROJECT_KIND_LABELS, PROJECT_STAGES, PROJECT_CATEGORIES,
+  Project, ProjectKind, ProjectStage, ProjectCategory, ProjectLocation,
+  PROJECT_KIND_LABELS, PROJECT_STAGES, PROJECT_CATEGORIES, PROJECT_LOCATIONS,
 } from '@/types'
 import { Account } from '@/types'
 import toast from 'react-hot-toast'
@@ -30,7 +30,8 @@ export default function NewProjectModal({ onClose, onCreated }: {
 
   const [title, setTitle] = useState('')
   const [kind, setKind] = useState<ProjectKind>('rd')
-  const [category, setCategory] = useState<ProjectCategory | ''>('')
+  const [category, setCategory] = useState<ProjectCategory>('cocktails')
+  const [location, setLocation] = useState<ProjectLocation>('uk')
   const [stage, setStage] = useState<ProjectStage>('brief')
   const [accountName, setAccountName] = useState('')
   const [owner, setOwner] = useState('')
@@ -57,6 +58,7 @@ export default function NewProjectModal({ onClose, onCreated }: {
         kind,
         stage,
         ...(category ? { category } : {}),
+        ...(location ? { location } : {}),
         ...(accountName ? { accountName } : {}),
         ...(owner ? { owner } : {}),
         ...(assignees.length ? { assignees } : {}),
@@ -121,7 +123,7 @@ export default function NewProjectModal({ onClose, onCreated }: {
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
             <div>
               <span style={label}>Type</span>
               <select value={kind} onChange={(e) => setKind(e.target.value as ProjectKind)} style={{ ...input, cursor: 'pointer' }}>
@@ -130,9 +132,14 @@ export default function NewProjectModal({ onClose, onCreated }: {
             </div>
             <div>
               <span style={label}>Programme</span>
-              <select value={category} onChange={(e) => setCategory(e.target.value as ProjectCategory | '')} style={{ ...input, cursor: 'pointer' }}>
-                <option value="">— none —</option>
+              <select value={category} onChange={(e) => setCategory(e.target.value as ProjectCategory)} style={{ ...input, cursor: 'pointer' }}>
                 {PROJECT_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <span style={label}>Where</span>
+              <select value={location} onChange={(e) => setLocation(e.target.value as ProjectLocation)} style={{ ...input, cursor: 'pointer' }}>
+                {PROJECT_LOCATIONS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
               </select>
             </div>
             <div>

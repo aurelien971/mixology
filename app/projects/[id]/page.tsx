@@ -8,8 +8,9 @@ import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import { getProject, updateProject, updateProjectLogged, deleteProject } from '@/lib/firestore/projects'
 import {
-  Project, ProjectKind, ProjectStage, ProjectCategory, ChecklistItem,
-  PROJECT_KIND_LABELS, PROJECT_STAGES, PROJECT_CATEGORIES, projectScore, projectProgress,
+  Project, ProjectKind, ProjectStage, ProjectCategory, ProjectLocation, ChecklistItem,
+  PROJECT_KIND_LABELS, PROJECT_STAGES, PROJECT_CATEGORIES, PROJECT_LOCATIONS,
+  projectScore, projectProgress,
 } from '@/types'
 
 const card: React.CSSProperties = {
@@ -305,6 +306,18 @@ export default function ProjectDetailPage() {
                 >
                   <option value="">— none —</option>
                   {PROJECT_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <span style={label}>Where</span>
+                <select
+                  value={p.location ?? ''}
+                  onChange={(e) => quiet({ location: (e.target.value || undefined) as ProjectLocation })}
+                  style={{ ...input, cursor: 'pointer' }}
+                >
+                  <option value="">— not set —</option>
+                  {PROJECT_LOCATIONS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
                 </select>
               </div>
 
