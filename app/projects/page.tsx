@@ -138,6 +138,7 @@ const COLUMNS: Col[] = [
   { key: 'nextStep',   label: 'Next step',  sort: 'nextStep',    w: 180 },
   { key: 'blocker',    label: 'Blocker',    sort: 'blocker',     w: 160 },
   { key: 'gatekeeper', label: 'Gatekeeper', sort: 'gatekeeper',  w: 108 },
+  { key: 'notes',      label: 'Notes',      sort: 'notes',       w: 200 },
   { key: 'opp',        label: 'Opp',        sort: 'opportunity', w: 60,  align: 'right' },
   { key: 'prize',      label: 'Prize',      sort: 'prizeGbp',    w: 84,  align: 'right' },
   { key: 'days',       label: 'Days',       sort: 'effortDays',  w: 60,  align: 'right' },
@@ -151,7 +152,7 @@ const WIDTH_KEY = 'foodlab-project-cols'
 type SortKey =
   | 'title' | 'kind' | 'stage' | 'owner' | 'dueDate' | 'nextStep'
   | 'blocker' | 'gatekeeper' | 'opportunity' | 'prizeGbp' | 'effortDays' | 'score' | 'updatedAt'
-  | 'category' | 'location'
+  | 'category' | 'location' | 'notes'
 
 // Blanks always sink to the bottom whichever way the column is pointing —
 // an empty owner is never the most interesting row.
@@ -885,6 +886,9 @@ export default function ProjectsPage() {
                     </td>
                     <td style={cell}>
                       <Text value={p.gatekeeper} placeholder="—" onSave={(v) => patch(p.id, { gatekeeper: v })} style={{ fontSize: '12.5px' }} />
+                    </td>
+                    <td style={cell}>
+                      <Text value={p.notes} placeholder="—" onSave={(v) => patch(p.id, { notes: v })} style={{ fontSize: '12.5px' }} />
                     </td>
                     <td style={cell}>
                       <Num value={p.opportunity} placeholder="1-5" onSave={(v) => patch(p.id, { opportunity: v ? Math.min(5, Math.max(1, v)) : undefined })} />

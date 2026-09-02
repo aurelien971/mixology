@@ -44,6 +44,7 @@ export default function NewProjectModal({ onClose, onCreated }: {
   const [days, setDays] = useState('')
   const [opportunity, setOpportunity] = useState('')
   const [steps, setSteps] = useState('')
+  const [notes, setNotes] = useState('')
 
   useEffect(() => {
     Promise.all([getStaffUsers(), getAccounts()]).then(([u, a]) => { setUsers(u); setAccounts(a) })
@@ -66,6 +67,7 @@ export default function NewProjectModal({ onClose, onCreated }: {
         ...(nextStep.trim() ? { nextStep: nextStep.trim() } : {}),
         ...(scope.trim() ? { scope: scope.trim() } : {}),
         ...(gatekeeper.trim() ? { gatekeeper: gatekeeper.trim() } : {}),
+        ...(notes.trim() ? { notes: notes.trim() } : {}),
         ...(prize ? { prizeGbp: Number(prize) } : {}),
         ...(days ? { effortDays: Number(days) } : {}),
         ...(opportunity ? { opportunity: Math.min(5, Math.max(1, Number(opportunity))) } : {}),
@@ -224,6 +226,11 @@ export default function NewProjectModal({ onClose, onCreated }: {
               <span style={label}>Gatekeeper — who has to say yes</span>
               <input value={gatekeeper} onChange={(e) => setGatekeeper(e.target.value)} placeholder="Optional" style={input} />
             </div>
+          </div>
+
+          <div>
+            <span style={label}>Notes</span>
+            <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything worth remembering" style={input} />
           </div>
 
           <div>

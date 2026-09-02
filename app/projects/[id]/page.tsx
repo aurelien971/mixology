@@ -442,6 +442,17 @@ export default function ProjectDetailPage() {
           </div>
 
           <div style={card}>
+            <span style={label}>Notes</span>
+            <textarea
+              defaultValue={p.notes ?? ''}
+              onBlur={(e) => e.target.value !== (p.notes ?? '') && quiet({ notes: e.target.value })}
+              rows={3}
+              placeholder="Anything worth remembering that is not the scope or an update."
+              style={{ ...input, resize: 'vertical', lineHeight: 1.55 }}
+            />
+          </div>
+
+          <div style={card}>
             <span style={label}>Outcome</span>
             <textarea
               defaultValue={p.outcome ?? ''}
