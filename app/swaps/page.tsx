@@ -12,6 +12,9 @@ import { matchIngredient } from '@/lib/costing'
 import { SWAPS, swapTotals, swapMaths, QUARTER_SPEND, Swap, SwapVerdict } from '@/lib/data/swaps'
 import { LWC_LINES } from '@/lib/lwcSync'
 import { retroFor } from '@/lib/data/pernodRetro'
+import { planSwaps, executeSwaps, SwapPlan } from '@/lib/applySwaps'
+import toast from 'react-hot-toast'
+import { getRecipes as loadRecipes } from '@/lib/firestore/recipes'
 import { findIngredientMatch } from '@/lib/costing'
 import { Product, Recipe, Ingredient } from '@/types'
 import { useTable, ColumnDef } from '@/hooks/useTable'
@@ -77,6 +80,8 @@ export default function SwapsPage() {
   const [target, setTarget] = useState<Record<string, { to: string; toPrice: number; toLitres: number; retroPerBottle: number }>>({})
   const [picking, setPicking] = useState<string | null>(null)
   const [q, setQ] = useState('')
+  const [applying, setApplying] = useState(false)
+  const [preview, setPreview] = useState<SwapPlan[] | null>(null)
   const swapCols = useTable<Swap>('swaps', SWAP_COLUMNS)
   const gpCols = useTable<GpRow>('swaps-gp', GP_COLUMNS)
 
@@ -145,13 +150,50 @@ export default function SwapsPage() {
 
   // The decision has to survive the page. Which swaps we are taking is an input
   // to the pricing, so it is stored rather than re-ticked every time.
-  function commit() {
+  function commitToPricing() {
     try {
       localStorage.setItem('foodlab-swaps-taken', JSON.stringify(
         Object.fromEntries(SWAPS.map((s) => [s.from, isTaken(s)]))
       ))
     } catch { /* private mode */ }
     router.push('/pricing')
+  }
+
+  // Work out what applying would do, without doing it.
+  async function buildPreview() {
+    setApplying(true)
+    try {
+      const recipes = await loadRecipes()
+      setPreview(planSwaps(active, ingredients, recipes))
+    } catch (e) {
+      toast.error(String(e))
+    } finally { setApplying(false) }
+  }
+
+  async function applyEverywhere() {
+    if (!preview) return
+    const plans = preview.filter((p) => p.lineCount > 0)
+    if (!plans.length) return
+    if (!confirm(
+      `Apply ${plans.length} swap${plans.length === 1 ? '' : 's'} across ${plans.reduce((s, p) => s + p.affected.length, 0)} recipes?\n\n` +
+      plans.map((p) => `· ${p.swap.from} → ${p.swap.to} (${p.lineCount} line${p.lineCount === 1 ? '' : 's'})`).join('\n') +
+      '\n\nRecipes are repointed at the new product, so costing, the rate card and pricing all follow. ' +
+      'The old ingredients stay in the library — they may still be on the shelf.'
+    )) return
+
+    setApplying(true)
+    try {
+      const r = await executeSwaps(plans)
+      toast.success(
+        `${r.linesUpdated} recipe lines swapped across ${r.recipesUpdated} recipes` +
+        (r.ingredientsCreated ? `, ${r.ingredientsCreated} ingredient${r.ingredientsCreated === 1 ? '' : 's'} added` : '')
+      )
+      setPreview(null)
+      const [p, rec, i] = await Promise.all([getProducts(), getRecipes(), getIngredients()])
+      setProducts(p); setRecipes(rec); setIngredients(i)
+    } catch (e) {
+      toast.error(String(e))
+    } finally { setApplying(false) }
   }
 
   async function generate() {
@@ -195,7 +237,10 @@ export default function SwapsPage() {
           <div style={{ display: 'flex', gap: '8px' }}>
             <Button size="sm" variant="secondary" onClick={generate} loading={thinking}>✦ Write the outcome</Button>
             <Link href="/lwc"><Button size="sm" variant="secondary">Apply prices →</Button></Link>
-            <Button size="sm" onClick={commit}>Lock in {active.length} &amp; price them up →</Button>
+            <Button size="sm" variant="secondary" onClick={commitToPricing}>Price them up →</Button>
+            <Button size="sm" onClick={buildPreview} loading={applying} disabled={applying || !active.length}>
+              Apply {active.length} swap{active.length === 1 ? '' : 's'} everywhere
+            </Button>
           </div>
         }
       />
@@ -240,6 +285,87 @@ export default function SwapsPage() {
             <strong>Mark&apos;s brief estimated 10–15%.</strong> On the real price list it is {pct.toFixed(1)}%.
             The case for these swaps is contract compliance, not cash — better he hears the real number from you than from Chris&apos;s report.
           </p>
+        </div>
+      )}
+
+      {preview && (
+        <div style={{ background: '#fff', border: '2px solid #111827', borderRadius: '12px', padding: '20px 22px', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap', marginBottom: '14px' }}>
+            <div>
+              <p style={{ margin: '0 0 3px', fontSize: '15px', fontWeight: 700, color: '#111827' }}>
+                About to change {preview.reduce((s, p) => s + p.lineCount, 0)} recipe lines
+              </p>
+              <p style={{ margin: 0, fontSize: '13px', color: '#6b7280', lineHeight: 1.55, maxWidth: '78ch' }}>
+                Each recipe stops calling for the old product and calls for the new one instead. Costing, the rate card
+                and pricing all read those recipes, so they follow on their own. The old ingredients stay in the
+                library — they may still be on the shelf.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <Button size="sm" variant="ghost" onClick={() => setPreview(null)} disabled={applying}>Cancel</Button>
+              <Button size="sm" onClick={applyEverywhere} loading={applying} disabled={applying}>
+                Do it
+              </Button>
+            </div>
+          </div>
+
+          {preview.filter((p) => p.lineCount === 0).length > 0 && (
+            <p style={{ fontSize: '12.5px', color: '#b45309', margin: '0 0 12px' }}>
+              {preview.filter((p) => p.lineCount === 0).map((p) => p.swap.from).join(', ')} — not used by any recipe,
+              so nothing to change there.
+            </p>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {preview.filter((p) => p.lineCount > 0).map((p) => (
+              <div key={p.swap.from} style={{ border: '1px solid #f3f4f6', borderRadius: '10px', padding: '13px 15px' }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'baseline', flexWrap: 'wrap', marginBottom: '9px' }}>
+                  <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#111827' }}>
+                    {p.swap.from} → {p.swap.to}
+                  </span>
+                  <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+                    {p.lineCount} line{p.lineCount === 1 ? '' : 's'} in {p.affected.length} recipe{p.affected.length === 1 ? '' : 's'}
+                  </span>
+                  {p.createsIngredient && (
+                    <span style={{ fontSize: '10.5px', fontWeight: 700, padding: '2px 7px', borderRadius: '20px', background: '#e0f2fe', color: '#0369a1' }}>
+                      adds {p.swap.to} at {money(p.targetPackPrice)} / {p.targetPackSize}L
+                    </span>
+                  )}
+                  {p.repricesIngredient && (
+                    <span style={{ fontSize: '10.5px', fontWeight: 700, padding: '2px 7px', borderRadius: '20px', background: '#fef3c7', color: '#92400e' }}>
+                      reprices to {money(p.targetPackPrice)}
+                    </span>
+                  )}
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                  <tbody>
+                    {p.affected.map((a) => {
+                      const delta = a.costBefore !== null && a.costAfter !== null ? a.costAfter - a.costBefore : null
+                      return (
+                        <tr key={a.recipe.id}>
+                          <td style={{ padding: '4px 10px 4px 0', color: '#374151' }}>{a.recipe.name}</td>
+                          <td style={{ padding: '4px 10px', textAlign: 'right', color: '#9ca3af', fontVariantNumeric: 'tabular-nums' }}>
+                            {a.costBefore !== null ? money(a.costBefore) : '—'}/L
+                          </td>
+                          <td style={{ padding: '4px 10px', textAlign: 'right', color: '#9ca3af' }}>→</td>
+                          <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                            {a.costAfter !== null ? money(a.costAfter) : '—'}/L
+                          </td>
+                          <td style={{
+                            padding: '4px 0', textAlign: 'right', width: '86px', fontWeight: 700,
+                            fontVariantNumeric: 'tabular-nums',
+                            color: delta === null ? '#d1d5db' : delta < 0 ? '#166534' : delta > 0 ? '#b91c1c' : '#9ca3af',
+                          }}>
+                            {delta === null ? '' : `${delta > 0 ? '+' : ''}${money(delta)}`}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
