@@ -19,6 +19,9 @@ export type SwapVerdict = 'mandated' | 'refuse' | 'taste'
 export interface Swap {
   verdict: SwapVerdict
   from: string            // the ingredient as it is named in our library
+  /** Other spellings this product goes by on our shelves. Trade descriptions
+   *  abbreviate ("Appleton Est Sig Blend Rum"), so one name is not enough. */
+  fromAliases?: string[]
   fromPrice: number       // £ per pack, LWC list
   fromLitres: number      // pack size — Tanqueray Ten is listed at 1L, most are 0.7
   to: string
@@ -57,7 +60,8 @@ export function swapMaths(s: Swap): SwapMaths {
 export const SWAPS: Swap[] = [
   {
     verdict: 'mandated',
-    from: 'Ojo de Tigre Mezcal', fromPrice: 29.25, fromLitres: 0.7,
+    from: 'Ojo de Tigre Mezcal', fromAliases: ['Ojo de tigre', 'Ojo de Tigre'],
+    fromPrice: 29.25, fromLitres: 0.7,
     to: 'Del Maguey Puebla', toPrice: 27.25, toLitres: 0.7,
     bottles: 102, retroPerBottle: 0.78,
     note: 'Chris named this one directly. Cheaper as well as compliant — the only swap on the list that is both. '
@@ -65,7 +69,8 @@ export const SWAPS: Swap[] = [
   },
   {
     verdict: 'mandated',
-    from: 'Tanqueray Ten', fromPrice: 36.24, fromLitres: 1,
+    from: 'Tanqueray Ten', fromAliases: ['Tanqueray 10', 'Tanqueray Ten Gin'],
+    fromPrice: 36.24, fromLitres: 1,
     to: 'Beefeater London Dry', toPrice: 13.67, toLitres: 0.7,
     bottles: 3, retroPerBottle: 0.39,
     note: 'Small on bottles, enormous on the Dry Martini — 690ml of every litre. Beefeater is the mandated house gin '
@@ -73,28 +78,42 @@ export const SWAPS: Swap[] = [
   },
   {
     verdict: 'mandated',
-    from: 'Planteray Rum Original Dark', fromPrice: 20.98, fromLitres: 0.7,
+    from: 'Planteray Rum Original Dark',
+    fromAliases: ['Planteray Original Dark', 'Plantation Original Dark', 'Planteray Dark'],
+    fromPrice: 20.98, fromLitres: 0.7,
     to: 'Havana Club 7YO', toPrice: 19.86, toLitres: 0.7,
     bottles: 19, retroPerBottle: 1.17,
     note: 'Bumbu is also on the confirmed list but costs £28.37 — Havana Club 7YO is the right pick of the two.',
   },
   {
     verdict: 'mandated',
-    from: 'Appleton Estate Signature Rum', fromPrice: 19.98, fromLitres: 0.7,
+    from: 'Appleton Estate Signature Rum',
+    fromAliases: ['Appleton Est Sig Blend Rum', 'Appleton Signature', 'Appleton'],
+    fromPrice: 19.98, fromLitres: 0.7,
     to: 'Havana Club 3YO', toPrice: 15.76, toLitres: 0.7,
     bottles: 5, retroPerBottle: 0.93,
     note: 'Havana Club 3YO is also the mandated base for Daiquiri and Mojito under the menu obligations.',
   },
   {
     verdict: 'mandated',
-    from: 'Ojo de Dios / Verde Amaras Mezcal', fromPrice: 29.96, fromLitres: 0.7,
+    from: 'Ojo de Dios Mezcal', fromAliases: ['Ojo de Dios Mezcal Joven', 'Ojo de Dios Mezcal ODD Cafe'],
+    fromPrice: 30.33, fromLitres: 0.7,
     to: 'Del Maguey Puebla', toPrice: 27.25, toLitres: 0.7,
-    bottles: 3, retroPerBottle: 0.78,
+    bottles: 2, retroPerBottle: 0.78,
+    note: 'The tail of the mezcal line. Same swap as the main one.',
+  },
+  {
+    verdict: 'mandated',
+    from: 'Mezcal Verde Amaras', fromAliases: ['Verde Amaras'],
+    fromPrice: 29.23, fromLitres: 0.7,
+    to: 'Del Maguey Puebla', toPrice: 27.25, toLitres: 0.7,
+    bottles: 1, retroPerBottle: 0.78,
     note: 'The tail of the mezcal line. Same swap as the main one.',
   },
   {
     verdict: 'refuse',
-    from: 'Buffalo Trace Bourbon', fromPrice: 18.39, fromLitres: 0.7,
+    from: 'Buffalo Trace Bourbon', fromAliases: ['Buffalo Trace', 'Buffalo trace'],
+    fromPrice: 18.39, fromLitres: 0.7,
     to: 'Jameson Irish Whiskey', toPrice: 17.62, toLitres: 0.7,
     bottles: 12, retroPerBottle: 0.62,
     note: 'On the list and technically a swap, but it turns an Old Fashioned into a different drink for £17 a quarter. '
@@ -102,7 +121,8 @@ export const SWAPS: Swap[] = [
   },
   {
     verdict: 'refuse',
-    from: 'House Jules Clairon Brandy', fromPrice: 12.52, fromLitres: 0.7,
+    from: 'House Jules Clairon Brandy', fromAliases: ['Jules Clairon', 'House Jules'],
+    fromPrice: 12.52, fromLitres: 0.7,
     to: 'Martell Cognac', toPrice: 24.66, toLitres: 0.7,
     bottles: 16, retroPerBottle: 0.54,
     note: 'On the confirmed list and still wrong: £194 of extra cost to collect £9 of retro. Say no, and say why.',
@@ -117,7 +137,8 @@ export const SWAPS: Swap[] = [
   },
   {
     verdict: 'taste',
-    from: 'Rittenhouse Rye', fromPrice: 31.99, fromLitres: 0.7,
+    from: 'Rittenhouse Rye', fromAliases: ['Rittenhouse'],
+    fromPrice: 31.99, fromLitres: 0.7,
     to: 'Sazerac Straight Rye', toPrice: 25.84, toLitres: 0.7,
     bottles: 0, retroPerBottle: 0,
     note: '19% off the second most expensive line in the Old Fashioned and the Manhattan. Not enough on its own to '
@@ -152,3 +173,8 @@ export function swapTotals(swaps: Swap[]): SwapTotals {
 
 /** Foodlab's total LWC spend for the same window, so savings can be read as a percentage. */
 export const QUARTER_SPEND = 12425.72
+
+/** Every name this swap's outgoing product might be filed under. */
+export function sourceNames(s: Swap): string[] {
+  return [s.from, ...(s.fromAliases ?? [])]
+}

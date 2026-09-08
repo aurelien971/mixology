@@ -1,6 +1,6 @@
 import { Ingredient, Recipe } from '@/types'
 import { findIngredientMatch } from '@/lib/costing'
-import { Swap } from '@/lib/data/swaps'
+import { Swap, sourceNames } from '@/lib/data/swaps'
 import { LWC_REBATE } from '@/lib/lwcSync'
 import { findOrCreateIngredient, updateIngredient, getIngredients } from '@/lib/firestore/ingredients'
 import { updateRecipe } from '@/lib/firestore/recipes'
@@ -39,6 +39,29 @@ export interface SwapPlan {
   repricesIngredient: boolean
 }
 
+/**
+ * Does this recipe row call for the product we are swapping out?
+ *
+ * A row can name the ingredient directly, point at it by id, or use one of its
+ * other spellings — all three have to count, or a swap silently does nothing.
+ */
+export function matchesSource(
+  row: { name: string; ingredientId?: string },
+  swap: Swap,
+  source: Ingredient | null,
+  lib: Ingredient[]
+): boolean {
+  if (source && row.ingredientId === source.id) return true
+  const viaName = findIngredientMatch(row.name, lib)
+  if (source && viaName?.id === source.id) return true
+  // The row may name the product without the library holding it at all.
+  return sourceNames(swap).some((n) => {
+    const a = n.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+    const b = row.name.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+    return !!a && !!b && (a === b || a.includes(b) || b.includes(a))
+  })
+}
+
 function costOf(recipe: Recipe, lib: Ingredient[]): number | null {
   let total = 0
   let any = false
@@ -63,7 +86,11 @@ export function planSwaps(
   applyRebate = true
 ): SwapPlan[] {
   return swaps.map((swap) => {
-    const source = findIngredientMatch(swap.from, ingredients) ?? null
+    // Try every name this product is filed under — the trade description and the
+    // shelf label are rarely the same string.
+    const source = sourceNames(swap)
+      .map((n) => findIngredientMatch(n, ingredients))
+      .find(Boolean) ?? null
     const target = findIngredientMatch(swap.to, ingredients) ?? null
 
     const perLitre = (swap.toLitres > 0 ? swap.toPrice / swap.toLitres : 0) * (applyRebate ? 1 - LWC_REBATE : 1)
@@ -95,9 +122,7 @@ export function planSwaps(
     for (const recipe of recipes) {
       const rows: number[] = []
       recipe.ingredients.forEach((row, i) => {
-        const ing = findIngredientMatch(row.name, ingredients)
-        const hit = source ? ing?.id === source.id : false
-        if (hit || findIngredientMatch(swap.from, ing ? [ing] : [])) rows.push(i)
+        if (matchesSource(row, swap, source, ingredients)) rows.push(i)
       })
       if (!rows.length) continue
 

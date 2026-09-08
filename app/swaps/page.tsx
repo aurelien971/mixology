@@ -8,14 +8,13 @@ import Button from '@/components/ui/Button'
 import { getProducts } from '@/lib/firestore/catalog'
 import { getRecipes } from '@/lib/firestore/recipes'
 import { getIngredients } from '@/lib/firestore/ingredients'
-import { matchIngredient } from '@/lib/costing'
-import { SWAPS, swapTotals, swapMaths, QUARTER_SPEND, Swap, SwapVerdict } from '@/lib/data/swaps'
+import { matchIngredient, findIngredientMatch } from '@/lib/costing'
+import { SWAPS, swapTotals, swapMaths, QUARTER_SPEND, Swap, SwapVerdict, sourceNames } from '@/lib/data/swaps'
 import { LWC_LINES } from '@/lib/lwcSync'
 import { retroFor } from '@/lib/data/pernodRetro'
-import { planSwaps, executeSwaps, SwapPlan } from '@/lib/applySwaps'
+import { planSwaps, executeSwaps, SwapPlan, matchesSource } from '@/lib/applySwaps'
 import toast from 'react-hot-toast'
 import { getRecipes as loadRecipes } from '@/lib/firestore/recipes'
-import { findIngredientMatch } from '@/lib/costing'
 import { Product, Recipe, Ingredient } from '@/types'
 import { useTable, ColumnDef } from '@/hooks/useTable'
 
@@ -24,6 +23,7 @@ const SWAP_COLUMNS: ColumnDef<Swap>[] = [
   { key: 'from',    label: 'From',        width: 380, sortValue: (s) => s.from },
   { key: 'to',      label: 'To',          width: 200, sortValue: (s) => s.to },
   { key: 'btl',     label: 'Btl',         width: 66,  align: 'right', sortValue: (s) => s.bottles, descFirst: true },
+  { key: 'inuse',   label: 'In recipes',  width: 96,  align: 'right' },
   { key: 'saving',  label: 'Unit saving', width: 108, align: 'right', sortValue: (s) => (s.fromPrice - s.toPrice) * s.bottles, descFirst: true },
   { key: 'retro',   label: 'Retro',       width: 88,  align: 'right', sortValue: (s) => s.retroPerBottle * s.bottles, descFirst: true },
   { key: 'total',   label: 'Total',       width: 96,  align: 'right', sortValue: (s) => (s.fromPrice - s.toPrice) * s.bottles + s.retroPerBottle * s.bottles, descFirst: true },
@@ -97,6 +97,20 @@ export default function SwapsPage() {
   const withTargets = (s: Swap): Swap => ({ ...s, ...(target[s.from] ?? {}) })
   const swaps = SWAPS.map(withTargets)
 
+  // How many recipe lines still call for each outgoing product. Zero means the
+  // swap has landed — which is the only honest way to show it is done.
+  const inUse = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const sw of SWAPS) {
+      const src = sourceNames(sw).map((n) => findIngredientMatch(n, ingredients)).find(Boolean) ?? null
+      m[sw.from] = recipes.reduce(
+        (n, r) => n + r.ingredients.filter((row) => matchesSource(row, sw, src, ingredients)).length,
+        0
+      )
+    }
+    return m
+  }, [recipes, ingredients])
+
   const isTaken = (s: Swap) => taken[s.from] ?? s.verdict === 'mandated'
   const active = swaps.filter(isTaken)
   const totals = swapTotals(active)
@@ -163,8 +177,16 @@ export default function SwapsPage() {
   async function buildPreview() {
     setApplying(true)
     try {
-      const recipes = await loadRecipes()
-      setPreview(planSwaps(active, ingredients, recipes))
+      const fresh = await loadRecipes()
+      const plans = planSwaps(active, ingredients, fresh)
+      setPreview(plans)
+      if (!plans.some((p) => p.lineCount > 0)) {
+        toast.error('None of the ticked swaps appear in any recipe — nothing to change')
+      }
+      // The confirmation is a step, not a click, so make sure it is seen.
+      requestAnimationFrame(() => {
+        document.getElementById('swap-preview')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
     } catch (e) {
       toast.error(String(e))
     } finally { setApplying(false) }
@@ -289,11 +311,12 @@ export default function SwapsPage() {
       )}
 
       {preview && (
-        <div style={{ background: '#fff', border: '2px solid #111827', borderRadius: '12px', padding: '20px 22px', marginBottom: '16px' }}>
+        <div id="swap-preview" style={{ background: '#fff', border: '2px solid #111827', borderRadius: '12px', padding: '20px 22px', marginBottom: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap', marginBottom: '14px' }}>
             <div>
-              <p style={{ margin: '0 0 3px', fontSize: '15px', fontWeight: 700, color: '#111827' }}>
-                About to change {preview.reduce((s, p) => s + p.lineCount, 0)} recipe lines
+              <p style={{ margin: '0 0 3px', fontSize: '16px', fontWeight: 700, color: '#111827' }}>
+                Nothing has changed yet — press <span style={{ background: '#111827', color: '#fff', padding: '1px 8px', borderRadius: '6px' }}>Do it</span> to
+                change {preview.reduce((s, p) => s + p.lineCount, 0)} recipe lines
               </p>
               <p style={{ margin: 0, fontSize: '13px', color: '#6b7280', lineHeight: 1.55, maxWidth: '78ch' }}>
                 Each recipe stops calling for the old product and calls for the new one instead. Costing, the rate card
@@ -382,7 +405,11 @@ export default function SwapsPage() {
               const v = VERDICT[s.verdict]
               const on = isTaken(s)
               return (
-                <tr key={s.from} style={{ borderBottom: '1px solid #f9fafb', opacity: on ? 1 : 0.55 }}>
+                <tr key={s.from} style={{
+                  borderBottom: '1px solid #f9fafb',
+                  opacity: inUse[s.from] === 0 ? 0.5 : on ? 1 : 0.55,
+                  background: inUse[s.from] === 0 ? '#f8fdf9' : undefined,
+                }}>
                   <td style={{ ...td, textAlign: 'center' }}>
                     <input type="checkbox" checked={on} onChange={(e) => setTaken({ ...taken, [s.from]: e.target.checked })} />
                   </td>
@@ -504,6 +531,17 @@ export default function SwapsPage() {
                     )}
                   </td>
                   <td style={{ ...td, color: '#9ca3af' }}>{s.bottles || '—'}</td>
+                  <td style={td}>
+                    {inUse[s.from] === undefined ? '—' : inUse[s.from] === 0 ? (
+                      <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: '#dcfce7', color: '#166534' }}>
+                        ✓ Applied
+                      </span>
+                    ) : (
+                      <span style={{ fontWeight: 700, color: '#111827' }}>
+                        {inUse[s.from]} <span style={{ fontWeight: 400, color: '#9ca3af', fontSize: '11.5px' }}>line{inUse[s.from] === 1 ? '' : 's'}</span>
+                      </span>
+                    )}
+                  </td>
                   <td style={{ ...td, color: saving < 0 ? '#b91c1c' : saving > 0 ? '#166534' : '#9ca3af', fontWeight: saving ? 700 : 400 }}>
                     {saving ? money(saving) : '—'}
                   </td>
