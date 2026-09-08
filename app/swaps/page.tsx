@@ -9,10 +9,10 @@ import { getProducts } from '@/lib/firestore/catalog'
 import { getRecipes } from '@/lib/firestore/recipes'
 import { getIngredients } from '@/lib/firestore/ingredients'
 import { matchIngredient, findIngredientMatch } from '@/lib/costing'
-import { SWAPS, swapTotals, swapMaths, QUARTER_SPEND, Swap, SwapVerdict, sourceNames } from '@/lib/data/swaps'
+import { SWAPS, swapTotals, swapMaths, QUARTER_SPEND, Swap, SwapVerdict } from '@/lib/data/swaps'
 import { LWC_LINES } from '@/lib/lwcSync'
 import { retroFor } from '@/lib/data/pernodRetro'
-import { planSwaps, executeSwaps, SwapPlan, matchesSource } from '@/lib/applySwaps'
+import { planSwaps, executeSwaps, SwapPlan, matchesSource, resolveSource } from '@/lib/applySwaps'
 import toast from 'react-hot-toast'
 import { getRecipes as loadRecipes } from '@/lib/firestore/recipes'
 import { Product, Recipe, Ingredient } from '@/types'
@@ -79,6 +79,8 @@ export default function SwapsPage() {
   // A different replacement, chosen off the trade list before anything is agreed.
   const [target, setTarget] = useState<Record<string, { to: string; toPrice: number; toLitres: number; retroPerBottle: number }>>({})
   const [picking, setPicking] = useState<string | null>(null)
+  const [sourcePick, setSourcePick] = useState<Record<string, string>>({})
+  const [pickingSource, setPickingSource] = useState<string | null>(null)
   const [q, setQ] = useState('')
   const [applying, setApplying] = useState(false)
   const [preview, setPreview] = useState<SwapPlan[] | null>(null)
@@ -94,7 +96,11 @@ export default function SwapsPage() {
   // Mandated swaps are on by default; refusals off; tastings off until Mark rules.
   // Apply whatever replacement has been chosen, then everything downstream —
   // savings, retro, totals, the drink re-cost — follows from it.
-  const withTargets = (s: Swap): Swap => ({ ...s, ...(target[s.from] ?? {}) })
+  const withTargets = (s: Swap): Swap => ({
+    ...s,
+    ...(target[s.from] ?? {}),
+    ...(sourcePick[s.from] ? { fromIngredientId: sourcePick[s.from] } : {}),
+  })
   const swaps = SWAPS.map(withTargets)
 
   // How many recipe lines still call for each outgoing product. Zero means the
@@ -102,17 +108,22 @@ export default function SwapsPage() {
   const inUse = useMemo(() => {
     const m: Record<string, number> = {}
     for (const sw of SWAPS) {
-      const src = sourceNames(sw).map((n) => findIngredientMatch(n, ingredients)).find(Boolean) ?? null
+      const resolved = withTargets(sw)
+      const src = resolveSource(resolved, ingredients)
       m[sw.from] = recipes.reduce(
-        (n, r) => n + r.ingredients.filter((row) => matchesSource(row, sw, src, ingredients)).length,
+        (n, r) => n + r.ingredients.filter((row) => matchesSource(row, resolved, src, ingredients)).length,
         0
       )
     }
     return m
-  }, [recipes, ingredients])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipes, ingredients, sourcePick, target])
 
   const isTaken = (s: Swap) => taken[s.from] ?? s.verdict === 'mandated'
   const active = swaps.filter(isTaken)
+  // What is actually left: ticked, and still present in a recipe.
+  const outstanding = active.filter((s) => (inUse[s.from] ?? 0) > 0)
+  const unfindable = active.filter((s) => (inUse[s.from] ?? 0) === 0 && !resolveSource(s, ingredients))
   const totals = swapTotals(active)
 
   // Re-price the library under the selected swaps, then re-cost every recipe.
@@ -178,7 +189,7 @@ export default function SwapsPage() {
     setApplying(true)
     try {
       const fresh = await loadRecipes()
-      const plans = planSwaps(active, ingredients, fresh)
+      const plans = planSwaps(outstanding, ingredients, fresh)
       setPreview(plans)
       if (!plans.some((p) => p.lineCount > 0)) {
         toast.error('None of the ticked swaps appear in any recipe — nothing to change')
@@ -260,8 +271,10 @@ export default function SwapsPage() {
             <Button size="sm" variant="secondary" onClick={generate} loading={thinking}>✦ Write the outcome</Button>
             <Link href="/lwc"><Button size="sm" variant="secondary">Apply prices →</Button></Link>
             <Button size="sm" variant="secondary" onClick={commitToPricing}>Price them up →</Button>
-            <Button size="sm" onClick={buildPreview} loading={applying} disabled={applying || !active.length}>
-              Apply {active.length} swap{active.length === 1 ? '' : 's'} everywhere
+            <Button size="sm" onClick={buildPreview} loading={applying} disabled={applying || !outstanding.length}>
+              {outstanding.length === 0
+                ? (active.length ? 'All applied' : 'Nothing ticked')
+                : `Apply ${outstanding.length} remaining swap${outstanding.length === 1 ? '' : 's'}`}
             </Button>
           </div>
         }
@@ -392,6 +405,15 @@ export default function SwapsPage() {
         </div>
       )}
 
+      {unfindable.length > 0 && (
+        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '12px 16px', marginBottom: '14px' }}>
+          <p style={{ margin: 0, fontSize: '13px', color: '#92400e', lineHeight: 1.55 }}>
+            <strong>{unfindable.map((s) => s.from).join(', ')}</strong> — no ingredient of that name in your library,
+            so there is nothing for the swap to change. Click the product name in the table to point it at the right one.
+          </p>
+        </div>
+      )}
+
       {/* The swaps */}
       <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #f3f4f6', overflowX: 'auto', marginBottom: '18px' }}>
         <table className="dt" style={{ minWidth: swapCols.minWidth }}>
@@ -413,10 +435,93 @@ export default function SwapsPage() {
                   <td style={{ ...td, textAlign: 'center' }}>
                     <input type="checkbox" checked={on} onChange={(e) => setTaken({ ...taken, [s.from]: e.target.checked })} />
                   </td>
-                  <td style={{ ...td, textAlign: 'left' }}>
-                    <span style={{ fontWeight: 600, color: '#111827' }}>{s.from}</span>
-                    <span style={{ color: '#9ca3af', marginLeft: '7px', fontSize: '12px' }}>{money(s.fromPrice)}</span>
-                    <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#9ca3af', lineHeight: 1.5, whiteSpace: 'normal', maxWidth: '52ch' }}>{s.note}</p>
+                  <td className="dt-wrap" style={{ ...td, textAlign: 'left' }}>
+                    {(() => {
+                      const src = resolveSource(s, ingredients)
+                      return (
+                        <>
+                          <button
+                            onClick={() => { setPickingSource(pickingSource === s.from ? null : s.from); setQ('') }}
+                            title="Point this at the right ingredient"
+                            style={{
+                              border: 'none', background: 'none', padding: 0, cursor: 'pointer',
+                              font: 'inherit', textAlign: 'left', borderBottom: '1px dotted #d1d5db',
+                            }}
+                          >
+                            <span style={{ fontWeight: 600, color: '#111827' }}>{s.from}</span>
+                            <span style={{ color: '#9ca3af', marginLeft: '7px', fontSize: '12px' }}>{money(s.fromPrice)}</span>
+                          </button>
+                          {sourcePick[s.from] && (
+                            <span style={{ marginLeft: '7px', fontSize: '10px', fontWeight: 700, color: '#2b3a8f' }}>PICKED</span>
+                          )}
+                          {src ? (
+                            src.name.trim().toLowerCase() !== s.from.trim().toLowerCase() && (
+                              <p style={{ margin: '3px 0 0', fontSize: '11.5px', color: '#6b7280' }}>
+                                matched to <strong>{src.name}</strong>
+                              </p>
+                            )
+                          ) : (
+                            <p style={{ margin: '3px 0 0', fontSize: '11.5px', color: '#b45309', fontWeight: 600 }}>
+                              Not found in your ingredients — click the name to pick it
+                            </p>
+                          )}
+
+                          {pickingSource === s.from && (
+                            <div style={{ marginTop: '8px', border: '1px solid #e5e7eb', borderRadius: '8px', background: '#fff', padding: '8px' }}>
+                              <input
+                                autoFocus
+                                value={q}
+                                onChange={(e) => setQ(e.target.value)}
+                                placeholder="Search your ingredients…"
+                                style={{ width: '100%', padding: '6px 9px', border: '1px solid #e5e7eb', borderRadius: '6px', fontSize: '12.5px', outline: 'none' }}
+                              />
+                              <div style={{ maxHeight: '200px', overflowY: 'auto', marginTop: '6px' }}>
+                                {q.length > 1 && ingredients
+                                  .filter((ing) => ing.name.toLowerCase().includes(q.toLowerCase()))
+                                  .slice(0, 25)
+                                  .map((ing) => {
+                                    const used = recipes.reduce(
+                                      (n, r) => n + r.ingredients.filter((row) =>
+                                        row.ingredientId === ing.id || matchIngredient(row, ingredients)?.id === ing.id
+                                      ).length, 0
+                                    )
+                                    return (
+                                      <button
+                                        key={ing.id}
+                                        onClick={() => { setSourcePick({ ...sourcePick, [s.from]: ing.id }); setPickingSource(null) }}
+                                        style={{
+                                          display: 'block', width: '100%', textAlign: 'left', border: 'none',
+                                          background: 'none', cursor: 'pointer', padding: '5px 6px', fontSize: '12px',
+                                          borderRadius: '5px', color: '#374151',
+                                        }}
+                                      >
+                                        {ing.name}
+                                        <span style={{ color: '#9ca3af', marginLeft: '6px' }}>{money(ing.packPrice)} · {ing.packDescription}</span>
+                                        <span style={{ color: used ? '#166534' : '#d1d5db', marginLeft: '6px' }}>
+                                          {used ? `${used} recipe line${used === 1 ? '' : 's'}` : 'unused'}
+                                        </span>
+                                      </button>
+                                    )
+                                  })}
+                                {q.length <= 1 && (
+                                  <p style={{ margin: '6px', fontSize: '12px', color: '#9ca3af' }}>
+                                    Type two letters. The count shows how many recipe lines each one is in.
+                                  </p>
+                                )}
+                              </div>
+                              {sourcePick[s.from] && (
+                                <button
+                                  onClick={() => { const n = { ...sourcePick }; delete n[s.from]; setSourcePick(n); setPickingSource(null) }}
+                                  style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '11.5px', color: '#9ca3af', padding: '4px 6px' }}
+                                >Back to matching by name</button>
+                              )}
+                            </div>
+                          )}
+
+                          <p style={{ margin: '5px 0 0', fontSize: '12px', color: '#9ca3af', lineHeight: 1.5, whiteSpace: 'normal', maxWidth: '52ch' }}>{s.note}</p>
+                        </>
+                      )
+                    })()}
                   </td>
                   <td className="dt-wrap" style={{ ...td, textAlign: 'left' }}>
                     <button

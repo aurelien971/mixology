@@ -22,6 +22,9 @@ export interface Swap {
   /** Other spellings this product goes by on our shelves. Trade descriptions
    *  abbreviate ("Appleton Est Sig Blend Rum"), so one name is not enough. */
   fromAliases?: string[]
+  /** Set when the outgoing product has been picked by hand. Names are a guess;
+   *  an id is not, so this wins over every other way of finding it. */
+  fromIngredientId?: string
   fromPrice: number       // £ per pack, LWC list
   fromLitres: number      // pack size — Tanqueray Ten is listed at 1L, most are 0.7
   to: string

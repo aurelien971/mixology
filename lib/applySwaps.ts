@@ -52,6 +52,12 @@ export function matchesSource(
   lib: Ingredient[]
 ): boolean {
   if (source && row.ingredientId === source.id) return true
+  // Picked by hand: match that ingredient and nothing else, so an override is
+  // not quietly widened by the name rules below.
+  if (swap.fromIngredientId) {
+    if (row.ingredientId === swap.fromIngredientId) return true
+    return findIngredientMatch(row.name, lib)?.id === swap.fromIngredientId
+  }
   const viaName = findIngredientMatch(row.name, lib)
   if (source && viaName?.id === source.id) return true
   // The row may name the product without the library holding it at all.
@@ -79,6 +85,12 @@ function costOf(recipe: Recipe, lib: Ingredient[]): number | null {
 /**
  * What each swap would do, without doing any of it.
  */
+/** The outgoing ingredient for a swap, by whichever route finds it. */
+export function resolveSource(swap: Swap, ingredients: Ingredient[]): Ingredient | null {
+  if (swap.fromIngredientId) return ingredients.find((i) => i.id === swap.fromIngredientId) ?? null
+  return sourceNames(swap).map((n) => findIngredientMatch(n, ingredients)).find(Boolean) ?? null
+}
+
 export function planSwaps(
   swaps: Swap[],
   ingredients: Ingredient[],
@@ -86,11 +98,11 @@ export function planSwaps(
   applyRebate = true
 ): SwapPlan[] {
   return swaps.map((swap) => {
-    // Try every name this product is filed under — the trade description and the
-    // shelf label are rarely the same string.
-    const source = sourceNames(swap)
-      .map((n) => findIngredientMatch(n, ingredients))
-      .find(Boolean) ?? null
+    // A hand-picked ingredient wins; otherwise try every name this product is
+    // filed under, since the trade description and the shelf label rarely match.
+    const source = (swap.fromIngredientId
+      ? ingredients.find((i) => i.id === swap.fromIngredientId)
+      : sourceNames(swap).map((n) => findIngredientMatch(n, ingredients)).find(Boolean)) ?? null
     const target = findIngredientMatch(swap.to, ingredients) ?? null
 
     const perLitre = (swap.toLitres > 0 ? swap.toPrice / swap.toLitres : 0) * (applyRebate ? 1 - LWC_REBATE : 1)
