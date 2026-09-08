@@ -33,6 +33,8 @@ export default function ProductionPage() {
   const [checked, setChecked]   = useState<Record<string, boolean>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
   const [loading, setLoading]   = useState(true)
+  // Real orders are what the floor works from; R&D is a different job.
+  const [tab, setTab] = useState<'orders' | 'rd'>('orders')
 
   useEffect(() => {
     async function load() {
@@ -81,30 +83,54 @@ export default function ProductionPage() {
     </div>
   )
 
-  if (orders.length === 0) return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '12px' }}>
-      <div style={{ fontSize: '48px' }}>✓</div>
-      <p style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: 0 }}>All clear</p>
-      <p style={{ fontSize: '14px', color: '#9ca3af', margin: 0 }}>No orders waiting to be produced</p>
-    </div>
-  )
+  const realOrders = orders.filter(o => o.type !== 'rd')
+  const rdOrders = orders.filter(o => o.type === 'rd')
+  const shown = tab === 'rd' ? rdOrders : realOrders
 
   return (
     <div style={{ maxWidth: '680px', width: '100%' }}>
 
       {/* Header */}
-      <div style={{ marginBottom: '28px' }}>
+      <div style={{ marginBottom: '18px' }}>
         <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#111827', margin: '0 0 4px', letterSpacing: '-0.5px' }}>
           Production queue
         </h1>
         <p style={{ fontSize: '14px', color: '#9ca3af', margin: 0 }}>
-          {orders.length} order{orders.length !== 1 ? 's' : ''} to produce
+          {shown.length} {tab === 'rd' ? 'R&D job' : 'order'}{shown.length !== 1 ? 's' : ''} to produce
         </p>
       </div>
 
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '20px' }}>
+        {([['orders', 'Orders', realOrders.length], ['rd', 'R&D', rdOrders.length]] as const).map(([v, l, n]) => (
+          <button
+            key={v}
+            onClick={() => setTab(v)}
+            style={{
+              padding: '6px 14px', borderRadius: '20px', fontSize: '12.5px', fontWeight: 600,
+              border: '1px solid', cursor: 'pointer',
+              background: tab === v ? '#111827' : '#fff',
+              borderColor: tab === v ? '#111827' : '#e5e7eb',
+              color: tab === v ? '#fff' : n === 0 ? '#d1d5db' : '#4b5563',
+            }}
+          >
+            {l} <span style={{ opacity: 0.6, marginLeft: '4px' }}>{n}</span>
+          </button>
+        ))}
+      </div>
+
+      {shown.length === 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 0', gap: '10px' }}>
+          <div style={{ fontSize: '40px' }}>✓</div>
+          <p style={{ fontSize: '16px', fontWeight: 600, color: '#111827', margin: 0 }}>All clear</p>
+          <p style={{ fontSize: '13.5px', color: '#9ca3af', margin: 0 }}>
+            {tab === 'rd' ? 'No R&D in the queue' : 'No orders waiting to be produced'}
+          </p>
+        </div>
+      )}
+
       {/* Order cards */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {orders.map(order => {
+        {shown.map(order => {
           const due      = order.expectedDeliveryDate ?? order.deliveryDate ?? order.createdAt
           const badge    = dueLabel(due)
           const status   = statusLabel(order.status)

@@ -59,10 +59,17 @@ export default function OrdersPage() {
 
   const rows = orders.filter((o) => {
     const matchStatus = filter === 'all' || o.status === filter
+    // Drinks are searched too — "who ordered the Margarita" is a more common
+    // question than "what was that order number".
+    const q = search.toLowerCase()
     const matchSearch =
-      o.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
-      o.accountName.toLowerCase().includes(search.toLowerCase()) ||
-      (o.poReference ?? '').toLowerCase().includes(search.toLowerCase())
+      !q ||
+      o.orderNumber.toLowerCase().includes(q) ||
+      o.accountName.toLowerCase().includes(q) ||
+      (o.poReference ?? '').toLowerCase().includes(q) ||
+      o.lineItems.some((li) =>
+        li.productName.toLowerCase().includes(q) || li.productCode.toLowerCase().includes(q)
+      )
     const matchType = typeFilter === 'all' || (typeFilter === 'rd' ? o.type === 'rd' : o.type !== 'rd')
     return matchStatus && matchSearch && matchType
   })
@@ -97,7 +104,7 @@ export default function OrdersPage() {
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <input
           type="text"
-          placeholder="Search by order no., account or PO ref..."
+          placeholder="Search order no., account, PO or a drink…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-80 px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-gray-400 bg-white"

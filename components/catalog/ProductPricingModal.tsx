@@ -5,9 +5,11 @@ import Button from '@/components/ui/Button'
 import { getAllPricing, upsertAccountPricing, deleteAccountPricing } from '@/lib/firestore/catalog'
 import { getAccounts } from '@/lib/firestore/accounts'
 import { getRecipes } from '@/lib/firestore/recipes'
+import { getAllOrders } from '@/lib/firestore/orders'
 import { getIngredients } from '@/lib/firestore/ingredients'
 import { computeRecipeCost } from '@/lib/costing'
-import { Product, Account, AccountPricing, Recipe, Ingredient } from '@/types'
+import { Product, Account, AccountPricing, Recipe, Ingredient, Order } from '@/types'
+import { format, formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
 
 interface Props {
@@ -39,6 +41,7 @@ export default function ProductPricingModal({ product, onClose }: Props) {
   const [pricing, setPricing] = useState<AccountPricing[]>([])
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [ingredients, setIngredients] = useState<Ingredient[]>([])
+  const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -49,12 +52,13 @@ export default function ProductPricingModal({ product, onClose }: Props) {
   const [rrp, setRrp] = useState('')
 
   function load() {
-    Promise.all([getAccounts(), getAllPricing(), getRecipes(), getIngredients()])
-      .then(([a, p, r, i]) => {
+    Promise.all([getAccounts(), getAllPricing(), getRecipes(), getIngredients(), getAllOrders()])
+      .then(([a, p, r, i, o]) => {
         setAccounts(a)
         setPricing(p.filter((x) => x.productId === product.id))
         setRecipes(r)
         setIngredients(i)
+        setOrders(o)
       })
       .finally(() => setLoading(false))
   }
@@ -75,6 +79,33 @@ export default function ProductPricingModal({ product, onClose }: Props) {
       serve,
     }
   }, [recipes, ingredients, product])
+
+  // Every real order this drink has appeared on, newest first. R&D and cancelled
+  // orders are left out — they are not sales.
+  const sales = useMemo(() => {
+    const rows = orders
+      .filter((o) => o.status !== 'cancelled' && o.type !== 'rd')
+      .flatMap((o) =>
+        o.lineItems
+          .filter((li) => li.productId === product.id)
+          .map((li) => ({
+            date: o.createdAt,
+            account: o.accountName,
+            litres: li.quantity * (li.volumeLitres ?? 5),
+            value: li.lineTotal,
+            orderId: o.id,
+            orderNumber: o.orderNumber,
+          }))
+      )
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+    return {
+      rows,
+      last: rows[0],
+      litres: rows.reduce((s, r) => s + r.litres, 0),
+      value: rows.reduce((s, r) => s + r.value, 0),
+      accounts: new Set(rows.map((r) => r.account)).size,
+    }
+  }, [orders, product.id])
 
   const priced = new Set(pricing.map((p) => p.accountId))
   const available = accounts.filter((a) => !priced.has(a.id))
@@ -176,6 +207,54 @@ export default function ProductPricingModal({ product, onClose }: Props) {
                 </span>
               )}
             </div>
+          )}
+        </div>
+
+        {/* when it last sold */}
+        <div style={{ border: '1px solid #f3f4f6', borderRadius: '10px', padding: '14px 16px', marginBottom: '18px' }}>
+          <p style={{ fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>
+            Sales
+          </p>
+          {!sales.last ? (
+            <p style={{ margin: 0, fontSize: '13px', color: '#9ca3af' }}>Never ordered.</p>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: '26px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                <span>
+                  <strong style={{ fontSize: '15px', fontWeight: 700, color: '#111827' }}>
+                    {formatDistanceToNow(sales.last.date, { addSuffix: true }).replace('about ', '')}
+                  </strong>
+                  <span style={{ fontSize: '12px', color: '#6b7280', marginLeft: '6px' }}>
+                    last sold, to {sales.last.account}
+                  </span>
+                </span>
+                <span style={{ fontSize: '12.5px', color: '#6b7280' }}>
+                  <strong style={{ color: '#111827' }}>{sales.rows.length}</strong> order lines ·{' '}
+                  <strong style={{ color: '#111827' }}>{Math.round(sales.litres)}L</strong> ·{' '}
+                  <strong style={{ color: '#111827' }}>{money(sales.value)}</strong> ·{' '}
+                  {sales.accounts} venue{sales.accounts === 1 ? '' : 's'}
+                </span>
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                <tbody>
+                  {sales.rows.slice(0, 6).map((r, i) => (
+                    <tr key={r.orderId + i} style={{ borderTop: i ? '1px solid #fafafa' : 'none' }}>
+                      <td style={{ padding: '5px 10px 5px 0', color: '#6b7280', fontFamily: 'monospace', fontSize: '11.5px' }}>
+                        {format(r.date, 'd MMM yyyy')}
+                      </td>
+                      <td style={{ padding: '5px 10px', color: '#374151' }}>{r.account}</td>
+                      <td style={{ padding: '5px 10px', textAlign: 'right', color: '#6b7280', fontVariantNumeric: 'tabular-nums' }}>{r.litres}L</td>
+                      <td style={{ padding: '5px 0', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{money(r.value)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {sales.rows.length > 6 && (
+                <p style={{ margin: '8px 0 0', fontSize: '11.5px', color: '#9ca3af' }}>
+                  and {sales.rows.length - 6} more
+                </p>
+              )}
+            </>
           )}
         </div>
 

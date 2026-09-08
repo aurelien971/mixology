@@ -42,7 +42,23 @@ export default function RecipesPage() {
   // Classic and Core range are set, so there is only ever one place to change it.
   const productOf = (r: Recipe) => products.find(p => p.id === r.productId)
 
-  const filtered = recipes.filter(r => {
+  // On the core range, one card per drink. A house spec plus two venue variants
+  // is one classic, not three, and the grid reading as duplicates hides that.
+  const variantsOf = (r: Recipe) =>
+    r.productId ? recipes.filter(x => x.productId === r.productId) : [r]
+
+  const dedupe = (list: Recipe[]) => {
+    const seen = new Set<string>()
+    return list.filter(r => {
+      if (!r.productId) return true
+      if (seen.has(r.productId)) return false
+      seen.add(r.productId)
+      return true
+    })
+  }
+
+
+  const matching = recipes.filter(r => {
     const q = search.toLowerCase()
     const matchSearch =
       r.name.toLowerCase().includes(q) ||
@@ -54,9 +70,18 @@ export default function RecipesPage() {
       !!p?.isCoreRange
     return matchSearch && matchRange
   })
+  // The house spec leads where a drink has several — its name matches the product.
+  const ordered = [...matching].sort((a, b) => {
+    const pa = productOf(a), pb = productOf(b)
+    const na = pa && a.name.trim().toLowerCase() === pa.name.trim().toLowerCase() ? 0 : 1
+    const nb = pb && b.name.trim().toLowerCase() === pb.name.trim().toLowerCase() ? 0 : 1
+    return na - nb
+  })
+  const filtered = range === 'classics' ? dedupe(ordered) : matching
 
   const classicDrinks = products.filter(p => p.isActive !== false && p.isClassic).length
   const classicRecipes = recipes.filter(r => productOf(r)?.isClassic).length
+
 
   return (
     <div>
@@ -171,7 +196,7 @@ export default function RecipesPage() {
               <span style={{ fontSize: '12px', color: '#9ca3af' }}>
                 {filtered.length} recipe{filtered.length !== 1 ? 's' : ''}
                 {range === 'classics' && classicRecipes !== classicDrinks && (
-                  <> across {classicDrinks} drinks</>
+                  <>, {classicRecipes - classicDrinks} venue variant{classicRecipes - classicDrinks === 1 ? '' : 's'} folded in</>
                 )}
               </span>
             </div>
@@ -211,9 +236,14 @@ export default function RecipesPage() {
                         </span>
                       )}
                     </div>
-                    <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: '#6b7280', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: '#6b7280', marginBottom: '8px', flexWrap: 'wrap' }}>
                       <span>🧪 {r.ingredients.length} ingredients</span>
                       {r.createdBy && <span>👤 {r.createdBy}</span>}
+                      {range === 'classics' && variantsOf(r).length > 1 && (
+                        <span style={{ color: '#b45309', fontWeight: 600 }}>
+                          +{variantsOf(r).length - 1} venue variant{variantsOf(r).length - 1 === 1 ? '' : 's'}
+                        </span>
+                      )}
                     </div>
                     {linkedProduct ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: '#eff6ff', borderRadius: '6px' }}>
