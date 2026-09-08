@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { format } from 'date-fns'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
@@ -68,7 +69,13 @@ export default function StockTakePage() {
 
   return (
     <div>
-      <Header title="Stock take" subtitle="Ingredients, prices, stock on hand, and what to order next" />
+      <Header
+        title="Stock take"
+        subtitle="Ingredients, prices, stock on hand, and what to order next"
+        action={
+          <Link href="/lwc"><Button size="sm" variant="ghost">LWC trade list</Button></Link>
+        }
+      />
 
       <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', background: '#f3f4f6', padding: '4px', borderRadius: '10px', width: 'fit-content' }}>
         {tabs.map(t => (

@@ -77,14 +77,13 @@ const nav = [
     ),
   },
   {
-    label: 'Recipes',
-    href: '/recipes',
+    label: 'Product development',
+    href: '/development',
     icon: (
       <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
-        <rect x="3" y="2" width="12" height="14" rx="2" stroke="currentColor" strokeWidth="1.4" fill="none"/>
-        <line x1="6" y1="6" x2="12" y2="6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-        <line x1="6" y1="9" x2="12" y2="9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-        <line x1="6" y1="12" x2="9" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+        <path d="M7.5 2v4.4L3.6 13a1.6 1.6 0 001.4 2.4h8a1.6 1.6 0 001.4-2.4l-3.9-6.6V2" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" fill="none"/>
+        <line x1="6.5" y1="2" x2="11.5" y2="2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+        <path d="M5.3 10.5h7.4" stroke="currentColor" strokeWidth="1.2" opacity=".5"/>
       </svg>
     ),
   },
@@ -108,31 +107,11 @@ const nav = [
     ),
   },
   {
-    label: 'Core classics',
-    href: '/range',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
-        <path d="M9 2.5l1.9 3.9 4.3.6-3.1 3 .7 4.3L9 12.3l-3.8 2 .7-4.3-3.1-3 4.3-.6L9 2.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" fill="none"/>
-      </svg>
-    ),
-  },
-  {
     label: 'Pricing',
     href: '/pricing',
     icon: (
       <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
         <path d="M9 2v14M6 5.5h4.5a2 2 0 010 4h-3a2 2 0 000 4H12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
-      </svg>
-    ),
-  },
-  {
-    label: 'Rate card',
-    href: '/rate-card',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
-        <rect x="2" y="4" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.4" fill="none"/>
-        <line x1="2" y1="7.5" x2="16" y2="7.5" stroke="currentColor" strokeWidth="1.2" opacity=".6"/>
-        <line x1="5" y1="11" x2="9" y2="11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
       </svg>
     ),
   },
@@ -143,17 +122,6 @@ const nav = [
       <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
         <path d="M2 6l7-4 7 4v7l-7 4-7-4V6z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" fill="none"/>
         <path d="M2 6l7 4 7-4M9 10v7" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
-      </svg>
-    ),
-  },
-  {
-    label: 'LWC pricing',
-    href: '/lwc',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
-        <path d="M6 2h6l1 3v10a1 1 0 01-1 1H6a1 1 0 01-1-1V5l1-3z" stroke="currentColor" strokeWidth="1.4" fill="none" opacity=".9"/>
-        <line x1="5" y1="8" x2="13" y2="8" stroke="currentColor" strokeWidth="1.2"/>
-        <line x1="7.5" y1="11" x2="10.5" y2="11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity=".5"/>
       </svg>
     ),
   },

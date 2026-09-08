@@ -510,3 +510,81 @@ export function projectProgress(p: Pick<Project, 'checklist'>): { done: number; 
   const done = list.filter((i) => i.done).length
   return { done, total: list.length, pct: Math.round((done / list.length) * 100) }
 }
+
+// ── Product development ──────────────────────────────────────────────────────
+// Getting the core classics range into every venue we already sell to. Each
+// drink exists in two forms and they move at different speeds: the pre-batch we
+// supply whole, and the syrup where the venue pours its own spirit. So the unit
+// being tracked is a drink *and* a format, not a drink.
+
+export type DevVariant = 'premix' | 'syrup'
+
+export const DEV_VARIANTS: { value: DevVariant; label: string; short: string }[] = [
+  { value: 'premix', label: 'Pre-batch, with spirit', short: 'With spirit' },
+  { value: 'syrup',  label: 'Syrup, venue pours its own', short: 'No spirit' },
+]
+
+export type DevStage =
+  | 'not_started'
+  | 'development'
+  | 'tasting'
+  | 'ready'
+  | 'signed_off'
+  | 'rejected'
+  | 'in_production'
+  | 'rolled_out'
+
+export const DEV_STAGES: { value: DevStage; label: string; bg: string; fg: string }[] = [
+  { value: 'not_started',   label: 'Not started',   bg: '#f3f4f6', fg: '#6b7280' },
+  { value: 'development',   label: 'In development', bg: '#f3e8ff', fg: '#7e22ce' },
+  { value: 'tasting',       label: 'Tasting',        bg: '#ffedd5', fg: '#c2410c' },
+  { value: 'ready',         label: 'Ready',          bg: '#dbeafe', fg: '#1d4ed8' },
+  { value: 'signed_off',    label: 'Signed off',     bg: '#dcfce7', fg: '#166534' },
+  { value: 'rejected',      label: 'Not signed off', bg: '#fee2e2', fg: '#991b1b' },
+  { value: 'in_production', label: 'In production',  bg: '#fef3c7', fg: '#92400e' },
+  { value: 'rolled_out',    label: 'Rolled out',     bg: '#dcfce7', fg: '#14532d' },
+]
+
+export const DEV_STAGE_LABELS: Record<DevStage, string> =
+  Object.fromEntries(DEV_STAGES.map((s) => [s.value, s.label])) as Record<DevStage, string>
+
+/** Stages that count as finished work for a progress bar. */
+export const DEV_DONE_STAGES: DevStage[] = ['signed_off', 'in_production', 'rolled_out']
+
+export interface Tasting {
+  id: string
+  at: string              // ISO date
+  verdict: 'pass' | 'fail' | 'rework' | 'pending'
+  notes?: string
+  by?: string
+}
+
+export interface DevelopmentRecord {
+  id: string
+  productId: string
+  productName: string
+  variant: DevVariant
+  stage: DevStage
+
+  owner?: string
+  recipeId?: string       // the spec this version is built on
+  nextStep?: string
+  nextTasting?: Date
+  blocker?: string
+  notes?: string
+
+  tastings?: Tasting[]
+  updates?: ProjectUpdate[]   // newest first, same shape as projects
+
+  /** Venues this version has actually been placed with. */
+  placedWith?: string[]
+
+  createdAt: Date
+  updatedAt: Date
+}
+
+export function devProgress(records: DevelopmentRecord[]): { done: number; total: number; pct: number } {
+  const total = records.length
+  const done = records.filter((r) => DEV_DONE_STAGES.includes(r.stage)).length
+  return { done, total, pct: total ? Math.round((done / total) * 100) : 0 }
+}

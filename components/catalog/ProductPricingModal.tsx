@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Button from '@/components/ui/Button'
-import { getAllPricing, upsertAccountPricing, deleteAccountPricing } from '@/lib/firestore/catalog'
+import Link from 'next/link'
+import { getAllPricing, upsertAccountPricing, deleteAccountPricing, updateProduct } from '@/lib/firestore/catalog'
 import { getAccounts } from '@/lib/firestore/accounts'
 import { getRecipes } from '@/lib/firestore/recipes'
 import { getAllOrders } from '@/lib/firestore/orders'
@@ -44,6 +45,8 @@ export default function ProductPricingModal({ product, onClose }: Props) {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [classic, setClassic] = useState(!!product.isClassic)
+  const [flipping, setFlipping] = useState(false)
 
   // new row
   const [accountId, setAccountId] = useState('')
@@ -79,6 +82,25 @@ export default function ProductPricingModal({ product, onClose }: Props) {
       serve,
     }
   }, [recipes, ingredients, product])
+
+  // The spec, read here rather than on its own page — this is where you land
+  // when you click a drink, so this is where the recipe has to be.
+  const specs = useMemo(
+    () => recipes.filter((r) => r.productId === product.id),
+    [recipes, product.id]
+  )
+
+  async function toggleClassic() {
+    const next = !classic
+    setFlipping(true)
+    try {
+      await updateProduct(product.id, { isClassic: next })
+      setClassic(next)
+      toast.success(next ? `${product.name} added to the core classics` : `${product.name} removed from the core classics`)
+    } catch {
+      toast.error('Could not save')
+    } finally { setFlipping(false) }
+  }
 
   // Every real order this drink has appeared on, newest first. R&D and cancelled
   // orders are left out — they are not sales.
@@ -176,7 +198,23 @@ export default function ProductPricingModal({ product, onClose }: Props) {
               {product.productCode} · {product.recommendedServingG || 100}ml serve
             </p>
           </div>
-          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '20px', color: '#d1d5db' }}>×</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button
+              onClick={toggleClassic}
+              disabled={flipping}
+              style={{
+                border: `1px solid ${classic ? '#bbf7d0' : '#e5e7eb'}`,
+                background: classic ? '#f0fdf4' : '#fff',
+                color: classic ? '#166534' : '#6b7280',
+                borderRadius: '20px', padding: '6px 13px', fontSize: '12px', fontWeight: 600,
+                cursor: flipping ? 'default' : 'pointer', whiteSpace: 'nowrap',
+              }}
+              title={classic ? 'Click to take it back out of the core range' : 'Adds it to the core range and to product development'}
+            >
+              {classic ? '✓ Core classic' : '+ Add to core classics'}
+            </button>
+            <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '20px', color: '#d1d5db' }}>×</button>
+          </div>
         </div>
 
         {/* live cost */}
@@ -207,6 +245,71 @@ export default function ProductPricingModal({ product, onClose }: Props) {
                 </span>
               )}
             </div>
+          )}
+        </div>
+
+        {/* the recipe, in the same view */}
+        <div style={{ border: '1px solid #f3f4f6', borderRadius: '10px', padding: '14px 16px', marginBottom: '18px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px' }}>
+            <p style={{ fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+              Recipe
+            </p>
+            {specs.length > 0 && (
+              <Link href={`/recipes/${specs[0].id}`} style={{ fontSize: '11.5px', color: '#1d4ed8', fontWeight: 600 }}>
+                Edit the spec →
+              </Link>
+            )}
+          </div>
+
+          {loading ? (
+            <p style={{ margin: 0, fontSize: '13px', color: '#9ca3af' }}>Loading…</p>
+          ) : specs.length === 0 ? (
+            <p style={{ margin: 0, fontSize: '13px', color: '#b45309' }}>
+              No recipe linked to this drink yet, so nothing here can be costed.
+            </p>
+          ) : (
+            specs.map((r, ri) => {
+              const c = computeRecipeCost(r, ingredients)
+              return (
+                <div key={r.id} style={{ marginTop: ri ? '16px' : 0, paddingTop: ri ? '14px' : 0, borderTop: ri ? '1px solid #f3f4f6' : 'none' }}>
+                  {specs.length > 1 && (
+                    <p style={{ margin: '0 0 8px', fontSize: '12.5px', fontWeight: 600, color: '#374151' }}>
+                      {r.name}{r.variation ? ` · ${r.variation}` : ''}
+                    </p>
+                  )}
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                    <tbody>
+                      {r.ingredients.map((row, i) => {
+                        const line = c.lines[i]
+                        return (
+                          <tr key={row.name + i} style={{ borderTop: i ? '1px solid #fafafa' : 'none' }}>
+                            <td style={{ padding: '5px 10px 5px 0', color: '#374151' }}>{row.name}</td>
+                            <td style={{ padding: '5px 10px', textAlign: 'right', color: '#6b7280', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                              {row.qtyPer1L.toFixed(row.qtyPer1L < 1 ? 3 : 1)} {row.unit}
+                            </td>
+                            <td style={{ padding: '5px 0', textAlign: 'right', width: '78px', fontVariantNumeric: 'tabular-nums', color: line?.costPer1L == null ? '#d1d5db' : '#6b7280' }}>
+                              {line?.costPer1L == null ? 'no price' : money(line.costPer1L)}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                      <tr style={{ borderTop: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '7px 10px 0 0', fontWeight: 600, color: '#111827' }}>Per litre</td>
+                        <td />
+                        <td style={{ padding: '7px 0 0', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: c.complete ? '#111827' : '#b45309' }}>
+                          {money(c.costPerLitre)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  {r.cookingInstructions && (
+                    <p style={{ margin: '10px 0 0', fontSize: '12.5px', color: '#6b7280', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                      {r.cookingInstructions}
+                    </p>
+                  )}
+                </div>
+              )
+            })
           )}
         </div>
 

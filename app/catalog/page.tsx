@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import Header from '@/components/layout/Header'
 import Badge from '@/components/ui/Badge'
@@ -123,6 +124,8 @@ export default function CatalogPage() {
         subtitle={`Master product list — costs and serve sizes${filtered.filter(p => p.costMissing).length > 0 ? ` · ⚠ ${filtered.filter(p => p.costMissing).length} missing costs` : ''}`}
         action={
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <Link href="/rate-card"><Button size="sm" variant="ghost">Rate card</Button></Link>
+            <Link href="/recipes"><Button size="sm" variant="ghost">All recipes</Button></Link>
             <button
               onClick={() => setHidden(h => !h)}
               title={hidden ? 'Show costs' : 'Hide costs'}
