@@ -14,11 +14,12 @@ import {
   getDevelopment, updateDevelopmentLogged, updateDevelopment, syncDevelopmentForRange,
 } from '@/lib/firestore/development'
 import { computeRecipeCost } from '@/lib/costing'
+import { reconcileCoreRange, applyCoreRange, strays, RangeRow } from '@/lib/coreRange'
 import { splitRecipeCost } from '@/lib/pricing'
 import { useTable, ColumnDef } from '@/hooks/useTable'
 import {
   Product, Recipe, Ingredient, Order, DevelopmentRecord, DevStage, DevVariant,
-  DEV_STAGES, DEV_VARIANTS, DEV_DONE_STAGES,
+  DEV_STAGES, DEV_VARIANTS, DEV_DONE_STAGES, CORE_RANGE,
 } from '@/types'
 import toast from 'react-hot-toast'
 
@@ -72,6 +73,7 @@ export default function DevelopmentPage() {
   const [variant, setVariant] = useState<DevVariant | 'all'>('all')
   const [open, setOpen] = useState<string | null>(null)
   const [note, setNote] = useState('')
+  const [showSetup, setShowSetup] = useState(false)
 
   const cols = useTable<Row>('development', COLUMNS)
 
@@ -88,6 +90,30 @@ export default function DevelopmentPage() {
     () => products.filter((p) => p.isActive !== false && p.isClassic),
     [products]
   )
+
+  // The twenty against the catalog: what is already in, what needs the flag,
+  // what does not exist yet, and which of them have no recipe to cost.
+  const range = useMemo<RangeRow[]>(() => reconcileCoreRange(products, recipes), [products, recipes])
+  const todo = range.filter((r) => r.state !== 'linked').length
+  const noRecipe = range.filter((r) => !r.hasRecipe).length
+  const offList = useMemo(() => strays(products), [products])
+
+  async function setUpRange() {
+    setBusy(true)
+    try {
+      const res = await applyCoreRange(range, products)
+      const [fresh, freshRecipes] = await Promise.all([getProducts(), getRecipes()])
+      setProducts(fresh); setRecipes(freshRecipes)
+      const classicsNow = fresh.filter((p) => p.isActive !== false && p.isClassic)
+      const added = await syncDevelopmentForRange(classicsNow, records)
+      toast.success(
+        `${res.flagged} flagged, ${res.created} created, ${added} version${added === 1 ? '' : 's'} tracked`
+      )
+      load()
+    } catch {
+      toast.error('Could not set the range up')
+    } finally { setBusy(false) }
+  }
 
   async function sync() {
     setBusy(true)
@@ -203,6 +229,93 @@ export default function DevelopmentPage() {
         </div>
       </div>
 
+      {(todo > 0 || noRecipe > 0 || showSetup) && (
+        <div style={{
+          border: `1px solid ${todo ? '#fde68a' : '#f3f4f6'}`, background: todo ? '#fffbeb' : '#fff',
+          borderRadius: '12px', padding: '15px 17px', marginBottom: '16px',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+            <div>
+              <p style={{ margin: '0 0 3px', fontSize: '13.5px', fontWeight: 700, color: '#111827' }}>
+                The range is {CORE_RANGE.length - todo} of {CORE_RANGE.length} set up
+              </p>
+              <p style={{ margin: 0, fontSize: '12.5px', color: '#6b7280', lineHeight: 1.5 }}>
+                {todo > 0
+                  ? `${range.filter((r) => r.state === 'match').length} already in the catalog need the flag, ${range.filter((r) => r.state === 'create').length} do not exist yet.`
+                  : 'All twenty are in the catalog and flagged.'}
+                {noRecipe > 0 && <> <strong style={{ color: '#b45309' }}>{noRecipe} have no recipe</strong>, so nothing can be costed for them yet.</>}
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <Button size="sm" variant="ghost" onClick={() => setShowSetup((v) => !v)}>
+                {showSetup ? 'Hide the list' : 'Show the list'}
+              </Button>
+              {todo > 0 && (
+                <Button size="sm" onClick={setUpRange} loading={busy} disabled={busy}>
+                  Set the range up
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {showSetup && (
+            <div style={{ marginTop: '14px', border: '1px solid #f3f4f6', borderRadius: '10px', background: '#fff', overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', minWidth: '620px' }}>
+                <thead>
+                  <tr style={{ background: '#fafafa' }}>
+                    {['Drink', 'In the catalog', 'Code', 'Recipe', ''].map((h, i) => (
+                      <th key={h + i} style={{
+                        padding: '8px 12px', fontSize: '10px', fontWeight: 600, color: '#9ca3af',
+                        textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'left', whiteSpace: 'nowrap',
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {range.map((r) => (
+                    <tr key={r.spec.name} style={{ borderTop: '1px solid #f9fafb' }}>
+                      <td style={{ padding: '7px 12px', fontWeight: 600, color: '#111827' }}>{r.spec.name}</td>
+                      <td style={{ padding: '7px 12px', color: '#6b7280' }}>
+                        {r.product
+                          ? (r.product.name !== r.spec.name ? <>filed as <strong style={{ color: '#374151' }}>{r.product.name}</strong></> : 'yes')
+                          : <span style={{ color: '#b45309' }}>will be created</span>}
+                      </td>
+                      <td style={{ padding: '7px 12px', color: '#9ca3af', fontFamily: 'monospace', fontSize: '11.5px' }}>
+                        {r.product?.productCode ?? '—'}
+                      </td>
+                      <td style={{ padding: '7px 12px' }}>
+                        {r.hasRecipe && r.recipe ? (
+                          <Link href={`/recipes/${r.recipe.id}`} style={{ color: '#1d4ed8' }}>{r.recipe.name}</Link>
+                        ) : (
+                          <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: '#fee2e2', color: '#991b1b' }}>
+                            missing
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '7px 12px', textAlign: 'right' }}>
+                        <span style={{
+                          fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
+                          background: r.state === 'linked' ? '#dcfce7' : r.state === 'match' ? '#fef3c7' : '#e0f2fe',
+                          color: r.state === 'linked' ? '#166534' : r.state === 'match' ? '#92400e' : '#0369a1',
+                        }}>
+                          {r.state === 'linked' ? 'in the range' : r.state === 'match' ? 'needs flagging' : 'new product'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {offList.length > 0 && (
+                <p style={{ margin: 0, padding: '10px 12px', fontSize: '11.5px', color: '#6b7280', borderTop: '1px solid #f3f4f6' }}>
+                  Also flagged as a classic but not one of the twenty: {offList.map((p) => p.name).join(', ')}. Untick
+                  them from the catalog if they should not be in the rollout.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-1 mb-3 flex-wrap items-center">
         {([{ value: 'all' as const, label: 'Both versions' }, ...DEV_VARIANTS]).map((v) => (
           <button
@@ -248,6 +361,12 @@ export default function DevelopmentPage() {
                         >
                           {r.record.productName}
                         </button>
+                        {!r.recipe && (
+                          <span style={{
+                            marginLeft: '7px', fontSize: '10px', fontWeight: 700, padding: '1px 6px',
+                            borderRadius: '20px', background: '#fee2e2', color: '#991b1b', whiteSpace: 'nowrap',
+                          }}>no recipe</span>
+                        )}
                       </td>
                       <td style={td}>
                         <span style={{

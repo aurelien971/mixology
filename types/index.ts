@@ -478,27 +478,72 @@ export function projectScore(p: Pick<Project, 'opportunity' | 'prizeGbp' | 'effo
 // all hang off. Names here are matched loosely against product names, which
 // carry suffixes like "TMS" and house variations.
 
-export const CLASSIC_COCKTAILS = [
-  'Margarita',
-  'G+T',
-  'Dry Martini',
-  'Dirty Martini',
-  'Negroni',
-  'Old Fashioned',
-  'Manhattan',
-  'Cosmopolitan',
-  'Espresso Martini',
-  'Whiskey Sour',
-] as const
+/**
+ * The core classics range — the twenty drinks the group has mandated we get
+ * into every venue we already sell to.
+ *
+ * Aliases are the other spellings the same drink is already filed under, so
+ * setting the range up finds what exists instead of creating a second copy of
+ * it. Add a spelling here rather than renaming a product someone else uses.
+ */
+export interface CoreClassicSpec {
+  name: string
+  aliases?: string[]
+  category?: string
+  nonAlcoholic?: boolean
+}
+
+export const CORE_RANGE: CoreClassicSpec[] = [
+  { name: 'Cosmopolitan',     aliases: ['Cosmo'],                                  category: 'Coupe' },
+  { name: 'Dirty Martini',    aliases: ['Dirty Vodka Martini'],                    category: 'Coupe' },
+  { name: 'Dry Martini',      aliases: ['Martini', 'Gin Martini'],                 category: 'Coupe' },
+  { name: 'Espresso Martini', aliases: ['Espresso'],                               category: 'Coupe' },
+  { name: 'G&T',              aliases: ['G+T', 'Gin & Tonic', 'Gin and Tonic', 'Gin Tonic'], category: 'Highball' },
+  { name: 'Manhattan',                                                             category: 'Coupe' },
+  { name: 'Margarita',        aliases: ['Classic Margarita'],                      category: 'Coupe' },
+  { name: 'Negroni',                                                               category: 'Rocks' },
+  { name: 'Old Fashioned',    aliases: ['Old-Fashioned'],                          category: 'Rocks' },
+  { name: 'Spicy Margarita',  aliases: ['Picante', 'Spicy Marg'],                  category: 'Coupe' },
+  { name: 'Whiskey Sour',     aliases: ['Whisky Sour'],                            category: 'Rocks' },
+  { name: 'Paloma',                                                                category: 'Highball' },
+  { name: 'Bloody Mary',                                                           category: 'Highball' },
+  { name: 'Mulled Wine',      aliases: ['Vin Chaud'],                              category: 'Hot' },
+  { name: 'Irish Coffee',                                                          category: 'Hot' },
+  { name: 'Sloe Gin',         aliases: ['Slow Gin', 'Sloe Gin Fizz'],              category: 'Highball' },
+  { name: 'White Russian',                                                         category: 'Rocks' },
+  { name: 'Hot Toddy',        aliases: ['Toddy'],                                  category: 'Hot' },
+  { name: 'Amaretto Sour',                                                         category: 'Rocks' },
+  { name: 'Pornstar Martini', aliases: ['Passionfruit Martini', 'Porn Star Martini'], category: 'Coupe' },
+]
+
+export const CLASSIC_COCKTAILS = CORE_RANGE.map((c) => c.name)
+
+/** Strip the noise a product name picks up: TMS, pack sizes, punctuation. */
+export function normalizeDrinkName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/&/g, '+')
+    .replace(/\btms\b/g, ' ')
+    .replace(/\b\d+(\.\d+)?\s?(l|litre|litres|ml)\b/g, ' ')
+    .replace(/[^a-z0-9+ ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** Every spelling one of the twenty answers to, normalized. */
+export function classicKeys(c: CoreClassicSpec): string[] {
+  return [c.name, ...(c.aliases ?? [])].map(normalizeDrinkName)
+}
 
 // "Spicy Margarita TMS" → matches "Margarita"; "Lychee Martini" must not.
 export function matchesClassic(productName: string): string | null {
-  const n = productName.toLowerCase().replace(/\btms\b/g, ' ').replace(/[^a-z+ ]/g, ' ').replace(/\s+/g, ' ').trim()
-  // Longest first, so "Dry Martini" wins over a bare "Martini" fragment.
-  const ordered = [...CLASSIC_COCKTAILS].sort((a, b) => b.length - a.length)
-  for (const c of ordered) {
-    const key = c.toLowerCase()
-    if (n === key || n.startsWith(key + ' ') || n.endsWith(' ' + key) || n.includes(' ' + key + ' ')) return c
+  const n = normalizeDrinkName(productName)
+  // Longest first, so "Spicy Margarita" wins over a bare "Margarita".
+  const ordered = CORE_RANGE
+    .flatMap((c) => classicKeys(c).map((key) => ({ key, name: c.name })))
+    .sort((a, b) => b.key.length - a.key.length)
+  for (const { key, name } of ordered) {
+    if (n === key || n.startsWith(key + ' ') || n.endsWith(' ' + key) || n.includes(' ' + key + ' ')) return name
   }
   return null
 }

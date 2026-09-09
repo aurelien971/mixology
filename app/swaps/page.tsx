@@ -119,11 +119,41 @@ export default function SwapsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recipes, ingredients, sourcePick, target])
 
+  // Zero lines on the old bottle is not proof of anything on its own: it also
+  // reads zero when we never stocked it. The swap has only landed if the
+  // replacement is the thing the recipes now call for, so count that too.
+  const landed = useMemo(() => {
+    const m: Record<string, number> = {}
+    const norm = (n: string) => n.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+    for (const sw of SWAPS) {
+      const to = withTargets(sw).to
+      const tgt = findIngredientMatch(to, ingredients)
+      const key = norm(to)
+      m[sw.from] = recipes.reduce(
+        (n, r) => n + r.ingredients.filter((row) => {
+          if (tgt && row.ingredientId === tgt.id) return true
+          const rn = norm(row.name)
+          return !!rn && (rn === key || rn.includes(key) || key.includes(rn))
+        }).length,
+        0
+      )
+    }
+    return m
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipes, ingredients, target])
+
+  /** What the "In recipes" column is actually reporting. */
+  type SwapState = 'outstanding' | 'applied' | 'unused'
+  const stateOf = (s: Swap): SwapState => {
+    if ((inUse[s.from] ?? 0) > 0) return 'outstanding'
+    return (landed[s.from] ?? 0) > 0 ? 'applied' : 'unused'
+  }
+
   const isTaken = (s: Swap) => taken[s.from] ?? s.verdict === 'mandated'
   const active = swaps.filter(isTaken)
   // What is actually left: ticked, and still present in a recipe.
   const outstanding = active.filter((s) => (inUse[s.from] ?? 0) > 0)
-  const unfindable = active.filter((s) => (inUse[s.from] ?? 0) === 0 && !resolveSource(s, ingredients))
+  const unfindable = active.filter((s) => stateOf(s) === 'unused' && !resolveSource(s, ingredients))
   const totals = swapTotals(active)
 
   // Re-price the library under the selected swaps, then re-cost every recipe.
@@ -430,7 +460,7 @@ export default function SwapsPage() {
                 <tr key={s.from} style={{
                   borderBottom: '1px solid #f9fafb',
                   opacity: inUse[s.from] === 0 ? 0.5 : on ? 1 : 0.55,
-                  background: inUse[s.from] === 0 ? '#f8fdf9' : undefined,
+                  background: stateOf(s) === 'applied' ? '#f8fdf9' : undefined,
                 }}>
                   <td style={{ ...td, textAlign: 'center' }}>
                     <input type="checkbox" checked={on} onChange={(e) => setTaken({ ...taken, [s.from]: e.target.checked })} />
@@ -461,9 +491,17 @@ export default function SwapsPage() {
                               </p>
                             )
                           ) : (
-                            <p style={{ margin: '3px 0 0', fontSize: '11.5px', color: '#b45309', fontWeight: 600 }}>
-                              Not found in your ingredients — click the name to pick it
-                            </p>
+                            stateOf(s) === 'applied' ? (
+                              <p style={{ margin: '3px 0 0', fontSize: '11.5px', color: '#6b7280' }}>
+                                This name is off the trade list, not your stock take — and your recipes have already
+                                moved to {s.to}, so there is nothing left to point it at.
+                              </p>
+                            ) : (
+                              <p style={{ margin: '3px 0 0', fontSize: '11.5px', color: '#b45309', fontWeight: 600 }}>
+                                Not in your ingredients — this name comes from the trade list. Click it to point at the
+                                bottle you actually stock.
+                              </p>
+                            )
                           )}
 
                           {pickingSource === s.from && (
@@ -637,9 +675,19 @@ export default function SwapsPage() {
                   </td>
                   <td style={{ ...td, color: '#9ca3af' }}>{s.bottles || '—'}</td>
                   <td style={td}>
-                    {inUse[s.from] === undefined ? '—' : inUse[s.from] === 0 ? (
-                      <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: '#dcfce7', color: '#166534' }}>
+                    {inUse[s.from] === undefined ? '—' : stateOf(s) === 'applied' ? (
+                      <span
+                        title={`Your recipes now call for ${s.to}, and none of them call for ${s.from}.`}
+                        style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: '#dcfce7', color: '#166534' }}
+                      >
                         ✓ Applied
+                      </span>
+                    ) : stateOf(s) === 'unused' ? (
+                      <span
+                        title={`No recipe calls for ${s.from} or ${s.to}. Nothing to swap — either we do not use this bottle, or it is on file under a name this cannot see.`}
+                        style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: '#f3f4f6', color: '#6b7280' }}
+                      >
+                        Not used
                       </span>
                     ) : (
                       <span style={{ fontWeight: 700, color: '#111827' }}>
