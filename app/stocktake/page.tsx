@@ -455,30 +455,57 @@ interface ParsedItem {
 
 type Source = 'photo' | 'email'
 
-/** Files → base64, which is what the vision API takes. */
-function readAsBase64(file: File): Promise<{ media_type: string; data: string; name: string; url: string }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = String(reader.result)
-      resolve({
-        media_type: file.type,
-        data: result.split(',')[1] ?? '',
-        name: file.name,
-        url: result,
-      })
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
+interface Img { name: string; media_type: string; data: string; preview: string }
+
+/**
+ * Same as the recipe screenshot importer: any image the browser will open,
+ * base64 in chunks so a big file does not blow the stack.
+ *
+ * The one difference is the downscale. A screenshot is small; a photo off a
+ * phone is twelve megapixels and eight megabytes as base64, which the request
+ * will not survive. Re-encoding through a canvas also lands everything as JPEG,
+ * so a HEIC straight off an iPhone goes through like anything else.
+ */
+async function fileToImg(file: File): Promise<Img> {
+  const shrunk = await downscale(file)
+  if (shrunk) return shrunk
+  const buf = await file.arrayBuffer()
+  const bytes = new Uint8Array(buf)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 8192))
+  }
+  const data = btoa(binary)
+  return { name: file.name, media_type: file.type || 'image/png', data, preview: `data:${file.type};base64,${data}` }
 }
 
-const ALLOWED = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+const MAX_EDGE = 1800   // plenty to read a delivery note, small enough to send
+
+function downscale(file: File): Promise<Img | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const scale = Math.min(1, MAX_EDGE / Math.max(img.width, img.height))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(img.width * scale)
+      canvas.height = Math.round(img.height * scale)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return resolve(null)
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      const preview = canvas.toDataURL('image/jpeg', 0.9)
+      resolve({ name: file.name, media_type: 'image/jpeg', data: preview.split(',')[1] ?? '', preview })
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null) }
+    img.src = url
+  })
+}
 
 function DeliveriesTab({ ingredients, onChanged }: { ingredients: Ingredient[]; onChanged: () => void }) {
   const [source, setSource] = useState<Source>('photo')
   const [email, setEmail] = useState('')
-  const [photos, setPhotos] = useState<{ media_type: string; data: string; name: string; url: string }[]>([])
+  const [photos, setPhotos] = useState<Img[]>([])
   const [parsing, setParsing] = useState(false)
   const [items, setItems] = useState<ParsedItem[] | null>(null)
   const [supplier, setSupplier] = useState<string | null>(null)
@@ -487,13 +514,11 @@ function DeliveriesTab({ ingredients, onChanged }: { ingredients: Ingredient[]; 
   const [notes, setNotes] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  async function addFiles(list: FileList | null) {
-    if (!list?.length) return
-    const files = Array.from(list).filter((f) => ALLOWED.includes(f.type))
-    if (files.length < list.length) toast.error('Only PNG, JPEG, WebP or GIF photos')
-    if (!files.length) return
-    const read = await Promise.all(files.map(readAsBase64))
-    setPhotos((prev) => [...prev, ...read].slice(0, 8))
+  async function addFiles(files: FileList | File[]) {
+    const list = [...files].filter(f => f.type.startsWith('image/'))
+    if (!list.length) { toast.error('Only images are supported here'); return }
+    const imgs = await Promise.all(list.map(fileToImg))
+    setPhotos(prev => [...prev, ...imgs].slice(0, 8))
   }
 
   async function parsePhotos() {
@@ -503,7 +528,7 @@ function DeliveriesTab({ ingredients, onChanged }: { ingredients: Ingredient[]; 
       const res = await fetch('/api/ai/parse-delivery-photo', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          images: photos.map((p) => ({ media_type: p.media_type, data: p.data })),
+          images: photos.map(i => ({ media_type: i.media_type, data: i.data })),
           ingredients: ingredients.map(i => ({ id: i.id, name: i.name, packDescription: i.packDescription, packSize: i.packSize, packUnit: i.packUnit, supplier: i.supplier })),
         }),
       })
@@ -620,8 +645,8 @@ function DeliveriesTab({ ingredients, onChanged }: { ingredients: Ingredient[]; 
               }}
             >
               <input
-                type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple
-                onChange={(e) => { addFiles(e.target.files); e.target.value = '' }}
+                type="file" accept="image/*" multiple
+                onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = '' }}
                 style={{ display: 'none' }}
               />
               <p style={{ margin: '0 0 3px', fontSize: '13.5px', fontWeight: 600, color: '#374151' }}>
@@ -637,7 +662,7 @@ function DeliveriesTab({ ingredients, onChanged }: { ingredients: Ingredient[]; 
                 {photos.map((p, i) => (
                   <div key={p.name + i} style={{ position: 'relative' }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.url} alt={p.name} style={{ width: '84px', height: '84px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #f3f4f6' }} />
+                    <img src={p.preview} alt={p.name} style={{ width: '84px', height: '84px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #f3f4f6' }} />
                     <button
                       onClick={() => setPhotos(prev => prev.filter((_, idx) => idx !== i))}
                       title="Remove"
