@@ -10,6 +10,7 @@ import { getRecipes } from '@/lib/firestore/recipes'
 import { getIngredients } from '@/lib/firestore/ingredients'
 import { getAllOrders } from '@/lib/firestore/orders'
 import { getStaffUsers, StaffUser } from '@/lib/firestore/staffUsers'
+import { getTastings } from '@/lib/firestore/tastings'
 import {
   getDevelopment, updateDevelopmentLogged, updateDevelopment, syncDevelopmentForRange,
 } from '@/lib/firestore/development'
@@ -20,6 +21,7 @@ import { useTable, ColumnDef } from '@/hooks/useTable'
 import {
   Product, Recipe, Ingredient, Order, DevelopmentRecord, DevStage, DevVariant,
   DEV_STAGES, DEV_VARIANTS, DEV_DONE_STAGES, CORE_RANGE,
+  TastingSession, TASTING_STAGES, TASTING_VERDICTS,
 } from '@/types'
 import toast from 'react-hot-toast'
 
@@ -68,6 +70,7 @@ export default function DevelopmentPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [records, setRecords] = useState<DevelopmentRecord[]>([])
   const [staff, setStaff] = useState<StaffUser[]>([])
+  const [tastings, setTastings] = useState<TastingSession[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [variant, setVariant] = useState<DevVariant | 'all'>('all')
@@ -78,9 +81,13 @@ export default function DevelopmentPage() {
   const cols = useTable<Row>('development', COLUMNS)
 
   function load() {
-    Promise.all([getProducts(), getRecipes(), getIngredients(), getAllOrders(), getDevelopment(), getStaffUsers()])
-      .then(([p, r, i, o, d, s]) => {
-        setProducts(p); setRecipes(r); setIngredients(i); setOrders(o); setRecords(d); setStaff(s)
+    Promise.all([
+      getProducts(), getRecipes(), getIngredients(), getAllOrders(),
+      getDevelopment(), getStaffUsers(), getTastings(),
+    ])
+      .then(([p, r, i, o, d, s, t]) => {
+        setProducts(p); setRecipes(r); setIngredients(i); setOrders(o)
+        setRecords(d); setStaff(s); setTastings(t)
       })
       .finally(() => setLoading(false))
   }
@@ -491,6 +498,44 @@ export default function DevelopmentPage() {
                                   style={{ ...field, border: '1px solid #e5e7eb', color: r.record.blocker ? '#b91c1c' : undefined }}
                                 />
                               </div>
+
+                              {(() => {
+                                const poured = tastings
+                                  .filter((t) => t.items.some((i) => i.productId === r.record.productId && i.variant === r.record.variant))
+                                  .sort((a, b) => (b.scheduledAt?.getTime() ?? 0) - (a.scheduledAt?.getTime() ?? 0))
+                                if (!poured.length) return null
+                                return (
+                                  <div style={{ marginTop: '14px' }}>
+                                    <p style={{ fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>
+                                      Poured at {poured.length} tasting{poured.length === 1 ? '' : 's'}
+                                    </p>
+                                    {poured.map((t) => {
+                                      const item = t.items.find((i) => i.productId === r.record.productId && i.variant === r.record.variant)
+                                      const vc = TASTING_VERDICTS.find((v) => v.value === item?.verdict) ?? TASTING_VERDICTS[0]
+                                      const sc = TASTING_STAGES.find((x) => x.value === t.stage) ?? TASTING_STAGES[0]
+                                      return (
+                                        <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', fontSize: '12.5px' }}>
+                                          <Link href="/tastings" style={{ color: '#111827', fontWeight: 600 }}>{t.accountName}</Link>
+                                          <span style={{ color: '#9ca3af', fontSize: '11.5px' }}>
+                                            {t.scheduledAt ? format(t.scheduledAt, 'd MMM yyyy') : 'no date'}
+                                          </span>
+                                          <span style={{ fontSize: '10px', fontWeight: 700, padding: '1px 7px', borderRadius: '20px', background: sc.bg, color: sc.fg }}>
+                                            {sc.label}
+                                          </span>
+                                          {item?.verdict !== 'pending' && (
+                                            <span style={{ fontSize: '10px', fontWeight: 700, padding: '1px 7px', borderRadius: '20px', background: vc.bg, color: vc.fg }}>
+                                              {vc.label}
+                                            </span>
+                                          )}
+                                          <span style={{ marginLeft: 'auto', color: '#6b7280', fontVariantNumeric: 'tabular-nums' }}>
+                                            {item?.pricePerLitre ? money(item.pricePerLitre) + '/L' : ''}
+                                          </span>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )
+                              })()}
 
                               {r.venues.length > 0 && (
                                 <div style={{ marginTop: '14px' }}>

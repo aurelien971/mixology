@@ -88,6 +88,18 @@ const nav = [
     ),
   },
   {
+    label: 'Tastings',
+    href: '/tastings',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+        <path d="M4 3h10l-4.2 5.2V14" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" fill="none"/>
+        <line x1="6.5" y1="15" x2="11" y2="15" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+        <circle cx="13.5" cy="12.5" r="2.6" stroke="currentColor" strokeWidth="1.2" fill="#fff" opacity=".9"/>
+        <path d="M13.5 11.2v1.4l1 .6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
     label: 'COGS',
     href: '/cogs',
     icon: (

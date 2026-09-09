@@ -633,3 +633,72 @@ export function devProgress(records: DevelopmentRecord[]): { done: number; total
   const done = records.filter((r) => DEV_DONE_STAGES.includes(r.stage)).length
   return { done, total, pct: total ? Math.round((done / total) * 100) : 0 }
 }
+
+// ── Tastings ─────────────────────────────────────────────────────────────────
+// Winning a venue starts with putting the drinks in front of them at a price.
+// A tasting is that meeting: who it is with, when, which cocktails we are
+// pouring, what we would charge for each, and what came back.
+
+export type TastingStage =
+  | 'requested' | 'booked' | 'prepping' | 'poured' | 'won' | 'lost' | 'cancelled'
+
+export const TASTING_STAGES: { value: TastingStage; label: string; bg: string; fg: string }[] = [
+  { value: 'requested', label: 'Requested', bg: '#f3f4f6', fg: '#6b7280' },
+  { value: 'booked',    label: 'Booked',    bg: '#dbeafe', fg: '#1d4ed8' },
+  { value: 'prepping',  label: 'Prepping',  bg: '#f3e8ff', fg: '#7e22ce' },
+  { value: 'poured',    label: 'Poured',    bg: '#ffedd5', fg: '#c2410c' },
+  { value: 'won',       label: 'Won',       bg: '#dcfce7', fg: '#166534' },
+  { value: 'lost',      label: 'Lost',      bg: '#fee2e2', fg: '#991b1b' },
+  { value: 'cancelled', label: 'Cancelled', bg: '#f3f4f6', fg: '#9ca3af' },
+]
+
+/** Stages where the tasting is still ahead of us or in play. */
+export const TASTING_OPEN_STAGES: TastingStage[] = ['requested', 'booked', 'prepping', 'poured']
+
+export type TastingVerdict = 'pending' | 'yes' | 'maybe' | 'no'
+
+export const TASTING_VERDICTS: { value: TastingVerdict; label: string; bg: string; fg: string }[] = [
+  { value: 'pending', label: '—',     bg: '#f9fafb', fg: '#9ca3af' },
+  { value: 'yes',     label: 'Yes',   bg: '#dcfce7', fg: '#166534' },
+  { value: 'maybe',   label: 'Maybe', bg: '#fef3c7', fg: '#92400e' },
+  { value: 'no',      label: 'No',    bg: '#fee2e2', fg: '#991b1b' },
+]
+
+/** One cocktail on the pour list, with the price we are putting against it. */
+export interface TastingItem {
+  productId: string
+  productName: string
+  variant: DevVariant
+  /** What we would charge them per litre. */
+  pricePerLitre: number
+  /** Their menu price inc VAT, when we know it — drives the venue GP. */
+  rrp?: number
+  servingMl: number
+  verdict: TastingVerdict
+  notes?: string
+}
+
+export interface TastingSession {
+  id: string
+  /** An account we already sell to, when it is one. */
+  accountId?: string
+  /** Whoever we are pouring for — a prospect is just a name. */
+  accountName: string
+  isProspect: boolean
+  stage: TastingStage
+  scheduledAt?: Date
+  location?: string
+  owner?: string
+  contact?: string
+  items: TastingItem[]
+  nextStep?: string
+  notes?: string
+  updates?: ProjectUpdate[]
+  createdAt: Date
+  updatedAt: Date
+}
+
+export function tastingVerdicts(t: Pick<TastingSession, 'items'>): { yes: number; maybe: number; no: number; pending: number } {
+  const count = (v: TastingVerdict) => t.items.filter((i) => i.verdict === v).length
+  return { yes: count('yes'), maybe: count('maybe'), no: count('no'), pending: count('pending') }
+}
