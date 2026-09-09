@@ -438,19 +438,93 @@ function IngredientsTab({ ingredients, recipes, onChanged }: { ingredients: Ingr
 // tbody can't key a fragment-less tr from a function call; tiny wrapper
 function EditKeyed({ children }: { children: React.ReactNode }) { return <>{children}</> }
 
-// ── Deliveries tab — paste supplier email → parsed → stock in ────────────────
+// ── Deliveries tab — photo or email → parsed → stock in ─────────────────────
 
-interface ParsedItem { rawText: string; matchedIngredientId: string | null; matchedIngredientName: string | null; packs: number; confidence: string }
+interface ParsedItem {
+  rawText: string
+  matchedIngredientId: string | null
+  matchedIngredientName: string | null
+  packs: number
+  confidence: string
+  /** Only the photo route reads these off the paperwork. */
+  packDescription?: string | null
+  unitPrice?: number | null
+  /** Tick to write the price on the note back to the ingredient. */
+  takePrice?: boolean
+}
+
+type Source = 'photo' | 'email'
+
+/** Files → base64, which is what the vision API takes. */
+function readAsBase64(file: File): Promise<{ media_type: string; data: string; name: string; url: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result)
+      resolve({
+        media_type: file.type,
+        data: result.split(',')[1] ?? '',
+        name: file.name,
+        url: result,
+      })
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+const ALLOWED = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 
 function DeliveriesTab({ ingredients, onChanged }: { ingredients: Ingredient[]; onChanged: () => void }) {
+  const [source, setSource] = useState<Source>('photo')
   const [email, setEmail] = useState('')
+  const [photos, setPhotos] = useState<{ media_type: string; data: string; name: string; url: string }[]>([])
   const [parsing, setParsing] = useState(false)
   const [items, setItems] = useState<ParsedItem[] | null>(null)
   const [supplier, setSupplier] = useState<string | null>(null)
+  const [reference, setReference] = useState<string | null>(null)
+  const [deliveryDate, setDeliveryDate] = useState<string | null>(null)
   const [notes, setNotes] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  async function parse() {
+  async function addFiles(list: FileList | null) {
+    if (!list?.length) return
+    const files = Array.from(list).filter((f) => ALLOWED.includes(f.type))
+    if (files.length < list.length) toast.error('Only PNG, JPEG, WebP or GIF photos')
+    if (!files.length) return
+    const read = await Promise.all(files.map(readAsBase64))
+    setPhotos((prev) => [...prev, ...read].slice(0, 8))
+  }
+
+  async function parsePhotos() {
+    if (!photos.length) return
+    setParsing(true)
+    try {
+      const res = await fetch('/api/ai/parse-delivery-photo', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          images: photos.map((p) => ({ media_type: p.media_type, data: p.data })),
+          ingredients: ingredients.map(i => ({ id: i.id, name: i.name, packDescription: i.packDescription, packSize: i.packSize, packUnit: i.packUnit, supplier: i.supplier })),
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok || json.error) throw new Error(json.error ?? `API error ${res.status}`)
+      const parsed: ParsedItem[] = (json.items ?? []).map((it: ParsedItem) => ({
+        ...it,
+        matchedIngredientName: ingredients.find(g => g.id === it.matchedIngredientId)?.name ?? null,
+        takePrice: false,
+      }))
+      setItems(parsed)
+      setSupplier(json.supplier ?? null)
+      setReference(json.reference ?? null)
+      setDeliveryDate(json.deliveryDate ?? null)
+      setNotes(json.notes ?? null)
+      if (!parsed.length) toast.error('Nothing readable in those photos')
+    } catch (e) { console.error(e); toast.error(e instanceof Error ? e.message : 'Failed to read the photos') }
+    finally { setParsing(false) }
+  }
+
+  async function parseEmail() {
     if (!email.trim()) return
     setParsing(true)
     try {
@@ -465,10 +539,16 @@ function DeliveriesTab({ ingredients, onChanged }: { ingredients: Ingredient[]; 
       if (!res.ok || json.error) throw new Error(json.error ?? `API error ${res.status}`)
       setItems(json.items ?? [])
       setSupplier(json.supplier ?? null)
+      setReference(null); setDeliveryDate(null)
       setNotes(json.notes ?? null)
       if (!(json.items ?? []).length) toast.error('No items found in that email')
     } catch (e) { console.error(e); toast.error(e instanceof Error ? e.message : 'Failed to parse email') }
     finally { setParsing(false) }
+  }
+
+  function reset() {
+    setItems(null); setPhotos([]); setEmail('')
+    setSupplier(null); setReference(null); setDeliveryDate(null); setNotes(null)
   }
 
   async function confirm() {
@@ -477,89 +557,219 @@ function DeliveriesTab({ ingredients, onChanged }: { ingredients: Ingredient[]; 
     if (!matched.length) { toast.error('Nothing matched to your ingredients'); return }
     setSaving(true)
     try {
+      let repriced = 0
       for (const item of matched) {
         const ing = ingredients.find(i => i.id === item.matchedIngredientId)
         if (!ing) continue
         await recordStockMovement({
           ingredientId: ing.id, ingredientName: ing.name,
           type: 'delivery', packsDelta: item.packs,
-          note: `Delivery${supplier ? ` from ${supplier}` : ''}`,
+          note: `Delivery${supplier ? ` from ${supplier}` : ''}${reference ? ` · ${reference}` : ''}`,
         })
+        // The price on the note is the price we actually paid, so it beats
+        // whatever the library remembered — but only when it is asked for.
+        if (item.takePrice && item.unitPrice && item.unitPrice > 0) {
+          await updateIngredient(ing.id, { packPrice: item.unitPrice })
+          repriced++
+        }
       }
-      toast.success(`Stock updated — ${matched.length} ingredient${matched.length !== 1 ? 's' : ''} received`)
-      setItems(null); setEmail('')
+      toast.success(
+        `Stock updated — ${matched.length} ingredient${matched.length !== 1 ? 's' : ''} received`
+        + (repriced ? `, ${repriced} repriced` : '')
+      )
+      reset()
       onChanged()
     } catch (e) { console.error(e); toast.error('Failed to update stock') }
     finally { setSaving(false) }
   }
 
+  const priced = items?.filter(i => i.unitPrice && i.matchedIngredientId) ?? []
+
   return (
-    <div style={{ maxWidth: '760px' }}>
+    <div style={{ maxWidth: '860px' }}>
       <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', padding: '20px' }}>
-        <p style={{ fontSize: '14px', fontWeight: 600, color: '#111827', margin: '0 0 4px' }}>New supplier order arrived?</p>
-        <p style={{ fontSize: '12px', color: '#9ca3af', margin: '0 0 12px' }}>Paste the order email below — AI matches each item to your ingredients and adds the packs to stock.</p>
-        <textarea
-          value={email} onChange={e => setEmail(e.target.value)}
-          placeholder={'Hi team,\nPlease send:\n2x 25kg drums agave syrup\n6 bottles citric acid 1kg\n...'}
-          style={{ ...inp, minHeight: '140px', resize: 'vertical', lineHeight: 1.6, fontFamily: 'inherit' }}
-        />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
-          <Button onClick={parse} loading={parsing} disabled={!email.trim()}>{parsing ? 'Reading email…' : 'Analyze email'}</Button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '14px', marginBottom: '12px', flexWrap: 'wrap' }}>
+          <div>
+            <p style={{ fontSize: '14px', fontWeight: 600, color: '#111827', margin: '0 0 4px' }}>A delivery arrived?</p>
+            <p style={{ fontSize: '12px', color: '#9ca3af', margin: 0 }}>
+              {source === 'photo'
+                ? 'Photograph the delivery note, the invoice or the boxes. Every line is matched to your ingredients and checked before anything moves.'
+                : 'Paste the order email — each item is matched to your ingredients and the packs added to stock.'}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '4px', background: '#f3f4f6', padding: '3px', borderRadius: '9px' }}>
+            {([{ k: 'photo' as const, l: '📷 Photo' }, { k: 'email' as const, l: '✉️ Email' }]).map(o => (
+              <button key={o.k} onClick={() => { setSource(o.k); setItems(null) }} style={{
+                padding: '5px 13px', borderRadius: '7px', fontSize: '12.5px', fontWeight: 500, cursor: 'pointer', border: 'none',
+                background: source === o.k ? '#fff' : 'transparent',
+                color: source === o.k ? '#111827' : '#6b7280',
+                boxShadow: source === o.k ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              }}>{o.l}</button>
+            ))}
+          </div>
         </div>
+
+        {source === 'photo' ? (
+          <>
+            <label
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files) }}
+              style={{
+                display: 'block', border: '1.5px dashed #e5e7eb', borderRadius: '10px',
+                padding: '26px 20px', textAlign: 'center', cursor: 'pointer', background: '#fcfcfd',
+              }}
+            >
+              <input
+                type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple
+                onChange={(e) => { addFiles(e.target.files); e.target.value = '' }}
+                style={{ display: 'none' }}
+              />
+              <p style={{ margin: '0 0 3px', fontSize: '13.5px', fontWeight: 600, color: '#374151' }}>
+                Drop the photos here, or click to choose
+              </p>
+              <p style={{ margin: 0, fontSize: '12px', color: '#9ca3af' }}>
+                Delivery note, invoice, or a shot of what turned up. Up to eight.
+              </p>
+            </label>
+
+            {photos.length > 0 && (
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px' }}>
+                {photos.map((p, i) => (
+                  <div key={p.name + i} style={{ position: 'relative' }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.url} alt={p.name} style={{ width: '84px', height: '84px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #f3f4f6' }} />
+                    <button
+                      onClick={() => setPhotos(prev => prev.filter((_, idx) => idx !== i))}
+                      title="Remove"
+                      style={{
+                        position: 'absolute', top: '-6px', right: '-6px', width: '20px', height: '20px',
+                        borderRadius: '50%', border: '1px solid #e5e7eb', background: '#fff',
+                        cursor: 'pointer', color: '#6b7280', fontSize: '12px', lineHeight: 1, padding: 0,
+                      }}
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px', gap: '8px' }}>
+              {photos.length > 0 && !parsing && (
+                <Button variant="secondary" onClick={() => setPhotos([])}>Clear</Button>
+              )}
+              <Button onClick={parsePhotos} loading={parsing} disabled={!photos.length || parsing}>
+                {parsing ? 'Reading the delivery…' : `Read ${photos.length || ''} photo${photos.length === 1 ? '' : 's'}`}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <textarea
+              value={email} onChange={e => setEmail(e.target.value)}
+              placeholder={'Hi team,\nPlease send:\n2x 25kg drums agave syrup\n6 bottles citric acid 1kg\n...'}
+              style={{ ...inp, minHeight: '140px', resize: 'vertical', lineHeight: 1.6, fontFamily: 'inherit' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+              <Button onClick={parseEmail} loading={parsing} disabled={!email.trim()}>{parsing ? 'Reading email…' : 'Analyze email'}</Button>
+            </div>
+          </>
+        )}
       </div>
 
       {items && (
         <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #f3f4f6', marginTop: '16px', overflow: 'hidden' }}>
           <div style={{ padding: '14px 18px', borderBottom: '1px solid #f3f4f6' }}>
             <p style={{ fontSize: '14px', fontWeight: 600, color: '#111827', margin: 0 }}>
-              Found {items.length} item{items.length !== 1 ? 's' : ''}{supplier ? ` — ${supplier}` : ''}
+              Found {items.length} line{items.length !== 1 ? 's' : ''}{supplier ? ` — ${supplier}` : ''}
+              {reference && <span style={{ color: '#9ca3af', fontWeight: 400 }}> · {reference}</span>}
+              {deliveryDate && <span style={{ color: '#9ca3af', fontWeight: 400 }}> · {deliveryDate}</span>}
             </p>
-            {notes && <p style={{ fontSize: '12px', color: '#92400e', margin: '4px 0 0' }}>⚠ {notes}</p>}
+            <p style={{ fontSize: '12px', color: '#6b7280', margin: '4px 0 0' }}>
+              Nothing has moved yet. Check the quantities against the paper, then add it to stock.
+            </p>
+            {notes && <p style={{ fontSize: '12px', color: '#92400e', margin: '6px 0 0' }}>⚠ {notes}</p>}
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: '#f9fafb' }}>
-                <th style={th}>From email</th>
-                <th style={th}>Matched ingredient</th>
-                <th style={{ ...th, textAlign: 'right' }}>Packs</th>
-                <th style={th}>Confidence</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, i) => (
-                <tr key={i} style={{ borderTop: '1px solid #f9fafb' }}>
-                  <td style={{ ...td, color: '#6b7280', fontSize: '12px' }}>{item.rawText}</td>
-                  <td style={td}>
-                    <select
-                      style={{ ...inp, width: '200px' }}
-                      value={item.matchedIngredientId ?? ''}
-                      onChange={e => setItems(prev => prev!.map((x, idx) => idx === i ? { ...x, matchedIngredientId: e.target.value || null, matchedIngredientName: ingredients.find(g => g.id === e.target.value)?.name ?? null } : x))}
-                    >
-                      <option value="">— skip —</option>
-                      {ingredients.map(g => <option key={g.id} value={g.id}>{g.name} ({g.packDescription})</option>)}
-                    </select>
-                  </td>
-                  <td style={{ ...td, textAlign: 'right' }}>
-                    <input
-                      style={{ ...inp, width: '70px', textAlign: 'right' }} inputMode="decimal"
-                      value={String(item.packs)}
-                      onChange={e => setItems(prev => prev!.map((x, idx) => idx === i ? { ...x, packs: parseFloat(e.target.value) || 0 } : x))}
-                    />
-                  </td>
-                  <td style={td}>
-                    <span style={{
-                      fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
-                      background: item.confidence === 'high' ? '#f0fdf4' : item.confidence === 'medium' ? '#fefce8' : '#fef2f2',
-                      color: item.confidence === 'high' ? '#166534' : item.confidence === 'medium' ? '#854d0e' : '#991b1b',
-                    }}>{item.confidence}</span>
-                  </td>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '760px' }}>
+              <thead>
+                <tr style={{ background: '#f9fafb' }}>
+                  <th style={th}>On the paperwork</th>
+                  <th style={th}>Matched ingredient</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Packs</th>
+                  <th style={{ ...th, textAlign: 'right' }}>£ on the note</th>
+                  <th style={th}>Confidence</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          <div style={{ padding: '14px 18px', borderTop: '1px solid #f3f4f6', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-            <Button variant="secondary" onClick={() => setItems(null)}>Discard</Button>
-            <Button onClick={confirm} loading={saving}>Add to stock</Button>
+              </thead>
+              <tbody>
+                {items.map((item, i) => {
+                  const ing = ingredients.find(g => g.id === item.matchedIngredientId)
+                  const drift = ing && item.unitPrice ? item.unitPrice - ing.packPrice : null
+                  return (
+                    <tr key={i} style={{ borderTop: '1px solid #f9fafb' }}>
+                      <td style={{ ...td, color: '#6b7280', fontSize: '12px' }}>
+                        {item.rawText}
+                        {item.packDescription && (
+                          <span style={{ color: '#c4c4c4', marginLeft: '6px' }}>· {item.packDescription}</span>
+                        )}
+                      </td>
+                      <td style={td}>
+                        <select
+                          style={{ ...inp, width: '200px' }}
+                          value={item.matchedIngredientId ?? ''}
+                          onChange={e => setItems(prev => prev!.map((x, idx) => idx === i ? { ...x, matchedIngredientId: e.target.value || null, matchedIngredientName: ingredients.find(g => g.id === e.target.value)?.name ?? null } : x))}
+                        >
+                          <option value="">— skip —</option>
+                          {ingredients.map(g => <option key={g.id} value={g.id}>{g.name} ({g.packDescription})</option>)}
+                        </select>
+                      </td>
+                      <td style={{ ...td, textAlign: 'right' }}>
+                        <input
+                          style={{ ...inp, width: '70px', textAlign: 'right' }} inputMode="decimal"
+                          value={String(item.packs)}
+                          onChange={e => setItems(prev => prev!.map((x, idx) => idx === i ? { ...x, packs: parseFloat(e.target.value) || 0 } : x))}
+                        />
+                      </td>
+                      <td style={{ ...td, textAlign: 'right' }}>
+                        {!item.unitPrice ? (
+                          <span style={{ color: '#d1d5db', fontSize: '12px' }}>—</span>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                            <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>£{item.unitPrice.toFixed(2)}</span>
+                            {ing && drift !== null && Math.abs(drift) >= 0.01 && (
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: drift > 0 ? '#b45309' : '#166534', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!item.takePrice}
+                                  onChange={e => setItems(prev => prev!.map((x, idx) => idx === i ? { ...x, takePrice: e.target.checked } : x))}
+                                />
+                                was £{ing.packPrice.toFixed(2)} — use this
+                              </label>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td style={td}>
+                        <span style={{
+                          fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
+                          background: item.confidence === 'high' ? '#f0fdf4' : item.confidence === 'medium' ? '#fefce8' : '#fef2f2',
+                          color: item.confidence === 'high' ? '#166534' : item.confidence === 'medium' ? '#854d0e' : '#991b1b',
+                        }}>{item.confidence}</span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ padding: '14px 18px', borderTop: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <p style={{ margin: 0, fontSize: '11.5px', color: '#9ca3af' }}>
+              {items.filter(i => i.confidence === 'low').length > 0
+                ? `${items.filter(i => i.confidence === 'low').length} line${items.filter(i => i.confidence === 'low').length === 1 ? '' : 's'} the AI was unsure about — check those first.`
+                : priced.length > 0 ? 'Tick a price to update what the library thinks that pack costs.' : ''}
+            </p>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <Button variant="secondary" onClick={reset}>Discard</Button>
+              <Button onClick={confirm} loading={saving}>Add to stock</Button>
+            </div>
           </div>
         </div>
       )}
