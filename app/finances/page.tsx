@@ -273,10 +273,44 @@ export default function FinancesPage() {
         'Product', 'Product code', 'Bag volume (L)', 'Qty', 'Total litres',
         'Unit price (ex-VAT)', 'Line revenue (ex-VAT)', 'Cost per litre', 'Line COGS', 'Line profit',
         'Order revenue (ex-VAT)', 'Order COGS', 'Order profit', 'Order margin %', 'Missing costs',
+        'R&D status', 'Assignee', 'Brief',
+      ]
+      // R&D and consulting are sold as a project, not as bags, so they carry no
+      // line items — which is how every one of them fell out of this export.
+      const rd = (o: Order) => [
+        esc(o.rdStatus ?? ''),
+        esc(o.rdAssignee ?? ''),
+        esc((o.rdBrief ?? '').replace(/\s*\n\s*/g, ' · ')),
       ]
       const rows: string[] = [header.join(',')]
+      let projectRows = 0
       for (const o of active) {
         const p = calcOrderProfit(o, productMap)
+        if (p.lines.length === 0) {
+          // One row for the project itself. No COGS: the cost of R&D is Dima's
+          // time, which this system does not track, so it stays blank rather
+          // than printing the whole fee as profit.
+          projectRows++
+          rows.push([
+            esc(o.orderNumber),
+            format(o.createdAt, 'yyyy-MM-dd'),
+            esc(o.accountName),
+            esc(o.groupName ?? ''),
+            o.type === 'rd' ? 'R&D' : 'Order',
+            esc(o.status),
+            esc(o.source ?? 'internal'),
+            esc((o.rdBrief ?? '').split('\n')[0] || o.notes || (o.type === 'rd' ? 'R&D project' : 'No line items')),
+            '', '', 1, '',
+            p.revenue,
+            p.revenue,
+            '', '', '',
+            p.revenue,
+            '', '', '',
+            'no cost data',
+            ...rd(o),
+          ].join(','))
+          continue
+        }
         for (const l of p.lines) {
           rows.push([
             esc(o.orderNumber),
@@ -301,6 +335,7 @@ export default function FinancesPage() {
             p.hasMissingCosts ? '' : p.profit,
             p.hasMissingCosts ? '' : p.margin,
             p.hasMissingCosts ? 'YES' : '',
+            ...rd(o),
           ].join(','))
         }
       }
@@ -311,7 +346,10 @@ export default function FinancesPage() {
       a.download = `foodlab-orders-export-${format(new Date(), 'yyyy-MM-dd')}.csv`
       a.click()
       URL.revokeObjectURL(url)
-      toast.success(`Exported ${active.length} orders (${rows.length - 1} lines)`)
+      toast.success(
+        `Exported ${active.length} orders (${rows.length - 1} lines)`
+        + (projectRows ? `, including ${projectRows} R&D project${projectRows === 1 ? '' : 's'}` : '')
+      )
     } catch (e) {
       console.error(e)
       toast.error('Export failed')
