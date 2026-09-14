@@ -66,7 +66,12 @@ export default function AccountsPage() {
       <Header
         title="Accounts"
         subtitle="All client accounts"
-        action={<Button size="sm" onClick={() => setShowModal(true)}>+ New account</Button>}
+        action={
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Link href="/groups"><Button size="sm" variant="ghost">View groups</Button></Link>
+            <Button size="sm" onClick={() => setShowModal(true)}>+ New account</Button>
+          </div>
+        }
       />
 
       {/* Business line tabs */}

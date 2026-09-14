@@ -624,6 +624,12 @@ export interface DevelopmentRecord {
   /** Venues this version has actually been placed with. */
   placedWith?: string[]
 
+  /**
+   * Taken off the board — some drinks have no sensible no-spirit version.
+   * Kept rather than deleted so a sync with the range does not bring it back.
+   */
+  removed?: boolean
+
   createdAt: Date
   updatedAt: Date
 }

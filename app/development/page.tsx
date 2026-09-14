@@ -14,13 +14,14 @@ import { getTastings } from '@/lib/firestore/tastings'
 import {
   getDevelopment, updateDevelopmentLogged, updateDevelopment, syncDevelopmentForRange,
 } from '@/lib/firestore/development'
+import RecipeEditor from '@/components/recipes/RecipeEditor'
 import { computeRecipeCost } from '@/lib/costing'
 import { reconcileCoreRange, applyCoreRange, strays, RangeRow } from '@/lib/coreRange'
 import { splitRecipeCost } from '@/lib/pricing'
 import { useTable, ColumnDef } from '@/hooks/useTable'
 import {
   Product, Recipe, Ingredient, Order, DevelopmentRecord, DevStage, DevVariant,
-  DEV_STAGES, DEV_VARIANTS, DEV_DONE_STAGES, CORE_RANGE,
+  DEV_STAGES, DEV_VARIANTS, DEV_DONE_STAGES, CORE_RANGE, matchesClassic,
   TastingSession, TASTING_STAGES, TASTING_VERDICTS,
 } from '@/types'
 import toast from 'react-hot-toast'
@@ -50,7 +51,7 @@ interface Row {
 }
 
 const COLUMNS: ColumnDef<Row>[] = [
-  { key: 'drink',   label: 'Drink',        width: 190, sortValue: (r) => r.record.productName },
+  { key: 'drink',   label: 'Drink',        width: 240, sortValue: (r) => matchesClassic(r.product?.name ?? r.record.productName) ?? r.record.productName },
   { key: 'variant', label: 'Version',      width: 116, sortValue: (r) => r.record.variant },
   { key: 'stage',   label: 'Stage',        width: 144, sortValue: (r) => DEV_STAGES.findIndex((s) => s.value === r.record.stage) },
   { key: 'owner',   label: 'Owner',        width: 106, sortValue: (r) => r.record.owner },
@@ -77,6 +78,8 @@ export default function DevelopmentPage() {
   const [open, setOpen] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const [showSetup, setShowSetup] = useState(false)
+  const [recipeFor, setRecipeFor] = useState<string | null>(null)
+  const [showRemoved, setShowRemoved] = useState(false)
 
   const cols = useTable<Row>('development', COLUMNS)
 
@@ -131,8 +134,12 @@ export default function DevelopmentPage() {
     } finally { setBusy(false) }
   }
 
+  // Removed versions stay in Firestore so a sync does not resurrect them.
+  const live = useMemo(() => records.filter((r) => !r.removed), [records])
+  const removed = useMemo(() => records.filter((r) => r.removed), [records])
+
   const rows = useMemo<Row[]>(() => {
-    return records
+    return (showRemoved ? removed : live)
       .filter((r) => variant === 'all' || r.variant === variant)
       .map((r) => {
         const product = products.find((p) => p.id === r.productId)
@@ -166,20 +173,33 @@ export default function DevelopmentPage() {
         }
       })
       .sort((a, b) => a.record.productName.localeCompare(b.record.productName))
-  }, [records, products, recipes, ingredients, orders, variant])
+  }, [live, removed, showRemoved, products, recipes, ingredients, orders, variant])
 
   const stats = useMemo(() => {
-    const done = records.filter((r) => DEV_DONE_STAGES.includes(r.stage)).length
+    const done = live.filter((r) => DEV_DONE_STAGES.includes(r.stage)).length
     return {
-      drinks: new Set(records.map((r) => r.productId)).size,
-      versions: records.length,
+      drinks: new Set(live.map((r) => r.productId)).size,
+      versions: live.length,
       done,
-      pct: records.length ? Math.round((done / records.length) * 100) : 0,
-      tasting: records.filter((r) => r.stage === 'tasting').length,
-      blocked: records.filter((r) => r.blocker).length,
-      upcoming: records.filter((r) => r.nextTasting && r.nextTasting >= new Date()).length,
+      pct: live.length ? Math.round((done / live.length) * 100) : 0,
+      tasting: live.filter((r) => r.stage === 'tasting').length,
+      blocked: live.filter((r) => r.blocker).length,
+      upcoming: live.filter((r) => r.nextTasting && r.nextTasting >= new Date()).length,
     }
-  }, [records])
+  }, [live])
+
+  async function removeVersion(rec: DevelopmentRecord) {
+    const label = DEV_VARIANTS.find((v) => v.value === rec.variant)?.short ?? rec.variant
+    if (!confirm(`Take ${rec.productName} (${label}) off the board?\n\nIt stays out even when you sync with the range. You can restore it later.`)) return
+    await patch(rec, { removed: true }, `Removed from the board (${label})`)
+    if (open === rec.id) setOpen(null)
+    toast.success(`${rec.productName} · ${label} removed`)
+  }
+
+  async function restoreVersion(rec: DevelopmentRecord) {
+    await patch(rec, { removed: false }, 'Restored to the board')
+    toast.success(`${rec.productName} restored`)
+  }
 
   async function patch(rec: DevelopmentRecord, data: Partial<DevelopmentRecord>, logNote?: string) {
     setRecords((prev) => prev.map((r) => (r.id === rec.id ? { ...r, ...data, updatedAt: new Date() } : r)))
@@ -194,6 +214,14 @@ export default function DevelopmentPage() {
 
   return (
     <div>
+      {recipeFor && (
+        <RecipeEditor
+          presetProductId={recipeFor}
+          products={products.filter((p) => p.isActive !== false)}
+          onSaved={() => { load() }}
+          onClose={() => setRecipeFor(null)}
+        />
+      )}
       <Header
         title="Product development"
         subtitle="Getting the core classics into every venue we already sell to, one version at a time."
@@ -335,7 +363,19 @@ export default function DevelopmentPage() {
             {'short' in v ? v.short : v.label}
           </button>
         ))}
-        <span style={{ marginLeft: 'auto' }}><cols.ResetButton /></span>
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {removed.length > 0 && (
+            <button
+              onClick={() => setShowRemoved((v) => !v)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                showRemoved ? 'bg-gray-900 text-white' : 'text-gray-400 hover:bg-gray-100'
+              }`}
+            >
+              {showRemoved ? '← Back to the board' : `${removed.length} removed`}
+            </button>
+          )}
+          <cols.ResetButton />
+        </span>
       </div>
 
       {loading ? (
@@ -362,18 +402,57 @@ export default function DevelopmentPage() {
                   <React.Fragment key={r.record.id}>
                     <tr style={{ borderBottom: '1px solid #f9fafb', background: isOpen ? '#f9fafb' : undefined }}>
                       <td style={{ ...td, fontWeight: 600, color: '#111827' }}>
-                        <button
-                          onClick={() => setOpen(isOpen ? null : r.record.id)}
-                          style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit', fontWeight: 700, textAlign: 'left' }}
-                        >
-                          {r.record.productName}
-                        </button>
-                        {!r.recipe && (
-                          <span style={{
-                            marginLeft: '7px', fontSize: '10px', fontWeight: 700, padding: '1px 6px',
-                            borderRadius: '20px', background: '#fee2e2', color: '#991b1b', whiteSpace: 'nowrap',
-                          }}>no recipe</span>
-                        )}
+                        {(() => {
+                          // Show the drink as the range names it. The catalog
+                          // entry behind it can be "Negroni TMS" or an older
+                          // product the alias picked up — that goes underneath.
+                          const catalogName = r.product?.name ?? r.record.productName
+                          const shown = matchesClassic(catalogName) ?? catalogName
+                          return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                              <div style={{ minWidth: 0 }}>
+                                <button
+                                  onClick={() => setOpen(isOpen ? null : r.record.id)}
+                                  style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit', fontWeight: 700, textAlign: 'left' }}
+                                >
+                                  {shown}
+                                </button>
+                                {shown !== catalogName && (
+                                  <p style={{ margin: 0, fontSize: '10.5px', color: '#9ca3af', fontWeight: 400, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {catalogName} · {r.product?.productCode}
+                                  </p>
+                                )}
+                              </div>
+                              {!r.recipe && !showRemoved && (
+                                <button
+                                  onClick={() => setRecipeFor(r.record.productId)}
+                                  title="Write the recipe for this drink"
+                                  style={{
+                                    border: 'none', fontSize: '10px', fontWeight: 700, padding: '2px 7px',
+                                    borderRadius: '20px', background: '#fee2e2', color: '#991b1b',
+                                    whiteSpace: 'nowrap', cursor: 'pointer',
+                                  }}
+                                >+ recipe</button>
+                              )}
+                              <span style={{ marginLeft: 'auto' }}>
+                                {showRemoved ? (
+                                  <button
+                                    onClick={() => restoreVersion(r.record)}
+                                    style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: '6px', fontSize: '11px', padding: '2px 8px', cursor: 'pointer', color: '#374151' }}
+                                  >Restore</button>
+                                ) : (
+                                  <button
+                                    onClick={() => removeVersion(r.record)}
+                                    title="Take this version off the board"
+                                    style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#d1d5db', fontSize: '15px', lineHeight: 1, padding: '0 2px' }}
+                                    onMouseEnter={(e) => (e.currentTarget.style.color = '#dc2626')}
+                                    onMouseLeave={(e) => (e.currentTarget.style.color = '#d1d5db')}
+                                  >×</button>
+                                )}
+                              </span>
+                            </div>
+                          )
+                        })()}
                       </td>
                       <td style={td}>
                         <span style={{
@@ -482,9 +561,12 @@ export default function DevelopmentPage() {
                                   </select>
                                 </>
                               ) : (
-                                <p style={{ margin: 0, fontSize: '13px', color: '#b45309' }}>
-                                  No recipe on this drink yet — add one from the catalog and it will cost itself.
-                                </p>
+                                <div>
+                                  <p style={{ margin: '0 0 10px', fontSize: '13px', color: '#b45309' }}>
+                                    No recipe on this drink yet, so nothing here can be costed.
+                                  </p>
+                                  <Button size="sm" onClick={() => setRecipeFor(r.record.productId)}>+ Write the recipe</Button>
+                                </div>
                               )}
 
                               <div style={{ marginTop: '14px' }}>

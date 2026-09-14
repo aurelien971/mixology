@@ -248,6 +248,69 @@ export default function ProductPricingModal({ product, onClose }: Props) {
           )}
         </div>
 
+        {/* when it last sold */}
+        <div style={{ border: '1px solid #f3f4f6', borderRadius: '10px', padding: '14px 16px', marginBottom: '18px' }}>
+          <p style={{ fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>
+            Sales
+          </p>
+          {!sales.last ? (
+            <p style={{ margin: 0, fontSize: '13px', color: '#9ca3af' }}>Never ordered.</p>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: '26px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                <span>
+                  <strong style={{ fontSize: '15px', fontWeight: 700, color: '#111827' }}>
+                    {formatDistanceToNow(sales.last.date, { addSuffix: true }).replace('about ', '')}
+                  </strong>
+                  <span style={{ fontSize: '12px', color: '#6b7280', marginLeft: '6px' }}>
+                    last sold, to {sales.last.account}
+                  </span>
+                </span>
+                <span style={{ fontSize: '12.5px', color: '#6b7280' }}>
+                  <strong style={{ color: '#111827' }}>{sales.rows.length}</strong> order lines ·{' '}
+                  <strong style={{ color: '#111827' }}>{Math.round(sales.litres)}L</strong> ·{' '}
+                  <strong style={{ color: '#111827' }}>{money(sales.value)}</strong> ·{' '}
+                  {sales.accounts} venue{sales.accounts === 1 ? '' : 's'}
+                </span>
+              </div>
+              <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                <thead>
+                  <tr>
+                    {['Date', 'Sold to', 'Order', 'Litres', '£ / L', 'Value'].map((h, i) => (
+                      <th key={h} style={{
+                        padding: '0 10px 6px ' + (i ? '10px' : '0'), fontSize: '10px', fontWeight: 600, color: '#9ca3af',
+                        textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: i > 2 ? 'right' : 'left',
+                        position: 'sticky', top: 0, background: '#fff',
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sales.rows.map((r, i) => (
+                    <tr key={r.orderId + i} style={{ borderTop: i ? '1px solid #fafafa' : 'none' }}>
+                      <td style={{ padding: '5px 10px 5px 0', color: '#6b7280', fontFamily: 'monospace', fontSize: '11.5px' }}>
+                        {format(r.date, 'd MMM yyyy')}
+                      </td>
+                      <td style={{ padding: '5px 10px', color: '#374151' }}>{r.account}</td>
+                      <td style={{ padding: '5px 10px' }}>
+                        <Link href={`/orders/${r.orderId}`} style={{ color: '#1d4ed8', fontFamily: 'monospace', fontSize: '11.5px' }}>{r.orderNumber}</Link>
+                      </td>
+                      <td style={{ padding: '5px 10px', textAlign: 'right', color: '#6b7280', fontVariantNumeric: 'tabular-nums' }}>{r.litres}L</td>
+                      <td style={{ padding: '5px 10px', textAlign: 'right', color: '#6b7280', fontVariantNumeric: 'tabular-nums' }}>
+                        {r.litres > 0 ? money(r.value / r.litres) : '—'}
+                      </td>
+                      <td style={{ padding: '5px 0', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{money(r.value)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              </div>
+
+            </>
+          )}
+        </div>
+
         {/* the recipe, in the same view */}
         <div style={{ border: '1px solid #f3f4f6', borderRadius: '10px', padding: '14px 16px', marginBottom: '18px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px' }}>
@@ -310,54 +373,6 @@ export default function ProductPricingModal({ product, onClose }: Props) {
                 </div>
               )
             })
-          )}
-        </div>
-
-        {/* when it last sold */}
-        <div style={{ border: '1px solid #f3f4f6', borderRadius: '10px', padding: '14px 16px', marginBottom: '18px' }}>
-          <p style={{ fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>
-            Sales
-          </p>
-          {!sales.last ? (
-            <p style={{ margin: 0, fontSize: '13px', color: '#9ca3af' }}>Never ordered.</p>
-          ) : (
-            <>
-              <div style={{ display: 'flex', gap: '26px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                <span>
-                  <strong style={{ fontSize: '15px', fontWeight: 700, color: '#111827' }}>
-                    {formatDistanceToNow(sales.last.date, { addSuffix: true }).replace('about ', '')}
-                  </strong>
-                  <span style={{ fontSize: '12px', color: '#6b7280', marginLeft: '6px' }}>
-                    last sold, to {sales.last.account}
-                  </span>
-                </span>
-                <span style={{ fontSize: '12.5px', color: '#6b7280' }}>
-                  <strong style={{ color: '#111827' }}>{sales.rows.length}</strong> order lines ·{' '}
-                  <strong style={{ color: '#111827' }}>{Math.round(sales.litres)}L</strong> ·{' '}
-                  <strong style={{ color: '#111827' }}>{money(sales.value)}</strong> ·{' '}
-                  {sales.accounts} venue{sales.accounts === 1 ? '' : 's'}
-                </span>
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
-                <tbody>
-                  {sales.rows.slice(0, 6).map((r, i) => (
-                    <tr key={r.orderId + i} style={{ borderTop: i ? '1px solid #fafafa' : 'none' }}>
-                      <td style={{ padding: '5px 10px 5px 0', color: '#6b7280', fontFamily: 'monospace', fontSize: '11.5px' }}>
-                        {format(r.date, 'd MMM yyyy')}
-                      </td>
-                      <td style={{ padding: '5px 10px', color: '#374151' }}>{r.account}</td>
-                      <td style={{ padding: '5px 10px', textAlign: 'right', color: '#6b7280', fontVariantNumeric: 'tabular-nums' }}>{r.litres}L</td>
-                      <td style={{ padding: '5px 0', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{money(r.value)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {sales.rows.length > 6 && (
-                <p style={{ margin: '8px 0 0', fontSize: '11.5px', color: '#9ca3af' }}>
-                  and {sales.rows.length - 6} more
-                </p>
-              )}
-            </>
           )}
         </div>
 

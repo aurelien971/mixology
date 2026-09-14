@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import Button from '@/components/ui/Button'
 import { createTasting } from '@/lib/firestore/tastings'
+import { createAccount } from '@/lib/firestore/accounts'
 import { splitRecipeCost } from '@/lib/pricing'
 import {
   Account, Product, Recipe, Ingredient, TastingItem, TastingStage,
@@ -30,6 +31,10 @@ const input: React.CSSProperties = {
 }
 
 function money(n: number) { return '£' + n.toFixed(2) }
+
+// Our own tastings — the team tasting the range before anyone outside does.
+const FOODLAB = '__foodlab__'
+const isFoodlab = (a: Account) => /^\s*food\s*lab\b/i.test(a.tradingName || a.legalName || '')
 
 export default function NewTastingModal({ accounts, products, recipes, ingredients, staff, onClose, onSaved }: Props) {
   const [accountId, setAccountId] = useState('')
@@ -95,18 +100,60 @@ export default function NewTastingModal({ accounts, products, recipes, ingredien
   }
 
   const items = Object.values(picked)
-  const account = accounts.find((a) => a.id === accountId)
-  const name = account ? (account.tradingName || account.legalName) : prospect.trim()
+  const foodlabAccount = accounts.find(isFoodlab)
+  const internal = accountId === FOODLAB
+  const account = internal ? foodlabAccount : accounts.find((a) => a.id === accountId)
+  const name = internal ? (foodlabAccount?.tradingName || 'Foodlab') : account ? (account.tradingName || account.legalName) : prospect.trim()
+
+  // Bulk pick across whatever the list is showing — a team tasting is the
+  // whole range in both formats, and forty clicks is not a workflow.
+  function pickAll(variants: DevVariant[]) {
+    setPicked((prev) => {
+      const next = { ...prev }
+      for (const p of pool) {
+        for (const variant of variants) {
+          const key = `${p.id}§${variant}`
+          if (next[key]) continue
+          const cost = costs[p.id]?.[variant]
+          next[key] = {
+            productId: p.id,
+            productName: p.name,
+            variant,
+            pricePerLitre: cost ? Math.round(cost * 2 * 100) / 100 : 0,
+            servingMl: p.recommendedServingG || 100,
+            verdict: 'pending',
+          }
+        }
+      }
+      return next
+    })
+  }
 
   async function save() {
     if (!name) return toast.error('Who is the tasting for?')
     if (!items.length) return toast.error('Pick at least one cocktail to pour')
     setSaving(true)
     try {
+      // Foodlab becomes a real account the first time we taste for ourselves,
+      // so internal tastings sit in the same lists as everyone else's.
+      let accountRef = account
+      if (internal && !accountRef) {
+        const id = await createAccount({
+          legalName: 'Foodlab',
+          tradingName: 'Foodlab',
+          type: 'internal',
+          email: 'aurelien@foodlab.is',
+          address: { line1: '', city: 'London', postcode: '' },
+          paymentTerms: 'upfront',
+          businessLine: 'cocktail',
+          notes: 'Internal — our own tastings and R&D.',
+        })
+        accountRef = { id, legalName: 'Foodlab', tradingName: 'Foodlab' } as Account
+      }
       await createTasting({
-        accountId: account?.id,
+        accountId: accountRef?.id,
         accountName: name,
-        isProspect: !account,
+        isProspect: !accountRef,
         stage,
         scheduledAt: when ? new Date(when + 'T12:00:00') : undefined,
         location: where.trim() || undefined,
@@ -155,7 +202,8 @@ export default function NewTastingModal({ accounts, products, recipes, ingredien
               style={{ ...input, cursor: 'pointer' }}
             >
               <option value="">A prospect — type the name →</option>
-              {accounts.map((a) => (
+              <option value={FOODLAB}>Foodlab — internal tasting</option>
+              {accounts.filter((a) => !isFoodlab(a)).map((a) => (
                 <option key={a.id} value={a.id}>{a.tradingName || a.legalName}</option>
               ))}
             </select>
@@ -226,6 +274,33 @@ export default function NewTastingModal({ accounts, products, recipes, ingredien
                 {showAll ? 'Core range only' : 'Show everything'}
               </button>
             </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11.5px', color: '#9ca3af', marginRight: '2px' }}>
+              All {pool.length} shown:
+            </span>
+            {[
+              { l: 'With spirit', v: ['premix'] as DevVariant[] },
+              { l: 'No spirit', v: ['syrup'] as DevVariant[] },
+              { l: 'Both', v: ['premix', 'syrup'] as DevVariant[] },
+            ].map((b) => (
+              <button
+                key={b.l}
+                onClick={() => pickAll(b.v)}
+                disabled={!pool.length}
+                style={{
+                  border: '1px solid #e5e7eb', background: '#fff', borderRadius: '20px',
+                  padding: '3px 11px', fontSize: '11.5px', fontWeight: 600, color: '#374151', cursor: 'pointer',
+                }}
+              >+ {b.l}</button>
+            ))}
+            {items.length > 0 && (
+              <button
+                onClick={() => setPicked({})}
+                style={{ border: 'none', background: 'none', fontSize: '11.5px', color: '#9ca3af', cursor: 'pointer', marginLeft: '4px' }}
+              >Clear all</button>
+            )}
           </div>
 
           <div style={{ maxHeight: '230px', overflowY: 'auto', border: '1px solid #f9fafb', borderRadius: '8px' }}>

@@ -18,18 +18,6 @@ const nav = [
     ),
   },
   {
-    label: 'Groups',
-    href: '/groups',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
-        <circle cx="5" cy="7" r="2.5" stroke="currentColor" strokeWidth="1.4" fill="none" opacity=".9" />
-        <circle cx="13" cy="7" r="2.5" stroke="currentColor" strokeWidth="1.4" fill="none" opacity=".9" />
-        <path d="M1 15c0-2.5 1.8-4 4-4s4 1.5 4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none" opacity=".9" />
-        <path d="M10 15c0-2.5 1.8-4 3-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none" opacity=".5" />
-      </svg>
-    ),
-  },
-  {
     label: 'Accounts',
     href: '/accounts',
     icon: (
@@ -106,15 +94,6 @@ const nav = [
       <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
         <circle cx="9" cy="9" r="7" stroke="currentColor" strokeWidth="1.4" fill="none"/>
         <path d="M11.5 6.5c-.5-.8-1.4-1.2-2.5-1.2-1.5 0-2.6.8-2.6 1.9 0 2.6 5.4 1.2 5.4 3.8 0 1.1-1.1 1.9-2.8 1.9-1.2 0-2.2-.5-2.7-1.3M9 4v10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-      </svg>
-    ),
-  },
-  {
-    label: 'Swaps',
-    href: '/swaps',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
-        <path d="M3 6h9l-2.5-2.5M15 12H6l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
       </svg>
     ),
   },

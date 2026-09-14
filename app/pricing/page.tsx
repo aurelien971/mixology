@@ -295,6 +295,7 @@ export default function PricingPage() {
         subtitle="What we charge so the venue keeps its GP and we still make money — on both formats."
         action={
           <div style={{ display: 'flex', gap: '8px' }}>
+            <Link href="/swaps"><Button size="sm" variant="ghost">Swaps</Button></Link>
             <Link href="/range"><Button size="sm" variant="ghost">Change the range</Button></Link>
             <Link href="/pricing/alcohol"><Button size="sm" variant="secondary">Mark the spirits</Button></Link>
             <Button size="sm" onClick={exportCsv}>↓ Export this scenario</Button>

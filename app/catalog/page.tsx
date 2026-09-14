@@ -230,7 +230,10 @@ export default function CatalogPage() {
               {filtered.map((product) => (
                 <tr
                   key={product.id}
-                  className={`border-b border-gray-50 transition-colors ${product.costMissing ? 'bg-amber-50 hover:bg-amber-50' : 'hover:bg-gray-50'}`}
+                  onClick={() => setPricingProduct(product)}
+                  title="Open — who bought it, when, for how much, and the recipe"
+                  style={{ cursor: 'pointer' }}
+                  className={`border-b border-gray-50 transition-colors ${product.costMissing ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-gray-50'}`}
                 >
                   <td className="px-5 py-3 text-xs text-gray-400 font-mono">
                     {product.productCode}
@@ -279,7 +282,7 @@ export default function CatalogPage() {
                     {product.costMissing ? (
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
                         <button
-                          onClick={() => setEditingProduct(product)}
+                          onClick={(e) => { e.stopPropagation(); setEditingProduct(product) }}
                           style={{
                             padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
                             background: '#92400e', color: '#fff', border: 'none', cursor: 'pointer',
@@ -306,7 +309,6 @@ export default function CatalogPage() {
                       </div>
                     ) : (
                       <div style={{ display: 'inline-flex', gap: '2px' }}>
-                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setPricingProduct(product) }}>Price</Button>
                         <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setEditingProduct(product) }}>Edit</Button>
                       </div>
                     )}
