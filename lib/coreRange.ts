@@ -55,7 +55,7 @@ export function strays(products: Product[]): Product[] {
   return products.filter((p) => p.isClassic && !keys.has(normalizeDrinkName(p.name)))
 }
 
-function nextCode(products: Product[]): number {
+export function nextCode(products: Product[]): number {
   const nums = products
     .map((p) => parseInt((p.productCode || '').replace('FL-', ''), 10))
     .filter((n) => Number.isFinite(n))

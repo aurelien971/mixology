@@ -8,6 +8,7 @@ import {
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import NewTastingModal from '@/components/tastings/NewTastingModal'
+import BriefDropModal from '@/components/tastings/BriefDropModal'
 import { getProducts } from '@/lib/firestore/catalog'
 import { getRecipes } from '@/lib/firestore/recipes'
 import { getIngredients } from '@/lib/firestore/ingredients'
@@ -64,6 +65,7 @@ export default function TastingsPage() {
   const [staff, setStaff] = useState<StaffUser[]>([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
+  const [dropping, setDropping] = useState(false)
   const [filter, setFilter] = useState<TastingStage | 'all' | 'open'>('open')
   const [open, setOpen] = useState<string | null>(null)
   const [note, setNote] = useState('')
@@ -163,6 +165,15 @@ export default function TastingsPage() {
 
   return (
     <div>
+      {dropping && (
+        <BriefDropModal
+          accounts={accounts}
+          ingredients={ingredients}
+          staff={staff}
+          onClose={() => setDropping(false)}
+          onSaved={load}
+        />
+      )}
       {adding && (
         <NewTastingModal
           accounts={accounts}
@@ -178,7 +189,12 @@ export default function TastingsPage() {
       <Header
         title="Tastings"
         subtitle="Who we are pouring for, what is on the list, and what it would cost them."
-        action={<Button size="sm" onClick={() => setAdding(true)}>New tasting</Button>}
+        action={
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Button size="sm" variant="secondary" onClick={() => setDropping(true)}>📥 Drop a brief</Button>
+            <Button size="sm" onClick={() => setAdding(true)}>New tasting</Button>
+          </div>
+        }
       />
 
       <div style={{
