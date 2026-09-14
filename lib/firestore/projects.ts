@@ -15,8 +15,9 @@ const COLLECTION = 'projects'
 
 function fromFirestore(id: string, data: Record<string, unknown>): Project {
   return {
-    ...(data as Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'dueDate' | 'parkedUntil'>),
+    ...(data as Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'startDate' | 'dueDate' | 'parkedUntil'>),
     id,
+    startDate: (data.startDate as Timestamp)?.toDate(),
     dueDate: (data.dueDate as Timestamp)?.toDate(),
     parkedUntil: (data.parkedUntil as Timestamp)?.toDate(),
     createdAt: (data.createdAt as Timestamp)?.toDate() ?? new Date(),
@@ -96,6 +97,7 @@ export async function updateProjectLogged(
   const described: Partial<Record<Loggable, (v: unknown) => string>> = {
     stage:      (v) => `Stage → ${v}`,
     owner:      (v) => (v ? `Owner → ${v}` : 'Owner cleared'),
+    startDate:  (v) => (v ? `Work started ${(v as Date).toLocaleDateString('en-GB')}` : 'Start date cleared'),
     dueDate:    (v) => (v ? `Due ${(v as Date).toLocaleDateString('en-GB')}` : 'Due date cleared'),
     blocker:    (v) => (v ? `Blocked: ${v}` : 'Blocker cleared'),
     decision:   (v) => (v === 'top' ? 'Picked for this month' : v === 'parked' ? 'Parked' : 'Unpicked'),

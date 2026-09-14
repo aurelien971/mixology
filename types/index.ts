@@ -440,6 +440,7 @@ export interface Project {
 
   owner?: string                // single accountable name
   assignees?: string[]          // everyone else on it
+  startDate?: Date              // when work actually began
   dueDate?: Date
   nextStep?: string
 

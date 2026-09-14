@@ -402,6 +402,16 @@ export default function ProjectPanel({ id, onClose, onChanged, onDeleted }: {
               </div>
 
               <div>
+                <span style={label}>Work started</span>
+                <input
+                  type="date"
+                  value={p.startDate ? format(p.startDate, 'yyyy-MM-dd') : ''}
+                  onChange={(e) => save({ startDate: e.target.value ? new Date(e.target.value + 'T12:00:00') : undefined })}
+                  style={{ ...input, fontFamily: 'monospace' }}
+                />
+              </div>
+
+              <div>
                 <span style={label}>Due</span>
                 <input
                   type="date"

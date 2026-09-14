@@ -135,6 +135,7 @@ const COLUMNS: Col[] = [
   { key: 'location',   label: 'Where',      sort: 'location',    w: 74 },
   { key: 'stage',      label: 'Stage',      sort: 'stage',       w: 124 },
   { key: 'owner',      label: 'Owner',      sort: 'owner',       w: 108 },
+  { key: 'started',    label: 'Started',    sort: 'startDate',   w: 124 },
   { key: 'due',        label: 'Due',        sort: 'dueDate',     w: 124 },
   { key: 'nextStep',   label: 'Next step',  sort: 'nextStep',    w: 180 },
   { key: 'blocker',    label: 'Blocker',    sort: 'blocker',     w: 160 },
@@ -150,11 +151,15 @@ const COLUMNS: Col[] = [
 ]
 
 const WIDTH_KEY = 'foodlab-project-cols'
+const HIDDEN_KEY = 'foodlab-project-hidden-cols'
+
+// What a column is called in the picker, where its header is only a symbol.
+const PICKER_LABEL: Record<string, string> = { top: '★ This month', del: 'Delete' }
 
 type SortKey =
   | 'title' | 'kind' | 'stage' | 'owner' | 'dueDate' | 'nextStep'
   | 'blocker' | 'gatekeeper' | 'opportunity' | 'prizeGbp' | 'effortDays' | 'score' | 'updatedAt'
-  | 'category' | 'location' | 'notes' | 'paid'
+  | 'category' | 'location' | 'notes' | 'paid' | 'startDate'
 
 // Blanks always sink to the bottom whichever way the column is pointing —
 // an empty owner is never the most interesting row.
@@ -323,6 +328,25 @@ export default function ProjectsPage() {
     try {
       localStorage.setItem(VIEW_KEY, JSON.stringify({ tab, programme, sort, ...next }))
     } catch { /* private mode */ }
+  }
+
+  // Columns you have switched off. The project name is never one of them.
+  const [hiddenCols, setHiddenCols] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]') } catch { return [] }
+  })
+  const [pickingCols, setPickingCols] = useState(false)
+  const colShown = (key: string) => key === 'title' || !hiddenCols.includes(key)
+  const shownCols = COLUMNS.filter((c) => colShown(c.key))
+
+  function toggleCol(key: string) {
+    const next = hiddenCols.includes(key) ? hiddenCols.filter((k) => k !== key) : [...hiddenCols, key]
+    setHiddenCols(next)
+    try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(next)) } catch {}
+  }
+
+  function showAllCols() {
+    setHiddenCols([])
+    try { localStorage.setItem(HIDDEN_KEY, '[]') } catch {}
   }
 
   function resetWidths() {
@@ -698,13 +722,42 @@ export default function ProjectsPage() {
             </button>
           ))}
         </div>
-        <button
-          onClick={resetWidths}
-          style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '11.5px', color: '#9ca3af', padding: 0, textDecoration: 'underline' }}
-          title="Reset column widths"
-        >
-          Reset columns
-        </button>
+        <span style={{ position: 'relative' }}>
+          <button
+            onClick={() => setPickingCols((v) => !v)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              pickingCols ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100'
+            }`}
+          >
+            Columns{hiddenCols.length ? ` · ${COLUMNS.length - shownCols.length} hidden` : ''} ▾
+          </button>
+          {pickingCols && (
+            <>
+              <div onClick={() => setPickingCols(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 41, width: '210px',
+                background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px',
+                boxShadow: '0 8px 24px rgba(17,24,39,0.12)', padding: '8px',
+              }}>
+                <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
+                  {COLUMNS.filter((c) => c.key !== 'title').map((c) => (
+                    <label key={c.key} style={{
+                      display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 6px',
+                      borderRadius: '6px', fontSize: '12.5px', color: '#374151', cursor: 'pointer',
+                    }}>
+                      <input type="checkbox" checked={colShown(c.key)} onChange={() => toggleCol(c.key)} />
+                      {PICKER_LABEL[c.key] ?? c.label}
+                    </label>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f3f4f6', marginTop: '6px', paddingTop: '6px' }}>
+                  <button onClick={showAllCols} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '11.5px', color: '#6b7280' }}>Show all</button>
+                  <button onClick={resetWidths} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '11.5px', color: '#6b7280' }}>Reset widths</button>
+                </div>
+              </div>
+            </>
+          )}
+        </span>
         <span style={{ fontSize: '11.5px', color: '#9ca3af' }}>
           {saving
             ? 'Saving…'
@@ -748,11 +801,11 @@ export default function ProjectsPage() {
         <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #f3f4f6', overflowX: 'auto' }}>
           <table style={{ width: '100%', minWidth: '980px', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
             <colgroup>
-              {COLUMNS.map((c) => <col key={c.key} style={{ width: (widths[c.key] ?? c.w) + 'px' }} />)}
+              {shownCols.map((c) => <col key={c.key} style={{ width: (widths[c.key] ?? c.w) + 'px' }} />)}
             </colgroup>
             <thead>
               <tr style={{ borderBottom: '1px solid #f3f4f6', background: '#fafafa' }}>
-                {COLUMNS.map((c) => {
+                {shownCols.map((c) => {
                   const active = c.sort && sort?.key === c.sort
                   return (
                     <th key={c.key} style={{ ...th, textAlign: c.align ?? 'left', position: 'relative' }}>
@@ -808,6 +861,7 @@ export default function ProjectsPage() {
                       opacity: p.decision === 'parked' || p.stage === 'done' ? 0.6 : 1,
                     }}
                   >
+                    {colShown('top') && (
                     <td style={{ ...cell, textAlign: 'center' }}>
                       <button
                         onClick={() => patch(p.id, { decision: p.decision === 'top' ? undefined : 'top' })}
@@ -820,6 +874,8 @@ export default function ProjectsPage() {
                         ★
                       </button>
                     </td>
+                    )}
+                    {colShown('title') && (
                     <td style={cell}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <button
@@ -852,6 +908,8 @@ export default function ProjectsPage() {
                         })()}
                       </div>
                     </td>
+                    )}
+                    {colShown('kind') && (
                     <td style={cell}>
                       <select
                         value={p.kind}
@@ -861,6 +919,8 @@ export default function ProjectsPage() {
                         {Object.entries(PROJECT_KIND_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                       </select>
                     </td>
+                    )}
+                    {colShown('category') && (
                     <td style={cell}>
                       <select
                         value={p.category ?? ''}
@@ -876,6 +936,8 @@ export default function ProjectsPage() {
                         {PROJECT_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                       </select>
                     </td>
+                    )}
+                    {colShown('location') && (
                     <td style={cell}>
                       <select
                         value={p.location ?? ''}
@@ -886,6 +948,8 @@ export default function ProjectsPage() {
                         {PROJECT_LOCATIONS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
                       </select>
                     </td>
+                    )}
+                    {colShown('stage') && (
                     <td style={cell}>
                       <select
                         value={p.stage}
@@ -898,6 +962,8 @@ export default function ProjectsPage() {
                         {PROJECT_STAGES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                       </select>
                     </td>
+                    )}
+                    {colShown('owner') && (
                     <td style={cell}>
                       {/* A list, so owners stay consistent — but free text too,
                           since not everyone with a project has a login. */}
@@ -913,31 +979,58 @@ export default function ProjectsPage() {
                         }}
                       />
                     </td>
+                    )}
+                    {colShown('started') && (
+                    <td style={cell}>
+                      <input
+                        type="date"
+                        value={p.startDate ? format(p.startDate, 'yyyy-MM-dd') : ''}
+                        onChange={(e) => patch(p.id, { startDate: e.target.value ? new Date(e.target.value + 'T12:00:00') : undefined })}
+                        title="When work actually started"
+                        style={{ ...field, fontSize: '12px', fontFamily: 'monospace', color: p.startDate ? '#4b5563' : '#d1d5db' }}
+                      />
+                    </td>
+                    )}
+                    {colShown('due') && (
                     <td style={cell}>
                       <DateField value={p.dueDate} onSave={(d) => patch(p.id, { dueDate: d })} />
                       {late !== null && late < 0 && (
                         <p style={{ fontSize: '10px', color: '#dc2626', margin: '0 0 0 7px', fontWeight: 600 }}>{Math.abs(late)}d late</p>
                       )}
                     </td>
+                    )}
+                    {colShown('nextStep') && (
                     <td style={cell}>
                       <Text value={p.nextStep} placeholder="—" onSave={(v) => patch(p.id, { nextStep: v })} style={{ fontSize: '12.5px' }} />
                     </td>
+                    )}
+                    {colShown('blocker') && (
                     <td style={cell}>
                       <Text value={p.blocker} placeholder="—" onSave={(v) => patch(p.id, { blocker: v })}
                         style={{ fontSize: '12.5px', color: p.blocker ? '#b91c1c' : undefined }} />
                     </td>
+                    )}
+                    {colShown('gatekeeper') && (
                     <td style={cell}>
                       <Text value={p.gatekeeper} placeholder="—" onSave={(v) => patch(p.id, { gatekeeper: v })} style={{ fontSize: '12.5px' }} />
                     </td>
+                    )}
+                    {colShown('notes') && (
                     <td style={cell}>
                       <Text value={p.notes} placeholder="—" onSave={(v) => patch(p.id, { notes: v })} style={{ fontSize: '12.5px' }} />
                     </td>
+                    )}
+                    {colShown('opp') && (
                     <td style={cell}>
                       <Num value={p.opportunity} placeholder="1-5" onSave={(v) => patch(p.id, { opportunity: v ? Math.min(5, Math.max(1, v)) : undefined })} />
                     </td>
+                    )}
+                    {colShown('prize') && (
                     <td style={cell}>
                       <Num value={p.prizeGbp} placeholder="£" prefix="£" onSave={(v) => patch(p.id, { prizeGbp: v })} />
                     </td>
+                    )}
+                    {colShown('paid') && (
                     <td style={{ ...cell, textAlign: 'center' }}>
                       <button
                         onClick={() => patch(p.id, p.paid ? { paid: false, paidAt: undefined } : { paid: true, paidAt: new Date().toISOString() })}
@@ -953,14 +1046,20 @@ export default function ProjectsPage() {
                         {p.paid ? '✓ Paid' : 'Unpaid'}
                       </button>
                     </td>
+                    )}
+                    {colShown('days') && (
                     <td style={cell}>
                       <Num value={p.effortDays} placeholder="d" onSave={(v) => patch(p.id, { effortDays: v })} />
                     </td>
+                    )}
+                    {colShown('score') && (
                     <td style={{ ...cell, textAlign: 'right', paddingRight: '12px' }}>
                       {score === null
                         ? <span style={{ fontSize: '11px', color: '#d1d5db' }}>—</span>
                         : <span style={{ fontSize: '13px', fontWeight: 700, fontFamily: 'monospace', color: '#111827' }}>{score}</span>}
                     </td>
+                    )}
+                    {colShown('updated') && (
                     <td style={{ ...cell, textAlign: 'right', paddingRight: '4px' }}>
                       {/* Set by any edit, and overridable — work often moves on
                           days before anyone types it in. */}
@@ -978,6 +1077,8 @@ export default function ProjectsPage() {
                         }}
                       />
                     </td>
+                    )}
+                    {colShown('del') && (
                     <td style={{ ...cell, textAlign: 'center' }}>
                       <button
                         onClick={() => {
@@ -991,11 +1092,12 @@ export default function ProjectsPage() {
                         ×
                       </button>
                     </td>
+                    )}
                   </tr>
                 )
               })}
               {visible.length === 0 && (
-                <tr><td colSpan={14} style={{ padding: '36px', textAlign: 'center', fontSize: '13px', color: '#9ca3af' }}>
+                <tr><td colSpan={shownCols.length} style={{ padding: '36px', textAlign: 'center', fontSize: '13px', color: '#9ca3af' }}>
                   Nothing here yet.
                 </td></tr>
               )}
