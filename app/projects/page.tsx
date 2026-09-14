@@ -142,6 +142,7 @@ const COLUMNS: Col[] = [
   { key: 'notes',      label: 'Notes',      sort: 'notes',       w: 200 },
   { key: 'opp',        label: 'Opp',        sort: 'opportunity', w: 60,  align: 'right' },
   { key: 'prize',      label: 'Prize',      sort: 'prizeGbp',    w: 84,  align: 'right' },
+  { key: 'paid',       label: 'Paid',       sort: 'paid',        w: 74,  align: 'center' },
   { key: 'days',       label: 'Days',       sort: 'effortDays',  w: 60,  align: 'right' },
   { key: 'score',      label: 'Score',      sort: 'score',       w: 64,  align: 'right' },
   { key: 'updated',    label: 'Updated',    sort: 'updatedAt',   w: 92,  align: 'right' },
@@ -153,7 +154,7 @@ const WIDTH_KEY = 'foodlab-project-cols'
 type SortKey =
   | 'title' | 'kind' | 'stage' | 'owner' | 'dueDate' | 'nextStep'
   | 'blocker' | 'gatekeeper' | 'opportunity' | 'prizeGbp' | 'effortDays' | 'score' | 'updatedAt'
-  | 'category' | 'location' | 'notes'
+  | 'category' | 'location' | 'notes' | 'paid'
 
 // Blanks always sink to the bottom whichever way the column is pointing —
 // an empty owner is never the most interesting row.
@@ -492,6 +493,9 @@ export default function ProjectsPage() {
       withScore.sort((a, b) =>
         key === 'score'
           ? compare(a.score ?? undefined, b.score ?? undefined, dir)
+          // Never-set and unpaid are the same thing; keep them in one group.
+          : key === 'paid'
+          ? compare(a.p.paid ? 1 : 0, b.p.paid ? 1 : 0, dir)
           : compare(a.p[key], b.p[key], dir)
       )
       return withScore
@@ -896,6 +900,21 @@ export default function ProjectsPage() {
                     </td>
                     <td style={cell}>
                       <Num value={p.prizeGbp} placeholder="£" prefix="£" onSave={(v) => patch(p.id, { prizeGbp: v })} />
+                    </td>
+                    <td style={{ ...cell, textAlign: 'center' }}>
+                      <button
+                        onClick={() => patch(p.id, p.paid ? { paid: false, paidAt: undefined } : { paid: true, paidAt: new Date().toISOString() })}
+                        title={p.paid ? `Paid${p.paidAt ? ` on ${new Date(p.paidAt).toLocaleDateString('en-GB')}` : ''} — click to undo` : 'Mark as paid'}
+                        style={{
+                          border: `1px solid ${p.paid ? '#bbf7d0' : '#e5e7eb'}`,
+                          background: p.paid ? '#dcfce7' : '#fff',
+                          color: p.paid ? '#166534' : '#9ca3af',
+                          borderRadius: '20px', padding: '2px 9px', fontSize: '11px', fontWeight: 700,
+                          cursor: 'pointer', whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {p.paid ? '✓ Paid' : 'Unpaid'}
+                      </button>
                     </td>
                     <td style={cell}>
                       <Num value={p.effortDays} placeholder="d" onSave={(v) => patch(p.id, { effortDays: v })} />

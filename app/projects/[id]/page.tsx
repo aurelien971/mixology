@@ -261,6 +261,23 @@ export default function ProjectDetailPage() {
           <div style={card}>
             <div style={{ display: 'grid', gap: '13px' }}>
               <div>
+                <span style={label}>Paid</span>
+                <button
+                  onClick={() => save(p.paid ? { paid: false, paidAt: undefined } : { paid: true, paidAt: new Date().toISOString() })}
+                  style={{
+                    ...input, cursor: 'pointer', fontWeight: 700, textAlign: 'left',
+                    background: p.paid ? '#dcfce7' : '#fff',
+                    color: p.paid ? '#166534' : '#9ca3af',
+                    borderColor: p.paid ? '#bbf7d0' : '#e5e7eb',
+                  }}
+                >
+                  {p.paid
+                    ? `✓ Paid${p.paidAt ? ` · ${format(new Date(p.paidAt), 'd MMM yyyy')}` : ''}`
+                    : 'Not paid — click when it is'}
+                </button>
+              </div>
+
+              <div>
                 <span style={label}>Stage</span>
                 <select
                   value={p.stage}

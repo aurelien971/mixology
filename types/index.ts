@@ -461,6 +461,8 @@ export interface Project {
 
   linkedOrderId?: string        // the R&D order this came from, if any
   notes?: string
+  paid?: boolean                // the client has paid for it
+  paidAt?: string               // ISO date it was marked paid
   createdAt: Date
   updatedAt: Date
 }

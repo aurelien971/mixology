@@ -102,6 +102,7 @@ export async function updateProjectLogged(
     nextStep:   (v) => (v ? `Next: ${v}` : 'Next step cleared'),
     effortDays: (v) => `Effort → ${v} days`,
     prizeGbp:   (v) => `Prize → £${v}`,
+    paid:       (v) => (v ? 'Marked paid' : 'Marked unpaid'),
   }
 
   for (const [key, describe] of Object.entries(described) as [Loggable, (v: unknown) => string][]) {
