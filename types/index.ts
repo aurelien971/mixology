@@ -384,6 +384,7 @@ export const PROJECT_CATEGORY_LABELS: Record<ProjectCategory, string> =
   Object.fromEntries(PROJECT_CATEGORIES.map((c) => [c.value, c.label])) as Record<ProjectCategory, string>
 
 export type ProjectStage =
+  | 'not_started'
   | 'brief'
   | 'development'
   | 'tasting'
@@ -394,6 +395,7 @@ export type ProjectStage =
   | 'cancelled'
 
 export const PROJECT_STAGES: { value: ProjectStage; label: string }[] = [
+  { value: 'not_started', label: 'Not started' },
   { value: 'brief',       label: 'Brief' },
   { value: 'development', label: 'Development' },
   { value: 'tasting',     label: 'Tasting' },

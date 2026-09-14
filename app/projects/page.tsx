@@ -39,6 +39,7 @@ const field: React.CSSProperties = {
 const numField: React.CSSProperties = { ...field, textAlign: 'right', fontFamily: 'monospace', fontSize: '12.5px' }
 
 const STAGE_COLOR: Record<ProjectStage, { bg: string; fg: string }> = {
+  not_started: { bg: '#fafafa', fg: '#9ca3af' },
   brief:       { bg: '#f3f4f6', fg: '#4b5563' },
   development: { bg: '#f3e8ff', fg: '#7e22ce' },
   tasting:     { bg: '#ffedd5', fg: '#c2410c' },
