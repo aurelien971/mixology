@@ -422,6 +422,17 @@ export interface ChecklistItem {
 
 export type UpdateKind = 'note' | 'auto'
 
+/** A file kept on a project — a brief, a spec sheet, a signed quote. */
+export interface ProjectAttachment {
+  id: string
+  name: string
+  url: string
+  path: string                  // where it lives in Storage, for deleting
+  size: number                  // bytes
+  contentType: string
+  uploadedAt: string            // ISO
+}
+
 export interface ProjectUpdate {
   at: string
   text: string
@@ -462,6 +473,7 @@ export interface Project {
 
   linkedOrderId?: string        // the R&D order this came from, if any
   notes?: string
+  attachments?: ProjectAttachment[]
   paid?: boolean                // the client has paid for it
   paidAt?: string               // ISO date it was marked paid
   createdAt: Date

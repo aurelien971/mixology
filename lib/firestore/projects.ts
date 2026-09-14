@@ -86,12 +86,15 @@ export async function deleteProject(id: string): Promise<void> {
 export async function updateProjectLogged(
   project: Project,
   data: Partial<Omit<Project, 'id' | 'createdAt'>>,
-  note?: string
+  note?: string,
+  /** A system line the caller can describe better than a field diff can. */
+  auto?: string
 ): Promise<ProjectUpdate[]> {
   const entries: ProjectUpdate[] = []
   const at = new Date().toISOString()
 
   if (note?.trim()) entries.push({ at, text: note.trim(), kind: 'note' })
+  if (auto?.trim()) entries.push({ at, text: auto.trim(), kind: 'auto' })
 
   type Loggable = keyof Omit<Project, 'id' | 'createdAt'>
   const described: Partial<Record<Loggable, (v: unknown) => string>> = {

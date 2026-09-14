@@ -1,14 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { format, formatDistanceToNow } from 'date-fns'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import { getProject, updateProject, updateProjectLogged, deleteProject } from '@/lib/firestore/projects'
+import { uploadProjectFile, deleteStoredFile } from '@/lib/storage'
+import toast from 'react-hot-toast'
 import {
-  Project, ProjectKind, ProjectStage, ProjectCategory, ProjectLocation, ChecklistItem,
+  Project, ProjectKind, ProjectStage, ProjectCategory, ProjectLocation, ChecklistItem, ProjectAttachment,
   PROJECT_KIND_LABELS, PROJECT_STAGES, PROJECT_CATEGORIES, PROJECT_LOCATIONS,
   projectScore, projectProgress,
 } from '@/types'
@@ -42,6 +44,22 @@ function newId() {
   return Math.random().toString(36).slice(2, 10)
 }
 
+const MAX_FILE_MB = 25
+
+function fileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function fileIcon(a: Pick<ProjectAttachment, 'contentType' | 'name'>) {
+  if (a.contentType.startsWith('image/')) return '🖼'
+  if (a.contentType === 'application/pdf' || /\.pdf$/i.test(a.name)) return '📄'
+  if (/\.(xlsx?|csv|numbers)$/i.test(a.name)) return '📊'
+  if (/\.(docx?|pages|txt|md)$/i.test(a.name)) return '📝'
+  return '📎'
+}
+
 /**
  * Everything about one project, editable in place.
  *
@@ -63,19 +81,28 @@ export default function ProjectPanel({ id, onClose, onChanged, onDeleted }: {
   const [note, setNote] = useState('')
   const [newStep, setNewStep] = useState('')
   const [saving, setSaving] = useState(false)
+  const [uploads, setUploads] = useState<{ name: string; pct: number }[]>([])
+  const [dragging, setDragging] = useState(false)
+  const [justSaved, setJustSaved] = useState(false)
+  // Writes still in flight, so Save can wait for them rather than guess.
+  const pending = useRef(0)
+  // The project as it is now — uploads finish after the render that started them.
+  const latest = useRef<Project | null>(null)
+  useEffect(() => { latest.current = p }, [p])
 
   useEffect(() => { getProject(id).then(setP).finally(() => setLoading(false)) }, [id])
 
   // Field changes go through the logged writer so the update feed fills itself.
-  async function save(data: Partial<Project>, withNote?: string) {
+  async function save(data: Partial<Project>, withNote?: string, auto?: string) {
     if (!p) return
+    pending.current++
     setSaving(true)
     try {
-      const updates = await updateProjectLogged(p, data, withNote)
+      const updates = await updateProjectLogged(p, data, withNote, auto)
       const next = { ...p, ...data, updates, updatedAt: new Date() }
       setP(next)
       onChanged?.(next)
-    } finally { setSaving(false) }
+    } finally { pending.current--; setSaving(false) }
   }
 
   // Checklist and scope edits are frequent and self-evident on screen, so they
@@ -85,7 +112,91 @@ export default function ProjectPanel({ id, onClose, onChanged, onDeleted }: {
     const next = { ...p, ...data, updatedAt: new Date() }
     setP(next)
     onChanged?.(next)
-    await updateProject(p.id, data)
+    pending.current++
+    try { await updateProject(p.id, data) } finally { pending.current-- }
+  }
+
+  // Fields save as you leave them. Save makes that explicit: it finishes the
+  // field you are in, waits for anything still writing, then confirms — and in
+  // the popup, closes.
+  async function saveAll() {
+    ;(document.activeElement as HTMLElement | null)?.blur?.()
+    // The blur handlers start their writes synchronously; give them a tick.
+    await new Promise((r) => setTimeout(r, 0))
+    const started = Date.now()
+    while ((pending.current > 0 || uploads.length > 0) && Date.now() - started < 15000) {
+      await new Promise((r) => setTimeout(r, 100))
+    }
+    if (pending.current > 0) { toast.error('Still saving — try again in a moment'); return }
+    toast.success('Saved')
+    if (onClose) onClose()
+    else { setJustSaved(true); setTimeout(() => setJustSaved(false), 2000) }
+  }
+
+  async function addFiles(list: FileList | File[]) {
+    const base = latest.current
+    if (!base) return
+    const files = [...list]
+    const tooBig = files.filter((f) => f.size > MAX_FILE_MB * 1024 * 1024)
+    if (tooBig.length) toast.error(`Over ${MAX_FILE_MB} MB, skipped: ${tooBig.map((f) => f.name).join(', ')}`)
+    const ok = files.filter((f) => f.size <= MAX_FILE_MB * 1024 * 1024)
+    if (!ok.length) return
+
+    setUploads((u) => [...u, ...ok.map((f) => ({ name: f.name, pct: 0 }))])
+    const results = await Promise.allSettled(ok.map((f) =>
+      uploadProjectFile(base.id, f, (pct) =>
+        setUploads((u) => u.map((x) => (x.name === f.name ? { ...x, pct } : x)))
+      ).then(({ url, path }): ProjectAttachment => ({
+        id: newId(), name: f.name, url, path, size: f.size,
+        contentType: f.type || 'application/octet-stream',
+        uploadedAt: new Date().toISOString(),
+      }))
+    ))
+    setUploads((u) => u.filter((x) => !ok.some((f) => f.name === x.name)))
+
+    const added = results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []))
+    const failed = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[]
+    if (failed.length) {
+      console.error(failed.map((f) => f.reason))
+      const blocked = failed.some((f) => (f.reason as { code?: string })?.code === 'storage/unauthorized')
+      toast.error(
+        blocked
+          // Storage rules are per folder, and projects/ has to be allowed in the
+          // Firebase console before anything can land there.
+          ? 'Firebase Storage is not allowing project files yet — the rule for projects/ needs adding in the Firebase console.'
+          : `${failed.length} file${failed.length === 1 ? '' : 's'} did not upload — ${String((failed[0].reason as Error)?.message ?? failed[0].reason)}`,
+        { duration: blocked ? 9000 : 5000 }
+      )
+    }
+    if (!added.length) return
+
+    // One write for the whole drop, on top of whatever is there now, so files
+    // that finish together cannot overwrite each other.
+    const current = latest.current ?? base
+    const attachments = [...(current.attachments ?? []), ...added]
+    pending.current++
+    try {
+      const text = added.length === 1 ? `Attached "${added[0].name}"` : `Attached ${added.length} files: ${added.map((a) => a.name).join(', ')}`
+      const updates = await updateProjectLogged(current, { attachments }, undefined, text)
+      const next = { ...current, attachments, updates, updatedAt: new Date() }
+      setP(next)
+      onChanged?.(next)
+      toast.success(added.length === 1 ? `${added[0].name} attached` : `${added.length} files attached`)
+    } finally { pending.current-- }
+  }
+
+  async function removeFile(a: ProjectAttachment) {
+    const current = latest.current
+    if (!current || !confirm(`Remove "${a.name}" from this project?`)) return
+    const attachments = (current.attachments ?? []).filter((x) => x.id !== a.id)
+    pending.current++
+    try {
+      const updates = await updateProjectLogged(current, { attachments }, undefined, `Removed "${a.name}"`)
+      const next = { ...current, attachments, updates, updatedAt: new Date() }
+      setP(next)
+      onChanged?.(next)
+      await deleteStoredFile(a.path).catch((e) => console.error('Storage delete failed', e))
+    } finally { pending.current-- }
   }
 
   async function setChecklist(list: ChecklistItem[], logText?: string) {
@@ -123,6 +234,9 @@ export default function ProjectPanel({ id, onClose, onChanged, onDeleted }: {
               onClick={() => save({ decision: p.decision === 'top' ? undefined : 'top' })}
             >
               {p.decision === 'top' ? '★ Picked this month' : '☆ Pick for this month'}
+            </Button>
+            <Button size="sm" onClick={saveAll} disabled={uploads.length > 0}>
+              {justSaved ? 'Saved ✓' : onClose ? 'Save & close' : 'Save'}
             </Button>
             {onClose
               ? <Button size="sm" variant="ghost" onClick={onClose}>Close ✕</Button>
@@ -499,6 +613,68 @@ export default function ProjectPanel({ id, onClose, onChanged, onDeleted }: {
                 {score ?? '—'}
               </span>
             </div>
+          </div>
+
+          <div style={card}>
+            <span style={label}>Attachments{(p.attachments ?? []).length ? ` · ${(p.attachments ?? []).length}` : ''}</span>
+
+            <label
+              onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files) }}
+              style={{
+                display: 'block', padding: '14px 12px', textAlign: 'center', cursor: 'pointer', borderRadius: '9px',
+                border: `1.5px dashed ${dragging ? '#111827' : '#e5e7eb'}`, background: dragging ? '#f9fafb' : '#fcfcfd',
+              }}
+            >
+              <input type="file" multiple style={{ display: 'none' }}
+                onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = '' }} />
+              <span style={{ fontSize: '12.5px', fontWeight: 600, color: '#374151' }}>Drop files or click to attach</span>
+              <span style={{ display: 'block', fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>
+                Briefs, spec sheets, quotes, photos — up to {MAX_FILE_MB} MB each
+              </span>
+            </label>
+
+            {uploads.map((u) => (
+              <div key={u.name} style={{ marginTop: '9px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#6b7280', marginBottom: '3px' }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name}</span>
+                  <span style={{ fontFamily: 'monospace' }}>{u.pct}%</span>
+                </div>
+                <div style={{ height: '3px', background: '#f3f4f6', borderRadius: '99px', overflow: 'hidden' }}>
+                  <div style={{ width: `${u.pct}%`, height: '100%', background: '#111827', transition: 'width .15s' }} />
+                </div>
+              </div>
+            ))}
+
+            {(p.attachments ?? []).length > 0 && (
+              <div style={{ marginTop: '10px' }}>
+                {[...(p.attachments ?? [])].reverse().map((a) => (
+                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '9px', padding: '7px 0', borderTop: '1px solid #f9fafb' }}>
+                    <span style={{ fontSize: '16px', flex: 'none' }}>{fileIcon(a)}</span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <a
+                        href={a.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#1d4ed8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={`Open ${a.name}`}
+                      >{a.name}</a>
+                      <span style={{ fontSize: '11px', color: '#9ca3af' }}>
+                        {fileSize(a.size)} · {format(new Date(a.uploadedAt), 'd MMM yyyy')}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => removeFile(a)}
+                      title="Remove"
+                      style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#d1d5db', fontSize: '16px', lineHeight: 1, padding: '2px 4px' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = '#dc2626')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = '#d1d5db')}
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div style={card}>

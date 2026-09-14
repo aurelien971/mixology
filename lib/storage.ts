@@ -57,3 +57,40 @@ export async function deleteSignedDeliveryNote(orderId: string): Promise<void> {
     }
   }
 }
+/**
+ * Upload any file against a project, under projects/{projectId}/.
+ *
+ * The name is prefixed with the upload time so two files called "brief.pdf"
+ * sit side by side instead of the second silently replacing the first.
+ */
+export async function uploadProjectFile(
+  projectId: string,
+  file: File,
+  onProgress?: (progress: number) => void
+): Promise<{ url: string; path: string }> {
+  const safe = file.name.replace(/[^\w.\-]+/g, '_').slice(-120)
+  const path = `projects/${projectId}/${Date.now()}-${safe}`
+  const storageRef = ref(storage, path)
+
+  return new Promise((resolve, reject) => {
+    const task = uploadBytesResumable(storageRef, file, {
+      contentType: file.type || 'application/octet-stream',
+      contentDisposition: `inline; filename="${safe}"`,
+    })
+    task.on(
+      'state_changed',
+      (snapshot) => onProgress?.(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)),
+      (error) => reject(error),
+      async () => resolve({ url: await getDownloadURL(task.snapshot.ref), path })
+    )
+  })
+}
+
+/** Remove a stored file. Already gone counts as done. */
+export async function deleteStoredFile(path: string): Promise<void> {
+  try {
+    await deleteObject(ref(storage, path))
+  } catch (e) {
+    if ((e as { code?: string })?.code !== 'storage/object-not-found') throw e
+  }
+}
