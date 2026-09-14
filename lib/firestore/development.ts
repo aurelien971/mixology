@@ -3,6 +3,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { DevelopmentRecord, DevVariant, ProjectUpdate, Product, DEV_VARIANTS } from '@/types'
+import { stampAuthor } from '@/lib/currentUser'
 
 const COLLECTION = 'development'
 
@@ -89,7 +90,7 @@ export async function updateDevelopmentLogged(
     entries.push({ at, text: describe(next), kind: 'auto' })
   }
 
-  const updates = [...entries, ...(record.updates ?? [])].slice(0, 200)
+  const updates = [...stampAuthor(entries), ...(record.updates ?? [])].slice(0, 200)
   await updateDevelopment(record.id, { ...data, updates })
   return updates
 }

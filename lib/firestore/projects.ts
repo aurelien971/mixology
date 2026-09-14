@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { Project, ProjectUpdate } from '@/types'
+import { stampAuthor } from '@/lib/currentUser'
 
 const COLLECTION = 'projects'
 
@@ -117,7 +118,7 @@ export async function updateProjectLogged(
     entries.push({ at, text: describe(next), kind: 'auto' })
   }
 
-  const updates = [...entries, ...(project.updates ?? [])].slice(0, 200)
+  const updates = [...stampAuthor(entries), ...(project.updates ?? [])].slice(0, 200)
   await updateProject(project.id, { ...data, updates })
   return updates
 }

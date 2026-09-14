@@ -3,6 +3,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { TastingSession, ProjectUpdate, TASTING_STAGES } from '@/types'
+import { stampAuthor } from '@/lib/currentUser'
 
 const COLLECTION = 'tastings'
 
@@ -91,7 +92,7 @@ export async function updateTastingLogged(
     entries.push({ at, text: describe(next), kind: 'auto' })
   }
 
-  const updates = [...entries, ...(session.updates ?? [])].slice(0, 200)
+  const updates = [...stampAuthor(entries), ...(session.updates ?? [])].slice(0, 200)
   await updateTasting(session.id, { ...data, updates })
   return updates
 }
