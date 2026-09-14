@@ -1,13 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
 import { format, formatDistanceToNow, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths } from 'date-fns'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import { getProjects, createProject, updateProject, updateProjectLogged, deleteProject } from '@/lib/firestore/projects'
 import { SEED_PROJECTS } from '@/lib/data/seedProjects'
 import NewProjectModal from '@/components/projects/NewProjectModal'
+import ProjectPanel from '@/components/projects/ProjectPanel'
 import { getStaffUsers, StaffUser } from '@/lib/firestore/staffUsers'
 import { getAllOrders } from '@/lib/firestore/orders'
 import {
@@ -168,10 +168,11 @@ function compare(a: unknown, b: unknown, dir: 1 | -1): number {
   return String(a).localeCompare(String(b)) * dir
 }
 
-function Calendar({ projects, month, onMonth }: {
+function Calendar({ projects, month, onMonth, onOpen }: {
   projects: Project[]
   month: Date
   onMonth: (d: Date) => void
+  onOpen: (id: string) => void
 }) {
   // A full six-week grid so the box height never jumps between months.
   const days = eachDayOfInterval({
@@ -221,20 +222,21 @@ function Calendar({ projects, month, onMonth }: {
                     const overdue = (p.dueDate as Date).getTime() < Date.now() && p.stage !== 'done'
                     const sc = STAGE_COLOR[p.stage] ?? STAGE_COLOR.brief
                     return (
-                      <Link
+                      <button
                         key={p.id}
-                        href={`/projects/${p.id}`}
+                        onClick={() => onOpen(p.id)}
                         title={`${p.title}${p.owner ? ' · ' + p.owner : ' · no owner'}`}
                         style={{
-                          display: 'block', fontSize: '11px', lineHeight: 1.3, padding: '3px 6px', borderRadius: '5px',
-                          textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          display: 'block', width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer', font: 'inherit',
+                          fontSize: '11px', lineHeight: 1.3, padding: '3px 6px', borderRadius: '5px',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           background: overdue ? '#fef2f2' : sc.bg,
                           color: overdue ? '#991b1b' : sc.fg,
                           fontWeight: p.decision === 'top' ? 700 : 500,
                         }}
                       >
                         {p.decision === 'top' ? '★ ' : ''}{p.title}
-                      </Link>
+                      </button>
                     )
                   })}
                 </div>
@@ -254,14 +256,14 @@ function Calendar({ projects, month, onMonth }: {
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
             {undated.map((p) => (
-              <Link
+              <button
                 key={p.id}
-                href={`/projects/${p.id}`}
+                onClick={() => onOpen(p.id)}
                 style={{
-                  border: '1px solid #e5e7eb', borderRadius: '20px', padding: '4px 11px',
-                  fontSize: '12px', color: '#4b5563', textDecoration: 'none',
+                  border: '1px solid #e5e7eb', background: '#fff', borderRadius: '20px', padding: '4px 11px',
+                  fontSize: '12px', color: '#4b5563', cursor: 'pointer',
                 }}
-              >{p.title}</Link>
+              >{p.title}</button>
             ))}
           </div>
         </div>
@@ -329,6 +331,7 @@ export default function ProjectsPage() {
     try { localStorage.setItem(WIDTH_KEY, JSON.stringify(base)) } catch {}
   }
   const [view, setView] = useState<'board' | 'calendar'>('board')
+  const [openId, setOpenId] = useState<string | null>(null)
   const [month, setMonth] = useState(() => startOfMonth(new Date()))
 
   function load() {
@@ -554,6 +557,28 @@ export default function ProjectsPage() {
       {showNew && (
         <NewProjectModal onClose={() => setShowNew(false)} onCreated={load} />
       )}
+      {openId && (
+        <div
+          onClick={() => setOpenId(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(17,24,39,0.45)', zIndex: 60,
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '32px 20px', overflowY: 'auto',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#f9fafb', borderRadius: '14px', width: '100%', maxWidth: '1120px', padding: '22px 24px 26px' }}
+          >
+            <ProjectPanel
+              key={openId}
+              id={openId}
+              onClose={() => setOpenId(null)}
+              onChanged={(next) => setProjects((prev) => prev.map((x) => (x.id === next.id ? next : x)))}
+              onDeleted={(gone) => { setProjects((prev) => prev.filter((x) => x.id !== gone)); setOpenId(null) }}
+            />
+          </div>
+        </div>
+      )}
       <Header
         title="Projects"
         subtitle="Every project, an owner and a date. Ranked by prize × opportunity ÷ effort."
@@ -718,7 +743,7 @@ export default function ProjectsPage() {
       {loading ? (
         <p className="text-sm text-gray-400">Loading…</p>
       ) : view === 'calendar' ? (
-        <Calendar projects={visible.map((v) => v.p)} month={month} onMonth={setMonth} />
+        <Calendar projects={visible.map((v) => v.p)} month={month} onMonth={setMonth} onOpen={setOpenId} />
       ) : (
         <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #f3f4f6', overflowX: 'auto' }}>
           <table style={{ width: '100%', minWidth: '980px', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
@@ -772,7 +797,12 @@ export default function ProjectsPage() {
                 return (
                   <tr
                     key={p.id}
+                    onClick={(e) => {
+                      if ((e.target as HTMLElement).closest('input, select, button, a, textarea, label')) return
+                      setOpenId(p.id)
+                    }}
                     style={{
+                      cursor: 'pointer',
                       borderBottom: '1px solid #f9fafb',
                       background: p.decision === 'top' ? '#fffdf5' : p.decision === 'parked' ? '#fcfcfc' : '#fff',
                       opacity: p.decision === 'parked' || p.stage === 'done' ? 0.6 : 1,
@@ -792,12 +822,19 @@ export default function ProjectsPage() {
                     </td>
                     <td style={cell}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Text value={p.title} onSave={(v) => patch(p.id, { title: v })} style={{ fontWeight: 600, color: '#111827', minWidth: 0 }} />
-                        <Link
-                          href={`/projects/${p.id}`}
-                          title="Open scope, to-do list and updates"
-                          style={{ fontSize: '13px', color: '#c4c4c4', textDecoration: 'none', padding: '0 4px', flex: 'none' }}
-                        >↗</Link>
+                        <button
+                          onClick={() => setOpenId(p.id)}
+                          title="Open — paid, status, every field, to-do list and updates"
+                          style={{
+                            border: 'none', background: 'none', padding: '5px 7px', cursor: 'pointer', font: 'inherit',
+                            fontWeight: 600, color: '#111827', textAlign: 'left', minWidth: 0,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+                          onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+                        >
+                          {p.title}
+                        </button>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 2px 7px' }}>
                         {p.accountName && <span style={{ fontSize: '11px', color: '#9ca3af' }}>{p.accountName}</span>}
