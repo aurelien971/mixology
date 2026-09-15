@@ -108,8 +108,6 @@ export default function VenuePanel({
     return { p, variant, short: vt.short, pick, status: s.status, fromTasting: s.fromTasting, cost, onList }
   }))
   const picked = rows.filter((r) => r.status === 'yes' || r.status === 'maybe')
-  const priced = rows.filter((r) => r.pick?.pricePerLitre)
-  const agreed = rows.filter((r) => r.pick?.agreed)
   // With spirit and without are separate conversations with a venue, so each
   // gets its own list rather than forty rows interleaved.
   const formatRows = rows.filter((r) => r.variant === drinkFormat)
