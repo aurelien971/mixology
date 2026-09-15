@@ -62,6 +62,7 @@ export default function VenuePanel({
   const [booking, setBooking] = useState(false)
   const [note, setNote] = useState('')
   const [drinkFilter, setDrinkFilter] = useState<'all' | 'picked' | 'agreed'>('all')
+  const [drinkFormat, setDrinkFormat] = useState<DevVariant>('premix')
   const [olderOrders, setOlderOrders] = useState(false)
   const [newContact, setNewContact] = useState<RolloutContact | null>(null)
 
@@ -109,8 +110,20 @@ export default function VenuePanel({
   const picked = rows.filter((r) => r.status === 'yes' || r.status === 'maybe')
   const priced = rows.filter((r) => r.pick?.pricePerLitre)
   const agreed = rows.filter((r) => r.pick?.agreed)
-  const shownRows = drinkFilter === 'picked' ? rows.filter((r) => r.status === 'yes' || r.status === 'maybe' || r.pick?.agreed)
-    : drinkFilter === 'agreed' ? rows.filter((r) => r.pick?.agreed) : rows
+  // With spirit and without are separate conversations with a venue, so each
+  // gets its own list rather than forty rows interleaved.
+  const formatRows = rows.filter((r) => r.variant === drinkFormat)
+  const formatCount = (variant: DevVariant) => {
+    const list = rows.filter((r) => r.variant === variant)
+    return {
+      picked: list.filter((r) => r.status === 'yes' || r.status === 'maybe').length,
+      priced: list.filter((r) => r.pick?.pricePerLitre).length,
+      agreed: list.filter((r) => r.pick?.agreed).length,
+    }
+  }
+  const fc = formatCount(drinkFormat)
+  const shownRows = drinkFilter === 'picked' ? formatRows.filter((r) => r.status === 'yes' || r.status === 'maybe' || r.pick?.agreed)
+    : drinkFilter === 'agreed' ? formatRows.filter((r) => r.pick?.agreed) : formatRows
 
   async function setPick(p: Product, variant: DevVariant, patch: Partial<RangePick>, auto: string) {
     const exists = pickOf(p.id, variant)
@@ -448,12 +461,35 @@ export default function VenuePanel({
       {/* ── drinks & prices ── */}
       {tab === 'drinks' && (
         <div style={card}>
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', borderBottom: '1px solid #f3f4f6' }}>
+            {DEV_VARIANTS.map((vt) => {
+              const on = drinkFormat === vt.value
+              const c = formatCount(vt.value as DevVariant)
+              return (
+                <button
+                  key={vt.value}
+                  onClick={() => { setDrinkFormat(vt.value as DevVariant); setDrinkFilter('all') }}
+                  style={{
+                    border: 'none', background: 'none', cursor: 'pointer', font: 'inherit',
+                    padding: '8px 14px 10px', marginBottom: '-1px',
+                    borderBottom: `2.5px solid ${on ? INK : 'transparent'}`,
+                    fontSize: '14.5px', fontWeight: 700, color: on ? INK : MUTED,
+                  }}
+                >
+                  {vt.short}
+                  <span style={{ marginLeft: '8px', fontSize: '12px', fontWeight: 500, color: MUTED }}>
+                    {c.picked} wanted · {c.agreed} agreed
+                  </span>
+                </button>
+              )
+            })}
+          </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
             <p style={{ margin: 0, fontSize: '14px', color: INK }}>
-              <strong>{picked.length}</strong> they want · <strong>{priced.length}</strong> priced · <strong>{agreed.length}</strong> agreed
+              <strong>{fc.picked}</strong> they want · <strong>{fc.priced}</strong> priced · <strong>{fc.agreed}</strong> agreed
             </p>
             <div style={{ display: 'flex', gap: '4px' }}>
-              {([['all', `All ${rows.length}`], ['picked', `They want ${picked.length}`], ['agreed', `Agreed ${agreed.length}`]] as const).map(([k, l]) => (
+              {([['all', `All ${formatRows.length}`], ['picked', `They want ${fc.picked}`], ['agreed', `Agreed ${fc.agreed}`]] as const).map(([k, l]) => (
                 <button key={k} onClick={() => setDrinkFilter(k)} style={{
                   border: 'none', borderRadius: '8px', padding: '6px 11px', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
                   background: drinkFilter === k ? INK : '#f3f4f6', color: drinkFilter === k ? '#fff' : SECONDARY,
@@ -462,7 +498,10 @@ export default function VenuePanel({
             </div>
           </div>
           <p style={{ margin: '0 0 12px', fontSize: '12px', color: MUTED }}>
-            Tap what they said for each drink. Put in the price per litre — the margin works itself out. Tick Agreed when they say yes; with-spirit prices go straight onto their price list.
+            Tap what they said for each drink. Put in the price per litre — the margin works itself out. Tick Agreed when they say yes.{' '}
+            {drinkFormat === 'premix'
+              ? 'Agreed prices here go straight onto their price list.'
+              : 'No-spirit prices are costed without the spirit, and stay on this page — their price list holds one price per drink.'}
           </p>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '860px', fontSize: '13px' }}>
@@ -482,7 +521,6 @@ export default function VenuePanel({
                     <tr key={`${r.p.id}-${r.variant}`} style={{ borderTop: '1px solid #f9fafb', background: r.pick?.agreed ? '#f7fdf9' : undefined }}>
                       <td style={{ padding: '8px' }}>
                         <span style={{ fontWeight: 700, color: INK }}>{drinkName(r.p)}</span>
-                        <span style={{ marginLeft: '7px', fontSize: '11px', color: MUTED }}>{r.short}</span>
                       </td>
                       <td style={{ padding: '8px' }}>
                         <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', alignItems: 'center' }}>
