@@ -5,6 +5,9 @@ import { format, differenceInCalendarDays, startOfDay } from 'date-fns'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import VenuePanel from '@/components/rollout/VenuePanel'
+import RecipeEditor from '@/components/recipes/RecipeEditor'
+import Link from 'next/link'
+import { computeRecipeCost } from '@/lib/costing'
 import { getRollouts, createRollout, updateRolloutLogged, deleteRollout } from '@/lib/firestore/rollouts'
 import { getAccounts, createAccount } from '@/lib/firestore/accounts'
 import { getProducts, getAllPricing } from '@/lib/firestore/catalog'
@@ -19,7 +22,7 @@ import {
 } from '@/lib/rollout'
 import {
   Account, AccountPricing, Ingredient, Order, Product, Recipe, RolloutVenue, RolloutStage, TastingSession,
-  ROLLOUT_STEPS, ROLLOUT_OFF_ROAD,
+  ROLLOUT_STEPS, ROLLOUT_OFF_ROAD, matchesClassic,
 } from '@/types'
 import toast from 'react-hot-toast'
 
@@ -59,6 +62,10 @@ export default function RolloutPage() {
   const [openId, setOpenId] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
   const [adding, setAdding] = useState('')
+  // The recipe being written, and whether we are working down the whole list.
+  const [writing, setWriting] = useState<string | null>(null)
+  const [workingThrough, setWorkingThrough] = useState(false)
+  const justSaved = useRef<string | null>(null)
   const firstLoad = useRef(true)
   const seeded = useRef(false)
 
@@ -132,6 +139,51 @@ export default function RolloutPage() {
     () => new Set(products.filter((p) => p.isActive !== false && p.isClassic).map((p) => p.id)),
     [products]
   )
+
+  // A drink we cannot cost is a drink we cannot price, and one we cannot price
+  // we cannot sell — so the range is only as ready as its recipes.
+  const recipeGaps = useMemo(() => {
+    const classics = products
+      .filter((p) => p.isActive !== false && p.isClassic)
+      .sort((a, b) => (matchesClassic(a.name) ?? a.name).localeCompare(matchesClassic(b.name) ?? b.name))
+    const missing = classics.filter((p) => !recipes.some((r) => r.productId === p.id))
+    const unpriced = classics.filter((p) => {
+      const r = recipes.find((x) => x.productId === p.id)
+      return r && !computeRecipeCost(r, ingredients).complete
+    })
+    return { total: classics.length, missing, unpriced }
+  }, [products, recipes, ingredients])
+
+  function startWriting(productId: string, throughList: boolean) {
+    setWorkingThrough(throughList)
+    setWriting(productId)
+  }
+
+  // The editor calls onSaved then onClose. Saving while working through the
+  // list moves straight on to the next drink still without a recipe.
+  async function recipeSaved() {
+    justSaved.current = writing
+    const fresh = await getRecipes()
+    setRecipes(fresh)
+    const done = justSaved.current
+    const nextUp = recipeGaps.missing.find((p) => p.id !== done && !fresh.some((r) => r.productId === p.id))
+    if (workingThrough && nextUp) {
+      toast.success(`Saved — next: ${matchesClassic(nextUp.name) ?? nextUp.name}`)
+      setWriting(nextUp.id)
+    } else {
+      if (workingThrough) toast.success('Every core drink has a recipe now')
+      setWriting(null)
+      setWorkingThrough(false)
+    }
+    justSaved.current = null
+  }
+
+  function recipeClosed() {
+    // A close that follows a save is handled by recipeSaved.
+    if (justSaved.current) return
+    setWriting(null)
+    setWorkingThrough(false)
+  }
 
   // A venue whose account has been deleted has nothing left to track.
   const rows = useMemo<Row[]>(() => venues.filter((v) => !accounts.length || accounts.some((a) => a.id === v.accountId)).map((v) => {
@@ -211,8 +263,19 @@ export default function RolloutPage() {
   const open = venues.find((x) => x.id === openId)
   const onBoard = new Set(venues.map((x) => x.accountId))
 
+  const writingProduct = products.find((p) => p.id === writing)
+
   return (
     <div>
+      {writing && writingProduct && (
+        <RecipeEditor
+          key={writing}
+          presetProductId={writing}
+          products={products.filter((p) => p.isActive !== false)}
+          onSaved={recipeSaved}
+          onClose={recipeClosed}
+        />
+      )}
       {open && (
         <div
           onClick={() => setOpenId(null)}
@@ -237,6 +300,7 @@ export default function RolloutPage() {
               onPatch={(data, note, auto) => patch(open, data, note, auto)}
               onReload={load}
               onClose={() => setOpenId(null)}
+              onAddRecipe={(productId) => startWriting(productId, false)}
               onRemove={async () => {
                 await deleteRollout(open.id)
                 setVenues((prev) => prev.filter((x) => x.id !== open.id))
@@ -274,6 +338,46 @@ export default function RolloutPage() {
           )
         })}
       </div>
+
+      {!loading && recipeGaps.missing.length > 0 && (
+        <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: '12px', padding: '16px 18px', marginBottom: '18px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '14px', flexWrap: 'wrap' }}>
+            <div>
+              <p style={{ margin: '0 0 3px', fontSize: '15px', fontWeight: 700, color: '#991b1b' }}>
+                ⚠ {recipeGaps.missing.length} of the {recipeGaps.total} drinks can&apos;t be sold yet — no recipe
+              </p>
+              <p style={{ margin: 0, fontSize: '12.5px', color: '#7f1d1d' }}>
+                No recipe means no cost, so no price to put in front of a venue. Click a drink to write it, or go down the list.
+              </p>
+            </div>
+            <Button onClick={() => startWriting(recipeGaps.missing[0].id, true)}>
+              Write them one by one →
+            </Button>
+          </div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '12px' }}>
+            {recipeGaps.missing.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => startWriting(p.id, false)}
+                title={`Write the recipe for ${matchesClassic(p.name) ?? p.name} (${p.productCode})`}
+                style={{
+                  border: '1px solid #fecaca', background: '#fff', color: '#991b1b', borderRadius: '20px',
+                  padding: '5px 12px', fontSize: '12.5px', fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                + {matchesClassic(p.name) ?? p.name}
+              </button>
+            ))}
+          </div>
+          {recipeGaps.unpriced.length > 0 && (
+            <p style={{ margin: '12px 0 0', fontSize: '12px', color: '#7f1d1d' }}>
+              Also: {recipeGaps.unpriced.length} recipe{recipeGaps.unpriced.length === 1 ? ' has' : 's have'} ingredients with no price
+              ({recipeGaps.unpriced.map((p) => matchesClassic(p.name) ?? p.name).join(', ')}), so {recipeGaps.unpriced.length === 1 ? 'its' : 'their'} cost is incomplete.{' '}
+              <Link href="/recipes/fill" style={{ color: '#991b1b', fontWeight: 700 }}>Fix in Fill the gaps →</Link>
+            </p>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <p style={{ fontSize: '13px', color: MUTED }}>Setting up the board…</p>

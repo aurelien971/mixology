@@ -37,6 +37,8 @@ interface Props {
   onReload: () => void
   onClose: () => void
   onRemove: () => Promise<void>
+  /** Open the recipe editor for a drink that has no recipe. */
+  onAddRecipe: (productId: string) => void
 }
 
 const INK = '#111827'
@@ -56,7 +58,7 @@ const dayAt = (d: string) => new Date(d + 'T12:00:00')
 
 export default function VenuePanel({
   venue: v, account, accounts, products, recipes, ingredients, orders, tastings, pricing, staff,
-  onPatch, onReload, onClose, onRemove,
+  onPatch, onReload, onClose, onRemove, onAddRecipe,
 }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
   const [booking, setBooking] = useState(false)
@@ -540,7 +542,19 @@ export default function VenuePanel({
                         </div>
                       </td>
                       <td style={{ padding: '8px', textAlign: 'right', color: r.cost ? SECONDARY : '#d1d5db', fontVariantNumeric: 'tabular-nums' }}>
-                        {r.cost ? money(r.cost) : 'no recipe'}
+                        {r.cost
+                          ? money(r.cost)
+                          : recipes.some((x) => x.productId === r.p.id)
+                            ? <Link href="/recipes/fill" title="The recipe has ingredients with no price" style={{ color: '#b45309', fontSize: '12px', fontWeight: 600 }}>unpriced →</Link>
+                            : (
+                              <button
+                                onClick={() => onAddRecipe(r.p.id)}
+                                style={{
+                                  border: '1px solid #fecaca', background: '#fef2f2', color: '#991b1b', borderRadius: '20px',
+                                  padding: '2px 9px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                                }}
+                              >+ recipe</button>
+                            )}
                       </td>
                       <td style={{ padding: '8px', textAlign: 'right' }}>
                         <input
