@@ -26,7 +26,7 @@ export const ROLLOUT_SEED: VenueSeed[] = [
   { name: 'Pyro',                match: ['pyro'] },
   { name: 'Flat Iron',           match: ['flat iron', 'flatiron square', 'flat iron square'] },
   { name: 'Spring Street Pizza', match: ['spring street pizza'] },
-  { name: 'Goodies',             match: ['goodies'], createIfMissing: true },
+  { name: 'Goodies',             match: ['goodies'] },
   { name: 'Oudh 1722',           match: ['oudh 1722', 'oudh'] },
   { name: 'Heard Soho',          group: 'Heard', match: ['heard soho'] },
   { name: 'Heard Borough',       group: 'Heard', match: ['heard borough'] },

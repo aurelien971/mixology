@@ -5,7 +5,7 @@ import { format, differenceInCalendarDays, startOfDay } from 'date-fns'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import VenuePanel from '@/components/rollout/VenuePanel'
-import { getRollouts, createRollout, updateRolloutLogged } from '@/lib/firestore/rollouts'
+import { getRollouts, createRollout, updateRolloutLogged, deleteRollout } from '@/lib/firestore/rollouts'
 import { getAccounts, createAccount } from '@/lib/firestore/accounts'
 import { getProducts, getAllPricing } from '@/lib/firestore/catalog'
 import { getRecipes } from '@/lib/firestore/recipes'
@@ -87,6 +87,9 @@ export default function RolloutPage() {
     ;(async () => {
       try {
         let [existing, accs] = await Promise.all([getRollouts(), getAccounts()])
+        // Setup is a one-off for an empty board. Once venues exist it never runs
+        // again, so a venue someone removed stays removed.
+        if (existing.length > 0) return
         const now = new Date()
         for (const seed of ROLLOUT_SEED) {
           let account = findSeedAccount(seed, accs)
@@ -130,7 +133,8 @@ export default function RolloutPage() {
     [products]
   )
 
-  const rows = useMemo<Row[]>(() => venues.map((v) => {
+  // A venue whose account has been deleted has nothing left to track.
+  const rows = useMemo<Row[]>(() => venues.filter((v) => !accounts.length || accounts.some((a) => a.id === v.accountId)).map((v) => {
     const o = venueOrders(v, orders, rangeIds)
     const stage = effectiveStage(v, o)
     const range = v.range ?? []
@@ -139,7 +143,7 @@ export default function RolloutPage() {
       picked: range.filter((r) => r.status === 'yes' || r.status === 'maybe').length,
       agreed: range.filter((r) => r.agreed).length,
     }
-  }), [venues, orders, rangeIds])
+  }), [venues, orders, rangeIds, accounts])
 
   const counts = {
     all: rows.length,
@@ -233,6 +237,12 @@ export default function RolloutPage() {
               onPatch={(data, note, auto) => patch(open, data, note, auto)}
               onReload={load}
               onClose={() => setOpenId(null)}
+              onRemove={async () => {
+                await deleteRollout(open.id)
+                setVenues((prev) => prev.filter((x) => x.id !== open.id))
+                setOpenId(null)
+                toast.success(`${open.name} removed from the rollout`)
+              }}
             />
           </div>
         </div>

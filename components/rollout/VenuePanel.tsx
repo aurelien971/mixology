@@ -36,6 +36,7 @@ interface Props {
   onPatch: (data: Partial<RolloutVenue>, note?: string, auto?: string) => Promise<void>
   onReload: () => void
   onClose: () => void
+  onRemove: () => Promise<void>
 }
 
 const INK = '#111827'
@@ -55,7 +56,7 @@ const dayAt = (d: string) => new Date(d + 'T12:00:00')
 
 export default function VenuePanel({
   venue: v, account, accounts, products, recipes, ingredients, orders, tastings, pricing, staff,
-  onPatch, onReload, onClose,
+  onPatch, onReload, onClose, onRemove,
 }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
   const [booking, setBooking] = useState(false)
@@ -658,6 +659,18 @@ export default function VenuePanel({
           {timeline.map((t, i) => <TimelineRow key={i} item={t} />)}
         </div>
       )}
+
+      <div style={{ marginTop: '22px', paddingTop: '14px', borderTop: '1px solid #e5e7eb' }}>
+        <button
+          onClick={async () => {
+            if (!confirm(`Remove ${v.name} from the rollout?\n\nIts contacts, drink picks and notes on this board are deleted. The account, its orders and its price list are not touched.`)) return
+            await onRemove()
+          }}
+          style={{ ...linkBtn, color: '#dc2626' }}
+        >
+          Remove {v.name} from the rollout
+        </button>
+      </div>
     </div>
   )
 }

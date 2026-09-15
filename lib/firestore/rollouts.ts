@@ -1,5 +1,5 @@
 import {
-  collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteField, Timestamp,
+  collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, deleteField, Timestamp,
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { RolloutVenue, ProjectUpdate, ROLLOUT_STEPS, ROLLOUT_OFF_ROAD } from '@/types'
@@ -64,6 +64,11 @@ export async function createRollout(
     updatedAt: Timestamp.now(),
   })
   return ref.id
+}
+
+/** Take a venue off the board. The account, its orders and prices are untouched. */
+export async function deleteRollout(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTION, id))
 }
 
 export async function updateRollout(
