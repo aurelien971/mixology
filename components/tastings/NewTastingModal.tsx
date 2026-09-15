@@ -18,6 +18,8 @@ interface Props {
   recipes: Recipe[]
   ingredients: Ingredient[]
   staff: StaffUser[]
+  /** Opened from a venue: the tasting is already for them. */
+  presetAccountId?: string
   onClose: () => void
   onSaved: () => void
 }
@@ -36,8 +38,8 @@ function money(n: number) { return '£' + n.toFixed(2) }
 const FOODLAB = '__foodlab__'
 const isFoodlab = (a: Account) => /^\s*food\s*lab\b/i.test(a.tradingName || a.legalName || '')
 
-export default function NewTastingModal({ accounts, products, recipes, ingredients, staff, onClose, onSaved }: Props) {
-  const [accountId, setAccountId] = useState('')
+export default function NewTastingModal({ accounts, products, recipes, ingredients, staff, presetAccountId, onClose, onSaved }: Props) {
+  const [accountId, setAccountId] = useState(presetAccountId ?? '')
   const [prospect, setProspect] = useState('')
   const [contact, setContact] = useState('')
   const [when, setWhen] = useState('')

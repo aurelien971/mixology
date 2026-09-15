@@ -725,3 +725,81 @@ export function tastingVerdicts(t: Pick<TastingSession, 'items'>): { yes: number
   const count = (v: TastingVerdict) => t.items.filter((i) => i.verdict === v).length
   return { yes: count('yes'), maybe: count('maybe'), no: count('no'), pending: count('pending') }
 }
+
+// ── Rollout ──────────────────────────────────────────────────────────────────
+// Getting a venue from first conversation to reordering the core range on its
+// own. One record per venue. Most of what it shows — tastings, prices, orders —
+// already lives elsewhere and is read in; this holds only what nothing else
+// does: the step it is on, the people, the drinks picked and the next step.
+
+export type RolloutStage =
+  | 'not_started' | 'contact' | 'tasting_booked' | 'tasted' | 'range_chosen'
+  | 'pricing_sent' | 'pricing_agreed' | 'first_order' | 'recurring'
+  | 'paused' | 'lost'
+
+/** The road, in order. The last two move on their own when orders arrive. */
+export const ROLLOUT_STEPS: { value: RolloutStage; label: string; doNext: string; auto?: boolean }[] = [
+  { value: 'not_started',    label: 'Not started',    doNext: 'Add the main contact' },
+  { value: 'contact',        label: 'Contact made',   doNext: 'Book a tasting' },
+  { value: 'tasting_booked', label: 'Tasting booked', doNext: 'Hold the tasting and note what they said' },
+  { value: 'tasted',         label: 'Tasted',         doNext: 'Tick the drinks they want' },
+  { value: 'range_chosen',   label: 'Drinks chosen',  doNext: 'Put a price on each drink and send it' },
+  { value: 'pricing_sent',   label: 'Prices sent',    doNext: 'Get a yes on the prices' },
+  { value: 'pricing_agreed', label: 'Prices agreed',  doNext: 'Wait for their first order' },
+  { value: 'first_order',    label: 'Ordering',       doNext: 'Keep them going — 3 orders in 6 weeks', auto: true },
+  { value: 'recurring',      label: 'Onboarded',      doNext: 'Done — they reorder on their own', auto: true },
+]
+
+export const ROLLOUT_OFF_ROAD: { value: RolloutStage; label: string; bg: string; fg: string }[] = [
+  { value: 'paused', label: 'Paused', bg: '#f3f4f6', fg: '#4b5563' },
+  { value: 'lost',   label: 'Lost',   bg: '#fee2e2', fg: '#991b1b' },
+]
+
+export type RangeStatus = 'offered' | 'tasted' | 'yes' | 'maybe' | 'no'
+
+export const RANGE_STATUSES: { value: RangeStatus; label: string; bg: string; fg: string }[] = [
+  { value: 'offered', label: 'Offered', bg: '#f3f4f6', fg: '#4b5563' },
+  { value: 'tasted',  label: 'Tasted',  bg: '#dbeafe', fg: '#1d4ed8' },
+  { value: 'yes',     label: 'Yes',     bg: '#dcfce7', fg: '#166534' },
+  { value: 'maybe',   label: 'Maybe',   bg: '#fef3c7', fg: '#92400e' },
+  { value: 'no',      label: 'No',      bg: '#fee2e2', fg: '#991b1b' },
+]
+
+export interface RolloutContact {
+  id: string
+  name: string
+  role?: string
+  email?: string
+  phone?: string
+  decides?: boolean     // says yes to the range and the prices
+  orders?: boolean      // places the orders
+}
+
+/** One drink in one format, as it stands with this venue. */
+export interface RangePick {
+  productId: string
+  variant: DevVariant
+  status?: RangeStatus
+  pricePerLitre?: number
+  agreed?: boolean
+  feedback?: string
+}
+
+export interface RolloutVenue {
+  id: string
+  accountId: string
+  name: string                  // as the board shows it, e.g. "Heard Covent Garden"
+  group?: string
+  stage: RolloutStage
+  owner?: string
+  nextStep?: string
+  nextStepDue?: Date
+  blocker?: string
+  notes?: string
+  contacts?: RolloutContact[]
+  range?: RangePick[]
+  updates?: ProjectUpdate[]
+  startedAt: Date               // orders from here on count toward onboarding
+  createdAt: Date
+  updatedAt: Date
+}

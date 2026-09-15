@@ -10,8 +10,9 @@ import Header from '@/components/layout/Header'
 import { getProjects } from '@/lib/firestore/projects'
 import { getDevelopment } from '@/lib/firestore/development'
 import { getTastings } from '@/lib/firestore/tastings'
+import { getRollouts } from '@/lib/firestore/rollouts'
 import {
-  Project, DevelopmentRecord, TastingSession, ProjectUpdate,
+  Project, DevelopmentRecord, TastingSession, ProjectUpdate, RolloutVenue,
   DEV_VARIANTS, PROJECT_CATEGORIES,
 } from '@/types'
 
@@ -24,15 +25,17 @@ import {
  * this week, compared with last, and what has quietly stopped.
  */
 
-type Source = 'project' | 'development' | 'tasting'
+type Source = 'project' | 'development' | 'tasting' | 'rollout'
 
-// Categorical slots 1–3 of the reference palette, validated all-pairs on white.
-// Aqua is under 3:1 on white, so identity is also carried by legend, labels and
-// the table view — never the colour alone.
+// Categorical slots 1–4 of the reference palette, in order. They share one
+// stacked chart, so the adjacent pairs are what has to separate (validated on
+// white). Aqua and yellow sit under 3:1 on white, so identity is also carried
+// by legend, labels and the table view — never the colour alone.
 const SOURCES: { value: Source; label: string; color: string }[] = [
   { value: 'project',     label: 'Projects',            color: '#2a78d6' },
   { value: 'development', label: 'Product development', color: '#eb6834' },
   { value: 'tasting',     label: 'Tastings',            color: '#1baf7a' },
+  { value: 'rollout',     label: 'Rollout',             color: '#eda100' },
 ]
 const sourceOf = (s: Source) => SOURCES.find((x) => x.value === s)!
 
@@ -76,7 +79,7 @@ const RANGES = [
 
 const weekStart = (d: Date) => startOfWeek(d, { weekStartsOn: 1 })
 
-function explode(projects: Project[], dev: DevelopmentRecord[], tastings: TastingSession[]): Event[] {
+function explode(projects: Project[], dev: DevelopmentRecord[], tastings: TastingSession[], rollouts: RolloutVenue[]): Event[] {
   const out: Event[] = []
   const push = (u: ProjectUpdate, i: number, base: Omit<Event, 'key' | 'at' | 'text' | 'kind' | 'by'>) => {
     const at = new Date(u.at)
@@ -102,6 +105,11 @@ function explode(projects: Project[], dev: DevelopmentRecord[], tastings: Tastin
       context: t.scheduledAt ? format(t.scheduledAt, 'd MMM') : undefined, href: '/tastings',
     }))
   }
+  for (const r of rollouts) {
+    ;(r.updates ?? []).forEach((u, i) => push(u, i, {
+      source: 'rollout', entityId: r.id, entityName: r.name, context: r.group, href: `/rollout?venue=${r.id}`,
+    }))
+  }
   return out.sort((a, b) => b.at.getTime() - a.at.getTime())
 }
 
@@ -120,7 +128,7 @@ export default function ActivityPage() {
   // Opens on a month: the log only began in September, so a longer window is
   // mostly empty weeks until there is history to fill it.
   const [weeks, setWeeks] = useState(4)
-  const [sources, setSources] = useState<Source[]>(['project', 'development', 'tasting'])
+  const [sources, setSources] = useState<Source[]>(['project', 'development', 'tasting', 'rollout'])
   const [kind, setKind] = useState<'all' | 'note' | 'auto'>('all')
   const [person, setPerson] = useState('')
   const [q, setQ] = useState('')
@@ -128,8 +136,8 @@ export default function ActivityPage() {
   const [limit, setLimit] = useState(150)
 
   useEffect(() => {
-    Promise.all([getProjects(), getDevelopment(), getTastings()])
-      .then(([p, d, t]) => { setProjects(p); setEvents(explode(p, d, t)) })
+    Promise.all([getProjects(), getDevelopment(), getTastings(), getRollouts()])
+      .then(([p, d, t, r]) => { setProjects(p); setEvents(explode(p, d, t, r)) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -158,7 +166,7 @@ export default function ActivityPage() {
   const series = useMemo(() => {
     const rows = Array.from({ length: weeks }, (_, i) => {
       const start = addWeeks(from, i)
-      return { key: start.toISOString(), label: format(start, 'd MMM'), start, project: 0, development: 0, tasting: 0, total: 0 }
+      return { key: start.toISOString(), label: format(start, 'd MMM'), start, project: 0, development: 0, tasting: 0, rollout: 0, total: 0 }
     })
     const index = new Map(rows.map((r, i) => [r.key, i]))
     for (const e of filtered) {
@@ -238,7 +246,7 @@ export default function ActivityPage() {
     <div>
       <Header
         title="Activity log"
-        subtitle="Every change to projects, R&D, product development and tastings — week over week."
+        subtitle="Every change to projects, R&D, product development, tastings and the rollout — week over week."
       />
 
       {/* Filters: one row, above everything they drive */}

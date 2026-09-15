@@ -52,6 +52,19 @@ const nav = [
     ),
   },
   {
+    label: 'Rollout',
+    href: '/rollout',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+        <circle cx="3.5" cy="9" r="1.8" fill="currentColor"/>
+        <circle cx="9" cy="9" r="1.8" fill="currentColor" opacity=".6"/>
+        <circle cx="14.5" cy="9" r="1.8" stroke="currentColor" strokeWidth="1.3" fill="none"/>
+        <line x1="5.3" y1="9" x2="7.2" y2="9" stroke="currentColor" strokeWidth="1.3"/>
+        <line x1="10.8" y1="9" x2="12.7" y2="9" stroke="currentColor" strokeWidth="1.3" opacity=".6"/>
+      </svg>
+    ),
+  },
+  {
     label: 'Activity log',
     href: '/activity',
     icon: (
