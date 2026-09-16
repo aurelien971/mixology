@@ -11,8 +11,9 @@ import { getProjects } from '@/lib/firestore/projects'
 import { getDevelopment } from '@/lib/firestore/development'
 import { getTastings } from '@/lib/firestore/tastings'
 import { getRollouts } from '@/lib/firestore/rollouts'
+import { getSsbDrinks } from '@/lib/firestore/ssb'
 import {
-  Project, DevelopmentRecord, TastingSession, ProjectUpdate, RolloutVenue,
+  Project, DevelopmentRecord, TastingSession, ProjectUpdate, RolloutVenue, SsbDrink,
   DEV_VARIANTS, PROJECT_CATEGORIES,
 } from '@/types'
 
@@ -35,7 +36,7 @@ const SOURCES: { value: Source; label: string; color: string }[] = [
   { value: 'project',     label: 'Projects',            color: '#2a78d6' },
   { value: 'development', label: 'Product development', color: '#eb6834' },
   { value: 'tasting',     label: 'Tastings',            color: '#1baf7a' },
-  { value: 'rollout',     label: 'Rollout',             color: '#eda100' },
+  { value: 'rollout',     label: 'Objectives',          color: '#eda100' },
 ]
 const sourceOf = (s: Source) => SOURCES.find((x) => x.value === s)!
 
@@ -79,7 +80,7 @@ const RANGES = [
 
 const weekStart = (d: Date) => startOfWeek(d, { weekStartsOn: 1 })
 
-function explode(projects: Project[], dev: DevelopmentRecord[], tastings: TastingSession[], rollouts: RolloutVenue[]): Event[] {
+function explode(projects: Project[], dev: DevelopmentRecord[], tastings: TastingSession[], rollouts: RolloutVenue[], ssb: SsbDrink[]): Event[] {
   const out: Event[] = []
   const push = (u: ProjectUpdate, i: number, base: Omit<Event, 'key' | 'at' | 'text' | 'kind' | 'by'>) => {
     const at = new Date(u.at)
@@ -107,7 +108,12 @@ function explode(projects: Project[], dev: DevelopmentRecord[], tastings: Tastin
   }
   for (const r of rollouts) {
     ;(r.updates ?? []).forEach((u, i) => push(u, i, {
-      source: 'rollout', entityId: r.id, entityName: r.name, context: r.group, href: `/rollout?venue=${r.id}`,
+      source: 'rollout', entityId: r.id, entityName: r.name, context: r.group ? `Rollout · ${r.group}` : 'Rollout', href: `/objectives/rollout?venue=${r.id}`,
+    }))
+  }
+  for (const d of ssb) {
+    ;(d.updates ?? []).forEach((u, i) => push(u, i, {
+      source: 'rollout', entityId: `ssb:${d.id}`, entityName: d.name, context: 'Spring Street Bar menu', href: `/objectives/spring-street-bar?drink=${d.id}`,
     }))
   }
   return out.sort((a, b) => b.at.getTime() - a.at.getTime())
@@ -136,8 +142,8 @@ export default function ActivityPage() {
   const [limit, setLimit] = useState(150)
 
   useEffect(() => {
-    Promise.all([getProjects(), getDevelopment(), getTastings(), getRollouts()])
-      .then(([p, d, t, r]) => { setProjects(p); setEvents(explode(p, d, t, r)) })
+    Promise.all([getProjects(), getDevelopment(), getTastings(), getRollouts(), getSsbDrinks()])
+      .then(([p, d, t, r, s]) => { setProjects(p); setEvents(explode(p, d, t, r, s)) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -246,7 +252,7 @@ export default function ActivityPage() {
     <div>
       <Header
         title="Activity log"
-        subtitle="Every change to projects, R&D, product development, tastings and the rollout — week over week."
+        subtitle="Every change to projects, R&D, product development, tastings and objectives — week over week."
       />
 
       {/* Filters: one row, above everything they drive */}

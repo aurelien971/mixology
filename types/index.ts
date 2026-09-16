@@ -803,3 +803,61 @@ export interface RolloutVenue {
   createdAt: Date
   updatedAt: Date
 }
+
+// ── Objectives: Spring Street Bar menu ───────────────────────────────────────
+// A bespoke menu we have to review, price and sign off before a trial service.
+// Its own steps and fields — not the Projects board, not the rollout.
+
+export type SsbStage =
+  | 'to_review' | 'in_development' | 'tasting' | 'changes' | 'approved' | 'signed_off' | 'dropped'
+
+export const SSB_STAGES: { value: SsbStage; label: string; doNext: string; bg: string; fg: string }[] = [
+  { value: 'to_review',      label: 'To review',      doNext: 'Read the spec and decide how we make it', bg: '#f3f4f6', fg: '#4b5563' },
+  { value: 'in_development', label: 'In development', doNext: 'Write the recipe and batch a test',       bg: '#f3e8ff', fg: '#7e22ce' },
+  { value: 'tasting',        label: 'Tasting',        doNext: 'Taste it and write down what they said',  bg: '#ffedd5', fg: '#c2410c' },
+  { value: 'changes',        label: 'Changes asked',  doNext: 'Make the changes, then taste again',      bg: '#fef3c7', fg: '#92400e' },
+  { value: 'approved',       label: 'Approved',       doNext: 'Confirm the price, then sign it off',     bg: '#dbeafe', fg: '#1d4ed8' },
+  { value: 'signed_off',     label: 'Signed off',     doNext: 'Ready for the trial',                     bg: '#dcfce7', fg: '#166534' },
+  { value: 'dropped',        label: 'Dropped',        doNext: 'Off the menu',                            bg: '#fee2e2', fg: '#991b1b' },
+]
+
+export interface SsbSpecLine { name: string; amount: number | null; unit: string }
+
+/** The bar spec as the client wrote it, kept word for word. */
+export interface SsbSpec {
+  fromName: string              // what it was called on the spec sheet
+  serveMl: number | null
+  glass: string | null
+  garnish: string | null
+  method: string | null
+  notes: string | null
+  ingredients: SsbSpecLine[]
+}
+
+export type MenuOverlap = 'same' | 'twist' | 'none'
+
+export interface SsbDrink {
+  id: string
+  name: string
+  category: string
+  order: number                 // position on the menu
+  stage: SsbStage
+  sheetCost: number             // cost per serve on the menu sheet, never edited
+  sheetSale: number             // menu price on the sheet, never edited
+  cost: number                  // cost per serve now
+  sale: number                  // menu price now, inc VAT
+  priceConfirmed?: boolean
+  priceConfirmedBy?: string
+  priceConfirmedAt?: string     // ISO
+  overlap: MenuOverlap
+  classicName?: string          // the core classic it is, or is a twist on
+  spec?: SsbSpec
+  feedback?: string             // the client's latest word on it
+  owner?: string
+  nextStep?: string
+  signedOffBy?: string
+  signedOffAt?: string          // ISO
+  updates?: ProjectUpdate[]
+  createdAt: Date
+  updatedAt: Date
+}
