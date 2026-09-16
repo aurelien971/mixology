@@ -20,6 +20,8 @@ interface Props {
   staff: StaffUser[]
   /** Opened from a venue: the tasting is already for them. */
   presetAccountId?: string
+  /** Opened from a venue: their menu is what gets poured, including drinks not live yet. */
+  menuProducts?: Product[]
   onClose: () => void
   onSaved: () => void
 }
@@ -38,7 +40,7 @@ function money(n: number) { return '£' + n.toFixed(2) }
 const FOODLAB = '__foodlab__'
 const isFoodlab = (a: Account) => /^\s*food\s*lab\b/i.test(a.tradingName || a.legalName || '')
 
-export default function NewTastingModal({ accounts, products, recipes, ingredients, staff, presetAccountId, onClose, onSaved }: Props) {
+export default function NewTastingModal({ accounts, products, recipes, ingredients, staff, presetAccountId, menuProducts, onClose, onSaved }: Props) {
   const [accountId, setAccountId] = useState(presetAccountId ?? '')
   const [prospect, setProspect] = useState('')
   const [contact, setContact] = useState('')
@@ -69,12 +71,13 @@ export default function NewTastingModal({ accounts, products, recipes, ingredien
   }, [products, recipes, ingredients])
 
   const pool = useMemo(() => {
-    const live = products.filter((p) => p.isActive !== false)
-    const base = showAll ? live : live.filter((p) => p.isClassic)
+    const menuIds = new Set((menuProducts ?? []).map((p) => p.id))
+    const live = [...products.filter((p) => p.isActive !== false && !menuIds.has(p.id)), ...(menuProducts ?? [])]
+    const base = showAll ? live : menuProducts?.length ? menuProducts : live.filter((p) => p.isClassic)
     if (!q.trim()) return base
     const n = q.toLowerCase()
     return live.filter((p) => p.name.toLowerCase().includes(n))
-  }, [products, showAll, q])
+  }, [products, menuProducts, showAll, q])
 
   function toggle(p: Product, variant: DevVariant) {
     const key = `${p.id}§${variant}`
@@ -273,7 +276,7 @@ export default function NewTastingModal({ accounts, products, recipes, ingredien
                   padding: '5px 11px', fontSize: '12px', color: '#6b7280', cursor: 'pointer', whiteSpace: 'nowrap',
                 }}
               >
-                {showAll ? 'Core range only' : 'Show everything'}
+                {showAll ? (menuProducts?.length ? 'Their menu only' : 'Core range only') : 'Show everything'}
               </button>
             </div>
           </div>

@@ -27,7 +27,7 @@ const kicker: React.CSSProperties = {
   fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 8px',
 }
 
-type Attachment =
+export type Attachment =
   | { kind: 'text'; name: string; text: string }
   | { kind: 'image'; name: string; media_type: string; data: string; preview: string }
   | { kind: 'pdf'; name: string; data: string }
@@ -67,7 +67,7 @@ function shrinkImage(file: File): Promise<{ media_type: string; data: string; pr
 }
 
 /** Whatever was dropped, in a shape the brief reader accepts. */
-async function readFile(file: File): Promise<Attachment | null> {
+export async function readFile(file: File): Promise<Attachment | null> {
   if (SHEET.test(file.name)) {
     // Spreadsheets are flattened to CSV per sheet — the model reads a table
     // perfectly well as text, and it keeps every cell rather than a screenshot.

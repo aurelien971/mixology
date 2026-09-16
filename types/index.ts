@@ -800,18 +800,23 @@ export interface RolloutVenue {
   range?: RangePick[]
   updates?: ProjectUpdate[]
   startedAt: Date               // orders from here on count toward onboarding
+  tastingDate?: string          // YYYY-MM-DD
+  gpTarget?: number             // the GP the venue must keep, default 80
+  marginFloor?: number          // the least margin we accept, default 30
+  brief?: { summary: string; receivedAt: string; source: string; warnings?: string }
   createdAt: Date
   updatedAt: Date
 }
 
-// ── Objectives: Spring Street Bar menu ───────────────────────────────────────
-// A bespoke menu we have to review, price and sign off before a trial service.
-// Its own steps and fields — not the Projects board, not the rollout.
+// ── Onboarding menus ─────────────────────────────────────────────────────────
+// What a venue will pour. Some drinks are ours already (or a twist on one of
+// ours); the rest we manufacture from their spec. Each drink is priced so the
+// venue keeps its GP, has a recipe, gets tasted and is signed off.
 
-export type SsbStage =
+export type MenuStage =
   | 'to_review' | 'in_development' | 'tasting' | 'changes' | 'approved' | 'signed_off' | 'dropped'
 
-export const SSB_STAGES: { value: SsbStage; label: string; doNext: string; bg: string; fg: string }[] = [
+export const MENU_STAGES: { value: MenuStage; label: string; doNext: string; bg: string; fg: string }[] = [
   { value: 'to_review',      label: 'To review',      doNext: 'Read the spec and decide how we make it', bg: '#f3f4f6', fg: '#4b5563' },
   { value: 'in_development', label: 'In development', doNext: 'Write the recipe and batch a test',       bg: '#f3e8ff', fg: '#7e22ce' },
   { value: 'tasting',        label: 'Tasting',        doNext: 'Taste it and write down what they said',  bg: '#ffedd5', fg: '#c2410c' },
@@ -821,38 +826,41 @@ export const SSB_STAGES: { value: SsbStage; label: string; doNext: string; bg: s
   { value: 'dropped',        label: 'Dropped',        doNext: 'Off the menu',                            bg: '#fee2e2', fg: '#991b1b' },
 ]
 
-export interface SsbSpecLine { name: string; amount: number | null; unit: string }
+export interface DrinkSpecLine { name: string; amount: number | null; unit: string }
 
 /** The bar spec as the client wrote it, kept word for word. */
-export interface SsbSpec {
+export interface DrinkSpec {
   fromName: string              // what it was called on the spec sheet
   serveMl: number | null
   glass: string | null
   garnish: string | null
   method: string | null
   notes: string | null
-  ingredients: SsbSpecLine[]
+  ingredients: DrinkSpecLine[]
 }
 
 export type MenuOverlap = 'same' | 'twist' | 'none'
 
-export interface SsbDrink {
+export interface MenuDrink {
   id: string
-  name: string
-  category: string
-  order: number                 // position on the menu
-  stage: SsbStage
-  sheetCost: number             // cost per serve on the menu sheet, never edited
-  sheetSale: number             // menu price on the sheet, never edited
-  cost: number                  // cost per serve now
-  sale: number                  // menu price now, inc VAT
+  venueId: string               // the onboarding venue (= its account id)
+  name: string                  // as it is on their menu
+  order: number
+  overlap: MenuOverlap          // ours, a twist on ours, or new
+  classicName?: string          // the core classic it is or twists
+  productId?: string            // the product it is made as — a classic, or one made for it
+  format: DevVariant            // with spirit, or a syrup they add spirit to
+  stage: MenuStage
+  serveMl?: number
+  menuPrice?: number            // their menu price for a serve, inc VAT
+  theirCost?: number            // what a serve costs them to make themselves, if they said
+  ourPrice?: number             // what we charge them per serve
+  spiritCost?: number           // no-spirit format: the spirit they pour, per serve
   priceConfirmed?: boolean
   priceConfirmedBy?: string
   priceConfirmedAt?: string     // ISO
-  overlap: MenuOverlap
-  classicName?: string          // the core classic it is, or is a twist on
-  spec?: SsbSpec
-  feedback?: string             // the client's latest word on it
+  spec?: DrinkSpec
+  feedback?: string
   owner?: string
   nextStep?: string
   signedOffBy?: string

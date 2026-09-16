@@ -35,6 +35,8 @@ DRINKS
 - serveMl: total liquid per serve in ml if it can be worked out, else null.
 - glass, garnish, method: as written, or null.
 - format: "premix" if it is or could be a fully batched drink including spirit, "syrup" if the brief says the venue pours the spirit, "unclear" otherwise.
+- menuPrice: the price of one serve on their menu in GBP including VAT, when the material gives it, else null. A menu or costing sheet usually has a "Sale" or "Price" column.
+- costPerServe: their own cost for one serve in GBP when the material gives it (a "Cost" column), else null. Do not invent it from ingredients.
 - notes: anything about the drink a bartender would need that does not fit elsewhere. Spreadsheets often carry a feedback or sign-off column beside a drink ("YES", "Good", "change name", "needs something citrus?", "move to a low ball") — that is the client's verdict, so put it here verbatim and prefixed "Feedback:".
 
 SPEC SHEETS ARE MESSY — handle it like a bartender would
@@ -87,7 +89,7 @@ const SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['name', 'ingredients', 'serveMl', 'glass', 'garnish', 'method', 'format', 'notes'],
+        required: ['name', 'ingredients', 'serveMl', 'glass', 'garnish', 'method', 'format', 'notes', 'menuPrice', 'costPerServe'],
         properties: {
           name: { type: 'string' },
           ingredients: {
@@ -110,6 +112,8 @@ const SCHEMA = {
           method: { type: ['string', 'null'] },
           format: { type: 'string', enum: ['premix', 'syrup', 'unclear'] },
           notes: { type: ['string', 'null'] },
+          menuPrice: { type: ['number', 'null'] },
+          costPerServe: { type: ['number', 'null'] },
         },
       },
     },

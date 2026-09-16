@@ -35,6 +35,8 @@ export interface BriefDrink {
   method: string | null
   format: 'premix' | 'syrup' | 'unclear'
   notes: string | null
+  menuPrice?: number | null     // their menu price inc VAT, when the brief gives it
+  costPerServe?: number | null  // their own costing, when the brief gives it
 }
 
 export interface ParsedBrief {

@@ -52,8 +52,8 @@ const nav = [
     ),
   },
   {
-    label: 'Objectives',
-    href: '/objectives',
+    label: 'Onboarding',
+    href: '/onboarding',
     icon: (
       <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
         <circle cx="9" cy="9" r="6.5" stroke="currentColor" strokeWidth="1.4" fill="none"/>
