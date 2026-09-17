@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Button from '@/components/ui/Button'
 import { RecipeDraft } from '@/components/recipes/RecipeEditor'
 import toast from 'react-hot-toast'
@@ -31,6 +31,34 @@ export default function ScreenshotImport({ onParsed, onClose }: {
     if (!list.length) { toast.error('Only images (screenshots) are supported here'); return }
     const imgs = await Promise.all(list.map(fileToImg))
     setImages(prev => [...prev, ...imgs].slice(0, 10))
+  }
+
+  // Cmd+V anywhere while this is open drops the copied screenshot in.
+  useEffect(() => {
+    function onPaste(e: ClipboardEvent) {
+      const files = [...(e.clipboardData?.files ?? [])].filter(f => f.type.startsWith('image/'))
+      if (!files.length) return
+      e.preventDefault()
+      addFiles(files.map((f, i) => new File([f], `pasted-${Date.now()}-${i}.png`, { type: f.type })))
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  })
+
+  async function pasteFromClipboard() {
+    try {
+      const items = await navigator.clipboard.read()
+      const files: File[] = []
+      for (const item of items) {
+        const type = item.types.find(t => t.startsWith('image/'))
+        if (type) files.push(new File([await item.getType(type)], `pasted-${Date.now()}-${files.length}.png`, { type }))
+      }
+      if (!files.length) { toast.error('No screenshot on the clipboard — copy one first (Cmd+Ctrl+Shift+4 on a Mac)'); return }
+      await addFiles(files)
+      toast.success(files.length === 1 ? 'Screenshot pasted' : `${files.length} screenshots pasted`)
+    } catch {
+      toast.error('The browser blocked clipboard access — press Cmd+V instead')
+    }
   }
 
   async function analyze() {
@@ -109,10 +137,13 @@ export default function ScreenshotImport({ onParsed, onClose }: {
               <path d="M6 24l7-7 5 5 4-4 4 4" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
             </svg>
             <p style={{ fontSize: '14px', fontWeight: 600, color: '#374151', margin: 0 }}>Drop screenshots here or click to browse</p>
-            <p style={{ fontSize: '12px', color: '#9ca3af', margin: 0 }}>One or several — up to 10 images (PNG / JPG)</p>
+            <p style={{ fontSize: '12px', color: '#9ca3af', margin: 0 }}>One or several — up to 10 images (PNG / JPG) · or press Cmd+V to paste</p>
             <input type="file" accept="image/*" multiple style={{ display: 'none' }}
               onChange={e => e.target.files && addFiles(e.target.files)} />
           </label>
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: '10px' }}>
+            <Button variant="secondary" onClick={pasteFromClipboard}>📋 Paste screenshot</Button>
+          </div>
 
           {images.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '14px' }}>
