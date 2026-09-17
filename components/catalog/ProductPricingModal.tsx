@@ -48,6 +48,8 @@ export default function ProductPricingModal({ product, onClose }: Props) {
   const [saving, setSaving] = useState(false)
   const [classic, setClassic] = useState(!!product.isClassic)
   const [flipping, setFlipping] = useState(false)
+  const [dflt, setDflt] = useState(product.defaultPricePerLitre ? String(product.defaultPricePerLitre) : '')
+  const [savingDefault, setSavingDefault] = useState(false)
 
   // new row
   const [accountId, setAccountId] = useState('')
@@ -248,6 +250,40 @@ export default function ProductPricingModal({ product, onClose }: Props) {
             </div>
           )}
         </div>
+
+        {/* default price — where every account's price starts */}
+        {(() => {
+          const n = parseFloat(dflt) || 0
+          const serve = product.recommendedServingG || 100
+          const changed = Math.abs(n - (product.defaultPricePerLitre ?? 0)) >= 0.01
+          return (
+            <div style={{ border: '1px solid #f3f4f6', borderRadius: '10px', padding: '14px 16px', marginBottom: '18px' }}>
+              <p style={{ fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Default price</p>
+              <div style={{ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#6b7280' }}>
+                  £
+                  <input value={dflt} onChange={(e) => setDflt(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" placeholder="per litre"
+                    style={{ ...input, width: '110px', textAlign: 'right', fontFamily: 'monospace' }} />
+                  / litre
+                </span>
+                {n > 0 && <span style={{ fontSize: '13px', color: '#374151' }}><strong>{money((n * serve) / 1000)}</strong> a {serve}ml serve</span>}
+                {n > 0 && cost?.complete && (
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: (n - cost.perLitre) / n >= 0.5 ? '#166534' : (n - cost.perLitre) / n >= 0.3 ? '#b45309' : '#b91c1c' }}>
+                    our GP {(((n - cost.perLitre) / n) * 100).toFixed(0)}%
+                  </span>
+                )}
+                <Button size="sm" disabled={savingDefault || !changed || n <= 0} loading={savingDefault} onClick={async () => {
+                  setSavingDefault(true)
+                  try {
+                    await updateProduct(product.id, { defaultPricePerLitre: Math.round(n * 100) / 100 })
+                    toast.success(`Default price saved for ${product.name}`)
+                  } catch { toast.error('Could not save') } finally { setSavingDefault(false) }
+                }}>Save default</Button>
+              </div>
+              <p style={{ margin: '8px 0 0', fontSize: '11.5px', color: '#9ca3af' }}>Every account&apos;s price starts from this — change it for one account on their price list.</p>
+            </div>
+          )
+        })()}
 
         {/* when it last sold */}
         <div style={{ border: '1px solid #f3f4f6', borderRadius: '10px', padding: '14px 16px', marginBottom: '18px' }}>

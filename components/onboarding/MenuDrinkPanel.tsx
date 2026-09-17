@@ -2,20 +2,40 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import Button from '@/components/ui/Button'
-import { updateProduct } from '@/lib/firestore/catalog'
+import { updateProduct, getProducts, createProduct } from '@/lib/firestore/catalog'
+import { updateRecipe } from '@/lib/firestore/recipes'
+import { nextCode } from '@/lib/coreRange'
+import { computeRecipeCost } from '@/lib/costing'
 import { currentUserName } from '@/lib/currentUser'
 import {
   OVERLAP_LABEL, RECIPE_NEED, GP_VERDICT, MENU_NEXT, MENU_ROAD, menuRoadIndex, stageInfo,
   DEFAULT_GP_TARGET, DEFAULT_MARGIN_FLOOR,
 } from '@/lib/onboarding'
-import { MenuDrink, MenuOverlap, CORE_RANGE, DevVariant } from '@/types'
+import { MenuDrink, MenuOverlap, Recipe, CORE_RANGE, DevVariant, normalizeDrinkName } from '@/types'
 import { VenueCtx, INK, SECONDARY, MUTED, card, kicker, input, linkBtn, Pill, NumInput, money } from './shared'
 import toast from 'react-hot-toast'
 
+type FixKind = 'link' | 'ingredients' | 'num' | 'use' | 'confirm' | 'owner' | 'info'
+interface Fix {
+  key: string
+  label: string
+  kind: FixKind
+  field?: 'serveMl' | 'menuPrice' | 'ourPrice'
+  value?: number
+  href?: string
+}
+
+const r2 = (n: number) => Math.round(n * 100) / 100
+
 export default function MenuDrinkPanel({ ctx, drink: d, onClose }: { ctx: VenueCtx; drink: MenuDrink; onClose: () => void }) {
+  const router = useRouter()
   const [note, setNote] = useState('')
+  const [linking, setLinking] = useState(false)
+  const [q, setQ] = useState('')
+  const [busy, setBusy] = useState(false)
   const st = ctx.states.get(d.id)
   if (!st) return null
 
@@ -32,6 +52,28 @@ export default function MenuDrinkPanel({ ctx, drink: d, onClose }: { ctx: VenueC
   const patch = (data: Partial<MenuDrink>, n?: string, a?: string) => ctx.patchDrink(d, data, n, a)
   const unconfirm = d.priceConfirmed ? { priceConfirmed: false, priceConfirmedBy: undefined, priceConfirmedAt: undefined } : {}
   const ownBuildGp = d.theirCost && d.menuPrice ? ((d.menuPrice / 1.2 - d.theirCost) / (d.menuPrice / 1.2)) * 100 : null
+  const defaultPpl = st.own?.defaultPricePerLitre
+  const defaultPerServe = defaultPpl && st.serve ? r2((defaultPpl * st.serve) / 1000) : undefined
+
+  // ── everything still missing, in the order it has to be done ─────────────
+  const fixes: Fix[] = []
+  if (st.recipeNeed !== 'ready') {
+    fixes.push({ key: 'recipe', kind: 'link', label: d.overlap === 'same' && d.classicName ? `Link it to our ${d.classicName} recipe` : 'Link it to one of our recipes — or write a new one' })
+  } else if (st.costPerLitre === null) {
+    fixes.push({ key: 'ingredients', kind: 'ingredients', label: 'Price the ingredients its recipe is missing', href: st.recipe ? `/recipes/${st.recipe.id}` : '/recipes/fill' })
+  }
+  if (!st.serve) fixes.push({ key: 'serve', kind: 'num', field: 'serveMl', label: 'Set the serve size (ml)' })
+  if (!d.menuPrice) fixes.push({ key: 'menu', kind: 'num', field: 'menuPrice', label: 'Add their menu price (£, inc VAT)' })
+  if (!d.ourPrice) {
+    if (g.suggested !== undefined) fixes.push({ key: 'price', kind: 'use', value: g.suggested, label: `Set our price — ${money(g.suggested)} a serve keeps them ${target}%` })
+    else if (defaultPerServe) fixes.push({ key: 'price', kind: 'use', value: defaultPerServe, label: `Set our price — our default is ${money(defaultPerServe)} a serve` })
+    else fixes.push({ key: 'price', kind: 'num', field: 'ourPrice', label: 'Set our price per serve (£)' })
+  } else if (g.verdict === 'fails' && g.suggested !== undefined) {
+    fixes.push({ key: 'price', kind: 'use', value: g.suggested, label: g.reason })
+  }
+  if (g.verdict === 'impossible') fixes.push({ key: 'impossible', kind: 'info', label: g.reason })
+  if (d.ourPrice && !d.priceConfirmed && g.verdict !== 'impossible') fixes.push({ key: 'confirm', kind: 'confirm', label: 'Confirm the price' })
+  if (!d.owner) fixes.push({ key: 'owner', kind: 'owner', label: 'Pick who owns it' })
 
   async function confirmPrice() {
     if (d.priceConfirmed) return patch({ priceConfirmed: false, priceConfirmedBy: undefined, priceConfirmedAt: undefined }, undefined, 'Price unconfirmed')
@@ -43,12 +85,61 @@ export default function MenuDrinkPanel({ ctx, drink: d, onClose }: { ctx: VenueC
     )
   }
 
+  function runFix(f: Fix) {
+    if (f.kind === 'link') { setLinking(true); return }
+    if (f.kind === 'ingredients' && f.href) { router.push(f.href); return }
+    if (f.kind === 'use' && f.value !== undefined) { patch({ ourPrice: f.value, ...unconfirm }); return }
+    if (f.kind === 'confirm') { confirmPrice(); return }
+    const el = document.getElementById(`fix-${f.key}`)
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    ;(el as HTMLInputElement | null)?.focus?.()
+  }
+
+  // ── linking to one of our recipes ────────────────────────────────────────
+  const words = normalizeDrinkName(`${d.name} ${d.classicName ?? ''}`).split(' ').filter((w) => w.length > 2)
+  const needle = q.trim().toLowerCase()
+  const candidates = ctx.recipes
+    .filter((r) => r.status !== 'discontinued')
+    .map((r) => {
+      const hay = `${r.name} ${r.variation ?? ''} ${r.productName ?? ''} ${r.productCode ?? ''}`.toLowerCase()
+      const score = needle ? (hay.includes(needle) ? 2 : 0) : words.filter((w) => hay.includes(w)).length
+      return { r, score }
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score || a.r.name.localeCompare(b.r.name))
+    .slice(0, 12)
+
+  async function linkRecipe(r: Recipe) {
+    setBusy(true)
+    try {
+      let productId = r.productId
+      // A recipe with no product cannot be priced or ordered, so it gets one.
+      if (!productId) {
+        const all = await getProducts()
+        const code = `FL-${nextCode(all)}`
+        productId = await createProduct({
+          productCode: code, baseCode: code, name: r.name,
+          recommendedServingG: st?.serve ?? 100, volumeLitres: 5, costToMake: 0, costMissing: true,
+          isNonAlcoholic: false, isCoreRange: false, isClassic: false, isActive: true,
+        })
+        await updateRecipe(r.id, { productId, productCode: code, productName: r.name })
+      }
+      await patch({ recipeId: r.id, productId }, undefined, `Linked to our recipe "${r.name}"${r.variation ? ` (${r.variation})` : ''}`)
+      toast.success(`${d.name} linked to ${r.name}`)
+      setLinking(false)
+      setQ('')
+      await ctx.reload()
+    } catch (e) {
+      console.error(e)
+      toast.error('Could not link it — try again')
+    } finally { setBusy(false) }
+  }
+
   async function signOff() {
     if (st!.recipeNeed !== 'ready' && !confirm(`${d.name} has no recipe yet. Sign it off anyway?`)) return
     if (g.verdict !== 'pass' && !confirm(`${d.name} does not guarantee them ${target}% GP yet. Sign it off anyway?`)) return
     const who = currentUserName() ?? undefined
     await patch({ stage: 'signed_off', signedOffBy: who, signedOffAt: new Date().toISOString(), nextStep: undefined }, undefined, `Signed off${who ? ` by ${who}` : ''}`)
-    // A drink we make for them becomes a real product the moment it is signed off.
     if (d.overlap !== 'same' && st!.own && st!.own.isActive === false) {
       await updateProduct(st!.own.id, { isActive: true })
       toast.success(`${st!.own.productCode} ${d.name} is live in the catalog`)
@@ -57,6 +148,70 @@ export default function MenuDrinkPanel({ ctx, drink: d, onClose }: { ctx: VenueC
       toast.success(`${d.name} signed off`)
     }
   }
+
+  const fixControl = (f: Fix) => {
+    if (f.kind === 'num' && f.field) {
+      const id = `fix-${f.key}`
+      return (
+        <span onClick={(e) => e.stopPropagation()} style={{ display: 'inline-flex' }}>
+          <input id={id} inputMode="decimal" placeholder={f.field === 'serveMl' ? 'ml' : '£'}
+            onBlur={(e) => {
+              const n = parseFloat(e.target.value.replace(/[^0-9.]/g, ''))
+              if (!Number.isFinite(n) || n <= 0) return
+              patch({ [f.field!]: f.field === 'serveMl' ? Math.round(n) : r2(n), ...unconfirm } as Partial<MenuDrink>)
+            }}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+            style={{ ...input, width: '96px', padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', fontSize: '13px' }} />
+        </span>
+      )
+    }
+    if (f.kind === 'owner') {
+      return (
+        <select id="fix-owner" value={d.owner ?? ''} onChange={(e) => patch({ owner: e.target.value || undefined })}
+          style={{ ...input, width: '140px', padding: '5px 8px', fontSize: '12.5px', cursor: 'pointer' }}>
+          <option value="">—</option>
+          {ctx.staff.map((u) => <option key={u.id} value={u.displayName}>{u.displayName}</option>)}
+        </select>
+      )
+    }
+    if (f.kind === 'info') return null
+    const text = f.kind === 'link' ? 'Link a recipe' : f.kind === 'ingredients' ? 'Open the recipe' : f.kind === 'use' ? `Use ${money(f.value!)}` : 'Confirm'
+    return <Button size="sm" variant="secondary" onClick={() => runFix(f)}>{text}</Button>
+  }
+
+  const picker = linking && (
+    <div style={{ border: '1.5px solid #bfdbfe', background: '#f8fbff', borderRadius: '10px', padding: '12px', marginTop: '10px' }}>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search our recipes — name, venue, product code…" style={input} />
+        <Button size="sm" variant="ghost" onClick={() => { setLinking(false); setQ('') }}>Cancel</Button>
+      </div>
+      <p style={{ margin: '0 0 6px', fontSize: '11.5px', color: MUTED }}>{needle ? `Matching "${q}"` : `Closest to ${d.name}`}</p>
+      {candidates.length === 0 && <p style={{ margin: '4px 0', fontSize: '13px', color: MUTED }}>No recipe matches. Try another word, or write a new one.</p>}
+      {candidates.map(({ r }) => {
+        const c = computeRecipeCost(r, ctx.ingredients)
+        const current = st.recipe?.id === r.id
+        return (
+          <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 0', borderTop: '1px solid #eef2f7' }}>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ fontSize: '13.5px', fontWeight: 700, color: INK }}>{r.name}</span>
+              {r.variation && <span style={{ fontSize: '12px', color: SECONDARY }}> · {r.variation}</span>}
+              <span style={{ display: 'block', fontSize: '11.5px', color: MUTED }}>
+                {r.productCode ? `${r.productCode} ${r.productName ?? ''}` : 'no product yet — one is made when you link'} · {c.complete ? `${money(c.costPerLitre)}/L` : 'some ingredients unpriced'}
+              </span>
+            </span>
+            {current
+              ? <Pill bg="#dcfce7" fg="#166534">Linked</Pill>
+              : <Button size="sm" onClick={() => linkRecipe(r)} disabled={busy}>Link</Button>}
+          </div>
+        )
+      })}
+      <div style={{ borderTop: '1px solid #eef2f7', paddingTop: '8px', marginTop: '4px' }}>
+        <button onClick={() => { setLinking(false); ctx.writeRecipes([d]) }} style={{ ...linkBtn, color: '#1d4ed8' }}>
+          None of these — write a new recipe{d.spec ? ' from their spec' : ''}
+        </button>
+      </div>
+    </div>
+  )
 
   return (
     <div>
@@ -111,38 +266,53 @@ export default function MenuDrinkPanel({ ctx, drink: d, onClose }: { ctx: VenueC
         </div>
       </div>
 
-      {/* do next */}
+      {/* what is missing — the only thing that matters until it is empty */}
       {!dropped && (
         <div style={{
           ...card, marginBottom: '14px',
-          border: `1.5px solid ${d.stage === 'signed_off' ? '#bbf7d0' : d.stage === 'changes' ? '#fcd34d' : '#e5e7eb'}`,
-          background: d.stage === 'signed_off' ? '#f0fdf4' : d.stage === 'changes' ? '#fffbeb' : '#fff',
+          border: `1.5px solid ${fixes.length ? '#fcd34d' : d.stage === 'signed_off' ? '#bbf7d0' : '#e5e7eb'}`,
+          background: fixes.length ? '#fffdf5' : d.stage === 'signed_off' ? '#f0fdf4' : '#fff',
         }}>
-          <p style={kicker}>Do next</p>
-          {d.stage === 'signed_off' ? (
+          {fixes.length > 0 ? (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                <p style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: INK }}>To finish this drink · {fixes.length} missing</p>
+                {fixes[0].kind !== 'info' && fixes[0].kind !== 'num' && fixes[0].kind !== 'owner' && (
+                  <Button onClick={() => runFix(fixes[0])}>{fixes[0].label} →</Button>
+                )}
+              </div>
+              {fixes.map((f, i) => (
+                <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderTop: '1px solid #f5efe0' }}>
+                  <span style={{ width: '22px', height: '22px', borderRadius: '50%', flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '11.5px', fontWeight: 800, background: i === 0 ? INK : '#fef3c7', color: i === 0 ? '#fff' : '#92400e' }}>{i + 1}</span>
+                  <span style={{ flex: 1, fontSize: '13.5px', fontWeight: 600, color: f.kind === 'info' ? '#991b1b' : INK }}>{f.label}</span>
+                  {fixControl(f)}
+                </div>
+              ))}
+              {picker}
+            </>
+          ) : d.stage === 'signed_off' ? (
             <p style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: '#166534' }}>
               ✓ Signed off{d.signedOffBy ? ` by ${d.signedOffBy}` : ''}{d.signedOffAt ? ` on ${format(new Date(d.signedOffAt), 'EEE d MMM')}` : ''}.
             </p>
           ) : (
             <>
+              <p style={kicker}>Nothing missing — do next</p>
               <input key={`next-${d.nextStep ?? ''}`} defaultValue={d.nextStep ?? ''} placeholder={stage.doNext}
                 onBlur={(e) => e.target.value.trim() !== (d.nextStep ?? '') && patch({ nextStep: e.target.value.trim() || undefined })}
                 style={{ ...input, fontSize: '17px', fontWeight: 600, color: INK, border: '1px solid transparent', background: 'transparent', padding: '4px 0' }} />
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginTop: '10px' }}>
-                {st.recipeNeed !== 'ready' && <Button onClick={() => ctx.writeRecipes([d])}>{st.recipeNeed === 'adapt' ? 'Adapt our recipe' : st.recipeNeed === 'classic_missing' ? 'Write our recipe' : 'Write the recipe'}</Button>}
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '10px' }}>
                 {d.stage === 'approved'
-                  ? <Button variant={st.recipeNeed === 'ready' ? 'primary' : 'secondary'} onClick={signOff}>✓ Sign off</Button>
-                  : next && <Button variant="secondary" onClick={() => patch({ stage: next, nextStep: undefined })}>✓ Done — go to &ldquo;{stageInfo(next).label}&rdquo;</Button>}
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: SECONDARY, marginLeft: 'auto' }}>
-                  Owner
-                  <select value={d.owner ?? ''} onChange={(e) => patch({ owner: e.target.value || undefined })}
-                    style={{ ...input, width: '140px', padding: '6px 8px', fontSize: '12.5px', cursor: 'pointer' }}>
-                    <option value="">—</option>
-                    {ctx.staff.map((u) => <option key={u.id} value={u.displayName}>{u.displayName}</option>)}
-                  </select>
-                </span>
+                  ? <Button onClick={signOff}>✓ Sign off</Button>
+                  : next && <Button onClick={() => patch({ stage: next, nextStep: undefined })}>✓ Done — go to &ldquo;{stageInfo(next).label}&rdquo;</Button>}
               </div>
             </>
+          )}
+          {fixes.length > 0 && d.stage !== 'signed_off' && (
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f5efe0' }}>
+              {d.stage === 'approved'
+                ? <Button size="sm" variant="secondary" onClick={signOff}>Sign off anyway</Button>
+                : next && <Button size="sm" variant="ghost" onClick={() => patch({ stage: next, nextStep: undefined })}>Move to &ldquo;{stageInfo(next).label}&rdquo; anyway</Button>}
+            </div>
           )}
         </div>
       )}
@@ -152,22 +322,37 @@ export default function MenuDrinkPanel({ ctx, drink: d, onClose }: { ctx: VenueC
           {/* recipe */}
           <div style={card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <p style={{ ...kicker, margin: 0 }}>Recipe</p>
+              <p style={{ ...kicker, margin: 0 }}>Our recipe</p>
               <Pill bg={rn.bg} fg={rn.fg}>{rn.label}</Pill>
             </div>
             {st.recipe ? (
-              <p style={{ margin: 0, fontSize: '13px', color: SECONDARY }}>
-                <Link href={`/recipes/${st.recipe.id}`} style={{ color: '#1d4ed8', fontWeight: 600 }}>{st.recipe.name}</Link>
-                {st.costPerLitre !== null ? ` · ${money(st.costPerLitre)}/L` : ' · some ingredients unpriced'}
-                {st.costPerServe !== null ? ` · ${money(st.costPerServe)} a serve` : st.serve ? '' : ' · set a serve size to cost a serve'}
-              </p>
+              <>
+                <p style={{ margin: 0, fontSize: '13.5px', color: SECONDARY }}>
+                  <Link href={`/recipes/${st.recipe.id}`} style={{ color: '#1d4ed8', fontWeight: 600 }}>{st.recipe.name}</Link>
+                  {st.recipe.variation ? ` · ${st.recipe.variation}` : ''}
+                  {st.costPerLitre !== null ? ` · ${money(st.costPerLitre)}/L` : ' · some ingredients unpriced'}
+                  {st.costPerServe !== null ? ` · ${money(st.costPerServe)} a serve` : ''}
+                </p>
+                <p style={{ margin: '6px 0 0', fontSize: '12px', color: MUTED }}>
+                  {d.recipeId ? 'Linked by hand. ' : 'Found from its name. '}
+                  <button onClick={() => setLinking(true)} style={linkBtn}>Link a different recipe</button>
+                  {d.recipeId && <> · <button onClick={() => patch({ recipeId: undefined }, undefined, 'Recipe unlinked')} style={linkBtn}>Unlink</button></>}
+                </p>
+              </>
             ) : (
-              <p style={{ margin: 0, fontSize: '13px', color: SECONDARY }}>
-                {st.recipeNeed === 'classic_missing' && `We have no recipe for our ${d.classicName} yet — written once, it serves every venue.`}
-                {st.recipeNeed === 'adapt' && `Start from our ${d.classicName}${d.spec ? ' or their spec' : ''} and change it.${st.costIsEstimate && st.costPerServe !== null ? ` Costed from ours for now: about ${money(st.costPerServe)} a serve.` : ''}`}
-                {st.recipeNeed === 'write' && (d.spec ? 'Their spec is below — the recipe opens already filled from it.' : 'No spec yet — ask them for it, or write it from the tasting.')}
-              </p>
+              <>
+                <p style={{ margin: '0 0 10px', fontSize: '13px', color: SECONDARY }}>
+                  {st.recipeNeed === 'classic_missing' && `We have no recipe linked to our ${d.classicName} yet.`}
+                  {st.recipeNeed === 'adapt' && `A twist on our ${d.classicName} — link the recipe we make, or adapt ours.`}
+                  {st.recipeNeed === 'write' && (d.spec ? 'Link one we already make, or write it from their spec below.' : 'Link one we already make, or write a new one.')}
+                </p>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <Button size="sm" onClick={() => setLinking(true)}>Link one of our recipes</Button>
+                  <Button size="sm" variant="secondary" onClick={() => ctx.writeRecipes([d])}>{st.recipeNeed === 'adapt' ? 'Adapt our recipe' : 'Write a new one'}</Button>
+                </div>
+              </>
             )}
+            {!fixes.some((f) => f.kind === 'link') && picker}
           </div>
 
           {/* spec */}
@@ -231,9 +416,18 @@ export default function MenuDrinkPanel({ ctx, drink: d, onClose }: { ctx: VenueC
               <label><span style={{ ...kicker, margin: '0 0 4px', display: 'block' }}>Their menu price</span>
                 <NumInput value={d.menuPrice} placeholder="£" width="100%" onSave={(n) => patch({ menuPrice: n, ...unconfirm })} /></label>
               <label><span style={{ ...kicker, margin: '0 0 4px', display: 'block' }}>Our price / serve</span>
-                <NumInput value={d.ourPrice} placeholder="£" width="100%" onSave={(n) => patch({ ourPrice: n, ...unconfirm })} /></label>
+                <NumInput value={d.ourPrice} placeholder="£" width="100%" onSave={(n) => patch({ ourPrice: n, ...unconfirm })} />
+                {defaultPerServe !== undefined && (
+                  <span style={{ display: 'block', marginTop: '3px', fontSize: '11px', color: SECONDARY }}>
+                    Default {money(defaultPerServe)}
+                    {d.ourPrice !== defaultPerServe && <> · <button onClick={() => patch({ ourPrice: defaultPerServe, ...unconfirm })} style={{ ...linkBtn, fontSize: '11px', color: '#1d4ed8' }}>use</button></>}
+                  </span>
+                )}
+              </label>
               <label><span style={{ ...kicker, margin: '0 0 4px', display: 'block' }}>Serve (ml)</span>
-                <NumInput value={d.serveMl ?? st.serve ?? undefined} decimals={0} placeholder="ml" width="100%" onSave={(n) => patch({ serveMl: n, ...unconfirm })} /></label>
+                <NumInput value={d.serveMl ?? st.serve ?? undefined} decimals={0} placeholder="ml" width="100%" onSave={(n) => patch({ serveMl: n, ...unconfirm })} />
+                {!d.serveMl && st.serve && <span style={{ display: 'block', marginTop: '3px', fontSize: '11px', color: MUTED }}>from the product</span>}
+              </label>
             </div>
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '12px', fontSize: '12.5px', color: SECONDARY }}>
               <select value={d.format} onChange={(e) => patch({ format: e.target.value as DevVariant, ...unconfirm })} style={{ ...input, width: 'auto', padding: '5px 8px', fontSize: '12.5px', cursor: 'pointer' }}>
@@ -268,17 +462,25 @@ export default function MenuDrinkPanel({ ctx, drink: d, onClose }: { ctx: VenueC
                 {d.priceConfirmed ? '✓ Price confirmed' : 'Confirm this price'}
               </Button>
               {d.priceConfirmed && <span style={{ fontSize: '12px', color: MUTED }}>{d.priceConfirmedBy ? `by ${d.priceConfirmedBy} ` : ''}{d.priceConfirmedAt ? `on ${format(new Date(d.priceConfirmedAt), 'd MMM')}` : ''}</span>}
+              {st.own && d.ourPrice && st.serve && !defaultPpl && (
+                <button onClick={async () => {
+                  const ppl = r2((d.ourPrice! * 1000) / st.serve!)
+                  await updateProduct(st.own!.id, { defaultPricePerLitre: ppl })
+                  toast.success(`£${ppl.toFixed(2)}/L is now ${st.own!.name}'s default price`)
+                  await ctx.reload()
+                }} style={{ ...linkBtn, fontSize: '12px' }}>Make this {st.own.name}&apos;s default price</button>
+              )}
             </div>
           </div>
 
-          {/* our range */}
+          {/* ours or new */}
           <div style={card}>
             <p style={kicker}>Ours or new</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               <select value={d.overlap}
                 onChange={(e) => {
                   const overlap = e.target.value as MenuOverlap
-                  patch({ overlap, ...(overlap === 'none' ? { classicName: undefined } : {}), ...(overlap === 'same' ? { productId: undefined } : {}) }, undefined, `Now: ${OVERLAP_LABEL[overlap].label}`)
+                  patch({ overlap, ...(overlap === 'none' ? { classicName: undefined } : {}) }, undefined, `Now: ${OVERLAP_LABEL[overlap].label}`)
                 }}
                 style={{ ...input, cursor: 'pointer' }}>
                 <option value="same">Same as our classic</option>
@@ -292,7 +494,7 @@ export default function MenuDrinkPanel({ ctx, drink: d, onClose }: { ctx: VenueC
               </select>
             </div>
             <p style={{ margin: '8px 0 0', fontSize: '12px', color: MUTED }}>
-              {d.overlap === 'same' ? 'We make it as our classic — our recipe and cost apply.' : d.overlap === 'twist' ? 'Its own recipe, started from our classic. It becomes its own product at sign-off.' : 'Made from their spec. It becomes its own product at sign-off.'}
+              {d.overlap === 'same' ? 'We make it as our classic.' : d.overlap === 'twist' ? 'Its own recipe, started from our classic.' : 'Made from their spec.'} Linking a recipe above decides what it costs.
             </p>
           </div>
         </div>

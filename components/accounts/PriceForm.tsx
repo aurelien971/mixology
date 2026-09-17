@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Button from '@/components/ui/Button'
-import { upsertAccountPricing } from '@/lib/firestore/catalog'
+import { upsertAccountPricing, updateProduct } from '@/lib/firestore/catalog'
 import { AccountPricing, Product } from '@/types'
 import toast from 'react-hot-toast'
 
@@ -41,6 +41,7 @@ export function GpBadge({ value, kind }: { value: number | null; kind: 'venue' |
   )
 }
 
+const miniBtn: React.CSSProperties = { border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '11px', color: '#1d4ed8', textDecoration: 'underline', fontFamily: 'inherit' }
 const label: React.CSSProperties = { display: 'block', fontSize: '10.5px', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }
 const field: React.CSSProperties = { width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '13.5px', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }
 
@@ -55,7 +56,9 @@ export default function PriceForm({ product, existing, costPerLitre, costNote, t
   onCancel: () => void
 }) {
   const startVol = existing?.volumeLitres ?? product.volumeLitres ?? 5
-  const [ppl, setPpl] = useState(existing ? String(r2(existing.pricePerLitre || existing.pricePerUnit / startVol)) : '')
+  // A new price starts from the product's default; an existing one keeps its own.
+  const [ppl, setPpl] = useState(existing ? String(r2(existing.pricePerLitre || existing.pricePerUnit / startVol)) : product.defaultPricePerLitre ? String(product.defaultPricePerLitre) : '')
+  const [dflt, setDflt] = useState<number | undefined>(product.defaultPricePerLitre)
   const [vol, setVol] = useState(String(startVol))
   const [serve, setServe] = useState(String(existing?.recommendedServingG || product.recommendedServingG || 100))
   const [rsp, setRsp] = useState(existing?.rrp ? String(existing.rrp) : '')
@@ -66,6 +69,14 @@ export default function PriceForm({ product, existing, costPerLitre, costNote, t
   const serveN = parseFloat(serve) || 0
   const rspN = parseFloat(rsp) || 0
   const m = priceMetrics(pplN, serveN, rspN, costPerLitre)
+
+  async function saveDefault() {
+    if (pplN <= 0) return
+    const value = r2(pplN)
+    await updateProduct(product.id, { defaultPricePerLitre: value })
+    setDflt(value)
+    toast.success(`£${value.toFixed(2)}/L is now ${product.name}'s default`)
+  }
 
   async function save() {
     if (pplN <= 0) return toast.error('Put in a price per litre')
@@ -113,7 +124,17 @@ export default function PriceForm({ product, existing, costPerLitre, costNote, t
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr 1fr 1.1fr', gap: '12px', marginBottom: '14px' }}>
         <label><span style={label}>Our price / litre *</span>
-          <input style={field} inputMode="decimal" value={ppl} onChange={(e) => setPpl(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="£ e.g. 30.00" /></label>
+          <input style={field} inputMode="decimal" value={ppl} onChange={(e) => setPpl(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="£ e.g. 30.00" />
+          {dflt ? (
+            <span style={{ display: 'block', marginTop: '4px', fontSize: '11px', color: '#6b7280' }}>
+              Default £{dflt.toFixed(2)}/L
+              {Math.abs(pplN - dflt) >= 0.01 && <> · <button type="button" onClick={() => setPpl(String(dflt))} style={miniBtn}>use default</button> · <button type="button" onClick={saveDefault} style={miniBtn}>make this the default</button></>}
+            </span>
+          ) : (
+            <span style={{ display: 'block', marginTop: '4px', fontSize: '11px', color: '#9ca3af' }}>
+              No default price{pplN > 0 && <> · <button type="button" onClick={saveDefault} style={miniBtn}>make £{pplN.toFixed(2)} the default</button></>}
+            </span>
+          )}</label>
         <label><span style={label}>Pack</span>
           <div style={{ display: 'flex', gap: '5px' }}>
             {['5', '10', '19'].map((v) => (

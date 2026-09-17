@@ -153,9 +153,14 @@ export interface DrinkState {
 
 export function drinkState(d: MenuDrink, venue: RolloutVenue, products: Product[], recipes: Recipe[], ingredients: Ingredient[]): DrinkState {
   const classic = classicProduct(d.classicName, products)
-  const ownProduct = d.productId ? products.find((p) => p.id === d.productId) : undefined
-  const own = d.overlap === 'same' ? ownProduct ?? classic : ownProduct && ownProduct.id !== classic?.id ? ownProduct : undefined
-  const recipe = own ? primaryRecipe(own, recipes) : undefined
+  // A recipe linked by hand wins over anything worked out from names.
+  const linked = d.recipeId ? recipes.find((r) => r.id === d.recipeId) : undefined
+  const ownId = linked?.productId ?? d.productId
+  const ownProduct = ownId ? products.find((p) => p.id === ownId) : undefined
+  const own = linked
+    ? ownProduct
+    : d.overlap === 'same' ? ownProduct ?? classic : ownProduct && ownProduct.id !== classic?.id ? ownProduct : undefined
+  const recipe = linked ?? (own ? primaryRecipe(own, recipes) : undefined)
   const classicRecipe = classic ? primaryRecipe(classic, recipes) : undefined
   const recipeNeed: RecipeNeed = recipe ? 'ready' : d.overlap === 'same' ? 'classic_missing' : d.overlap === 'twist' ? 'adapt' : 'write'
   const basis = recipe ?? (d.overlap === 'twist' ? classicRecipe : undefined)
@@ -164,7 +169,7 @@ export function drinkState(d: MenuDrink, venue: RolloutVenue, products: Product[
     const split = splitRecipeCost(basis, ingredients)
     costPerLitre = d.format === 'syrup' ? split.mixerPerLitre || null : split.complete ? split.totalPerLitre : null
   }
-  const serve = serveOf(d)
+  const serve = serveOf(d) ?? (own?.recommendedServingG || null)
   const costPerServe = costPerLitre !== null && serve ? (costPerLitre * serve) / 1000 : null
   return { own, recipe, recipeNeed, costPerLitre, costPerServe, costIsEstimate: !recipe && !!basis, serve, gp: gpCheck(d, venue, costPerServe) }
 }

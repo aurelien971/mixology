@@ -849,6 +849,7 @@ export interface MenuDrink {
   overlap: MenuOverlap          // ours, a twist on ours, or new
   classicName?: string          // the core classic it is or twists
   productId?: string            // the product it is made as — a classic, or one made for it
+  recipeId?: string             // the exact recipe it is linked to, when chosen by hand
   format: DevVariant            // with spirit, or a syrup they add spirit to
   stage: MenuStage
   serveMl?: number

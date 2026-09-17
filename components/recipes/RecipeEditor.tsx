@@ -1,6 +1,6 @@
 'use client'
 
-import { getProducts as fetchProducts, createProduct } from '@/lib/firestore/catalog'
+import { getProducts as fetchProducts, createProduct, updateProduct } from '@/lib/firestore/catalog'
 import { nextCode } from '@/lib/coreRange'
 
 import { useEffect, useMemo, useState } from 'react'
@@ -83,6 +83,11 @@ export default function RecipeEditor({
   // Making the product from here saves a trip to the catalog to create an empty one.
   const [newProductName, setNewProductName] = useState('')
   const [newServing, setNewServing] = useState('100')
+  const [defaultPpl, setDefaultPpl] = useState(() => {
+    const pid = existing?.productId ?? draft?.productId ?? presetProductId
+    const d = products.find(p => p.id === pid)?.defaultPricePerLitre
+    return d ? String(d) : ''
+  })
   const [instructions, setInstructions] = useState(src?.cookingInstructions ?? '')
   // Batch volume: stored data is per 1000L, so existing/parsed recipes load as a 1000L batch.
   // Fresh manual recipes default to a realistic 10L batch — Dima types what he actually makes.
@@ -376,6 +381,11 @@ export default function RecipeEditor({
         await syncProductCostForRecipe({ ...payload, id: recipeId, createdAt: new Date(), updatedAt: new Date() } as Recipe, { ingredients: fresh })
       }
 
+      const dp = parseFloat(defaultPpl)
+      if (linkedId && Number.isFinite(dp) && dp > 0 && Math.abs(dp - (product?.defaultPricePerLitre ?? 0)) >= 0.01) {
+        await updateProduct(linkedId, { defaultPricePerLitre: Math.round(dp * 100) / 100 })
+      }
+
       toast.success(createdCode
         ? `Recipe saved — product ${createdCode} created, ready to price and order`
         : existing ? 'Recipe updated' : `Recipe saved${linkedId ? ' — product cost updated' : ''}`)
@@ -454,7 +464,11 @@ export default function RecipeEditor({
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '10px' }}>
             <div>
               <label style={labelStyle}>Linked product (drives COGS in catalog & finances)</label>
-              <select style={{ ...inputStyle, cursor: 'pointer' }} value={productId} onChange={e => setProductId(e.target.value)}>
+              <select style={{ ...inputStyle, cursor: 'pointer' }} value={productId} onChange={e => {
+                setProductId(e.target.value)
+                const d = products.find(p => p.id === e.target.value)?.defaultPricePerLitre
+                setDefaultPpl(d ? String(d) : '')
+              }}>
                 <option value="">— not linked —</option>
                 <option value="__new__">+ Create a new product from this recipe</option>
                 {products.map(p => (
@@ -469,6 +483,13 @@ export default function RecipeEditor({
               )}
               {!productId && (
                 <p style={{ margin: '5px 0 0', fontSize: '11.5px', color: '#b45309' }}>Not linked — it can&apos;t be priced or ordered until it is. Pick &ldquo;Create a new product&rdquo; to do it here.</p>
+              )}
+              {productId && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                  <span style={{ fontSize: '12px', color: '#6b7280', whiteSpace: 'nowrap' }}>Default price £</span>
+                  <input style={{ ...inputStyle, width: '110px' }} inputMode="decimal" value={defaultPpl} onChange={e => setDefaultPpl(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="per litre" />
+                  <span style={{ fontSize: '11.5px', color: '#9ca3af' }}>/ litre — every account&apos;s price starts from this</span>
+                </div>
               )}
             </div>
             <div>

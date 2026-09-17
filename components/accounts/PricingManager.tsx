@@ -158,7 +158,15 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '12.5px', color: '#6b7280' }}>{r.p.volumeLitres ?? 5}L</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '12.5px', color: '#6b7280' }}>{r.p.recommendedServingG || '—'}ml</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '13px', fontWeight: 600, color: '#111827', fontVariantNumeric: 'tabular-nums' }}>{money(r.ppl)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '13px', fontWeight: 600, color: '#111827', fontVariantNumeric: 'tabular-nums' }}>
+                      {money(r.ppl)}
+                      {(() => {
+                        const d = products.find((x) => x.id === r.p.productId)?.defaultPricePerLitre
+                        if (!d) return null
+                        const same = Math.abs(d - r.ppl) < 0.01
+                        return <span style={{ display: 'block', fontSize: '10.5px', fontWeight: 500, color: same ? '#9ca3af' : '#1d4ed8' }}>{same ? 'default' : `custom · default ${money(d)}`}</span>
+                      })()}
+                    </td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '13px', color: '#111827', fontVariantNumeric: 'tabular-nums' }}>{r.perServe > 0 ? money(r.perServe) : '—'}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '13px', color: r.p.rrp ? '#374151' : '#d1d5db', fontVariantNumeric: 'tabular-nums' }}>{r.p.rrp ? money(r.p.rrp) : '—'}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '13px', color: r.costPerServe !== null ? '#374151' : '#b45309', fontVariantNumeric: 'tabular-nums' }}
