@@ -529,7 +529,6 @@ export const CORE_RANGE: CoreClassicSpec[] = [
   { name: 'Mulled Wine',      aliases: ['Vin Chaud'],                              category: 'Hot' },
   { name: 'Irish Coffee',                                                          category: 'Hot' },
   { name: 'White Russian',                                                         category: 'Rocks' },
-  { name: 'Hot Toddy',        aliases: ['Toddy'],                                  category: 'Hot' },
   { name: 'Amaretto Sour',                                                         category: 'Rocks' },
   { name: 'Pornstar Martini', aliases: ['Passionfruit Martini', 'Porn Star Martini'], category: 'Coupe' },
 ]
