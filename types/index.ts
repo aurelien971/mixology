@@ -90,6 +90,7 @@ export interface Product {
   isCoreRange: boolean          // available to any external client
   isClassic?: boolean           // one of the ten classics — the range we cost, price and pitch on
   defaultPricePerLitre?: number // standard sell price/L for core range
+  defaultRsp?: number           // the menu price we expect a venue to sell a serve at, inc VAT
   isActive: boolean
   createdAt: Date
   updatedAt: Date

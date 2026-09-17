@@ -61,7 +61,7 @@ export default function PriceForm({ product, existing, costPerLitre, costNote, t
   const [dflt, setDflt] = useState<number | undefined>(product.defaultPricePerLitre)
   const [vol, setVol] = useState(String(startVol))
   const [serve, setServe] = useState(String(existing?.recommendedServingG || product.recommendedServingG || 100))
-  const [rsp, setRsp] = useState(existing?.rrp ? String(existing.rrp) : '')
+  const [rsp, setRsp] = useState(existing?.rrp ? String(existing.rrp) : product.defaultRsp ? String(product.defaultRsp) : '')
   const [saving, setSaving] = useState(false)
 
   const pplN = parseFloat(ppl) || 0

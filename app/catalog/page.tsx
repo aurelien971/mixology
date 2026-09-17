@@ -57,6 +57,7 @@ export default function CatalogPage() {
   const [pricingProduct, setPricingProduct] = useState<Product | null>(null)
   const [hidden, setHidden] = useState(true)
   const [missingOnly, setMissingOnly] = useState(searchParams.get('missing') === '1')
+  const [coreOnly, setCoreOnly] = useState(searchParams.get('core') === '1')
   const [allPricing, setAllPricing] = useState<AccountPricing[]>([])
   const cols = useTable<Product>('catalog', COLUMNS)
 
@@ -95,7 +96,8 @@ export default function CatalogPage() {
     const matchCat     = categoryFilter === 'All' || p.category === categoryFilter
     const matchMissing = !missingOnly || p.costMissing
     const matchAccount = !pricedForAccount || pricedForAccount.has(p.id)
-    return matchSearch && matchCat && matchMissing && matchAccount
+    const matchCore    = !coreOnly || p.isClassic
+    return matchSearch && matchCat && matchMissing && matchAccount && matchCore
   })
   const filtered = cols.sortRows(rowsUnsorted)
 
@@ -139,6 +141,7 @@ export default function CatalogPage() {
         subtitle={`Master product list — costs and serve sizes${filtered.filter(p => p.costMissing).length > 0 ? ` · ⚠ ${filtered.filter(p => p.costMissing).length} missing costs` : ''}`}
         action={
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <Link href="/range"><Button size="sm">Core range →</Button></Link>
             <Link href="/rate-card"><Button size="sm" variant="ghost">Rate card</Button></Link>
             <Link href="/recipes"><Button size="sm" variant="ghost">All recipes</Button></Link>
             <button
@@ -189,6 +192,12 @@ export default function CatalogPage() {
           onChange={(e) => setSearch(e.target.value)}
           className="w-64 px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-gray-400 bg-white"
         />
+        <button
+          onClick={() => setCoreOnly((v) => !v)}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${coreOnly ? 'bg-gray-900 text-white' : 'border border-gray-200 text-gray-700 hover:bg-gray-100'}`}
+        >
+          {coreOnly ? '✓ ' : ''}Core range {products.filter((p) => p.isClassic && p.isActive !== false).length}
+        </button>
         <div className="flex gap-1 flex-wrap">
           {CATEGORIES.map((cat) => (
             <button
