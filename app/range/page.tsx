@@ -116,14 +116,14 @@ export default function CoreRangePage() {
     const net = rsp ? rsp / 1.2 : 0
     return {
       spec, order, product, recipe,
-      recipeCount: product ? recipes.filter((r) => r.productId === product.id).length : 0,
+      recipeCount: product ? recipes.filter((r) => r.productId === product.id && r.status !== 'discontinued').length : 0,
       serve, ppl, rsp, perServe, costPerLitre, costPerServe,
       ourGp: ppl && costPerLitre !== null ? ((ppl - costPerLitre) / ppl) * 100 : null,
       theirGp: net > 0 && perServe !== null ? ((net - perServe) / net) * 100 : null,
       pplFor80: net > 0 && serve ? r2((net * (1 - VENUE_TARGET / 100) * 1000) / serve) : null,
       costNote: !product ? 'no product' : cost && cost.perLitre === null ? (cost.fromRecipe ? `unpriced: ${cost.missing.slice(0, 2).join(', ')}` : 'no recipe') : undefined,
       dupProducts: products.filter((p) => p.id !== product?.id && keys.includes(normalizeDrinkName(p.name))),
-      strayRecipes: recipes.filter((r) => r.productId !== product?.id && keys.includes(normalizeDrinkName(r.name))),
+      strayRecipes: recipes.filter((r) => r.productId !== product?.id && r.status !== 'discontinued' && keys.includes(normalizeDrinkName(r.name))),
     }
   })
 
@@ -167,6 +167,15 @@ export default function CoreRangePage() {
     const withIt = x.productId ? orders.filter((o) => o.status !== 'cancelled' && o.lineItems.some((li) => li.productId === x.productId)) : []
     const last = withIt.map((o) => o.createdAt).sort((a, b) => b.getTime() - a.getTime())[0]
     return { onMenus, priceLists, orderCount: withIt.length, last }
+  }
+
+  // Retiring hides a recipe everywhere and stops it setting any cost. Nothing is deleted.
+  async function retireRecipe(x: Recipe, retire: boolean) {
+    const label = `"${x.name}"${x.variation ? ` (${x.variation})` : ''}`
+    if (retire && !confirm(`Retire ${label}?\n\nIt stops counting anywhere but is not deleted — you can bring it back from this page.`)) return
+    await updateRecipe(x.id, { status: retire ? 'discontinued' : 'active' })
+    toast.success(retire ? `${label} retired` : `${label} is back`)
+    await load()
   }
 
   // One recipe sets the drink's cost. Choosing one filed elsewhere moves it here.
@@ -327,9 +336,11 @@ export default function CoreRangePage() {
                     </tr>
                     {isOpen && (() => {
                       const candidates = [
-                        ...(r.product ? recipes.filter((x) => x.productId === r.product!.id) : []),
+                        ...(r.product ? recipes.filter((x) => x.productId === r.product!.id && x.status !== 'discontinued') : []),
                         ...r.strayRecipes,
                       ]
+                      const retired = r.product ? recipes.filter((x) => x.productId === r.product!.id && x.status === 'discontinued') : []
+                      const shared = candidates.filter((x) => x.productId === r.product?.id).length > 1
                       return (
                         <tr>
                           <td colSpan={COLUMNS.length} style={{ padding: '14px 18px 18px', background: '#fafafa', borderTop: '1px solid #f3f4f6' }}>
@@ -339,6 +350,11 @@ export default function CoreRangePage() {
                               </p>
                               {r.product && <Button size="sm" variant="secondary" onClick={() => setWritingFor(r.product!.id)}>+ Add a recipe</Button>}
                             </div>
+                            {shared && (
+                              <p style={{ margin: '-4px 0 10px', fontSize: '12px', color: SECONDARY }}>
+                                Menus, price lists and orders belong to the drink ({r.product?.productCode}), not to one recipe — so recipes on the same drink show the same. Compare the cost and ingredients, keep one, retire the rest.
+                              </p>
+                            )}
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '12px' }}>
                               {candidates.map((x) => (
                                 <RecipeCard
@@ -350,9 +366,17 @@ export default function CoreRangePage() {
                                   filedOn={x.productId === r.product?.id ? undefined : (products.find((p) => p.id === x.productId) ?? null)}
                                   usage={usageOf(r, x)}
                                   onUse={() => chooseRecipe(r, x)}
+                                  onRetire={() => retireRecipe(x, true)}
                                 />
                               ))}
                             </div>
+                            {retired.length > 0 && (
+                              <p style={{ margin: '10px 0 0', fontSize: '12px', color: MUTED }}>
+                                Retired: {retired.map((x, i) => (
+                                  <span key={x.id}>{i > 0 && ' · '}{x.name}{x.variation ? ` (${x.variation})` : ''} <button onClick={() => retireRecipe(x, false)} style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '12px', color: '#1d4ed8', textDecoration: 'underline' }}>bring back</button></span>
+                                ))}
+                              </p>
+                            )}
                             {r.dupProducts.length > 0 && (
                               <div style={{ marginTop: '14px' }}>
                                 <p style={{ margin: '0 0 6px', fontSize: '10px', fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Other products with the same name</p>
@@ -386,7 +410,7 @@ export default function CoreRangePage() {
   )
 }
 
-function RecipeCard({ recipe, ingredients, sets, chosen, filedOn, usage, onUse }: {
+function RecipeCard({ recipe, ingredients, sets, chosen, filedOn, usage, onUse, onRetire }: {
   recipe: Recipe
   ingredients: Ingredient[]
   sets: boolean
@@ -395,6 +419,7 @@ function RecipeCard({ recipe, ingredients, sets, chosen, filedOn, usage, onUse }
   filedOn?: Product | null
   usage: { onMenus: string[]; priceLists: string[]; orderCount: number; last?: Date }
   onUse: () => void
+  onRetire: () => void
 }) {
   const [showLines, setShowLines] = useState(false)
   const c = computeRecipeCost(recipe, ingredients)
@@ -414,7 +439,10 @@ function RecipeCard({ recipe, ingredients, sets, chosen, filedOn, usage, onUse }
         </div>
         {sets
           ? <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 9px', borderRadius: '20px', background: '#dcfce7', color: '#166534', whiteSpace: 'nowrap' }}>✓ sets the cost{chosen ? '' : ' (auto)'}</span>
-          : <Button size="sm" onClick={onUse}>Use this one</Button>}
+          : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+              <Button size="sm" onClick={onUse}>Use this one</Button>
+              <button onClick={onRetire} style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '11.5px', color: '#dc2626', textDecoration: 'underline' }}>Retire this one</button>
+            </div>}
       </div>
       {sets && !chosen && <button onClick={onUse} style={{ marginTop: '6px', border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '11.5px', color: '#1d4ed8', textDecoration: 'underline' }}>Lock it in as the one</button>}
 
