@@ -10,7 +10,12 @@ import { computeRecipeCost } from '@/lib/costing'
  * one that sets the cost is the recipe named like the product, or failing that
  * the most recently updated — the same rule wherever a cost is shown or saved.
  */
-export function primaryRecipe(product: Pick<Product, 'id' | 'name'>, recipes: Recipe[]): Recipe | undefined {
+export function primaryRecipe(product: Pick<Product, 'id' | 'name' | 'recipeId'>, recipes: Recipe[]): Recipe | undefined {
+  // A recipe chosen by hand always wins.
+  if (product.recipeId) {
+    const chosen = recipes.find((r) => r.id === product.recipeId && r.status !== 'discontinued')
+    if (chosen) return chosen
+  }
   const linked = recipes.filter((r) => r.productId === product.id && r.status !== 'discontinued')
   if (linked.length <= 1) return linked[0]
   const key = normalizeDrinkName(product.name)

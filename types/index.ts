@@ -91,6 +91,7 @@ export interface Product {
   isClassic?: boolean           // one of the ten classics — the range we cost, price and pitch on
   defaultPricePerLitre?: number // standard sell price/L for core range
   defaultRsp?: number           // the menu price we expect a venue to sell a serve at, inc VAT
+  recipeId?: string             // the recipe that sets its cost, chosen by hand
   isActive: boolean
   createdAt: Date
   updatedAt: Date

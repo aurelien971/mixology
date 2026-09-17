@@ -10,12 +10,19 @@ import { GpBadge } from '@/components/accounts/PriceForm'
 import { NumInput } from '@/components/onboarding/shared'
 import { getProducts, updateProduct, createProduct } from '@/lib/firestore/catalog'
 import { getRecipes, updateRecipe } from '@/lib/firestore/recipes'
+import { getAllMenuDrinks } from '@/lib/firestore/menu'
+import { getRollouts } from '@/lib/firestore/rollouts'
+import { getAllPricing } from '@/lib/firestore/catalog'
+import { getAllOrders } from '@/lib/firestore/orders'
+import { syncProductCostForRecipe } from '@/lib/recipeSync'
+import { computeRecipeCost } from '@/lib/costing'
 import { getIngredients } from '@/lib/firestore/ingredients'
 import { useTable, ColumnDef } from '@/hooks/useTable'
 import { liveCost, primaryRecipe } from '@/lib/liveCost'
 import { nextCode } from '@/lib/coreRange'
 import {
-  CORE_RANGE, CoreClassicSpec, Ingredient, Product, Recipe, classicKeys, normalizeDrinkName, matchesClassic,
+  CORE_RANGE, CoreClassicSpec, Ingredient, Product, Recipe, MenuDrink, RolloutVenue, AccountPricing, Order,
+  classicKeys, normalizeDrinkName, matchesClassic,
 } from '@/types'
 import toast from 'react-hot-toast'
 
@@ -72,6 +79,10 @@ export default function CoreRangePage() {
   const [products, setProducts] = useState<Product[]>([])
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [ingredients, setIngredients] = useState<Ingredient[]>([])
+  const [menuDrinks, setMenuDrinks] = useState<MenuDrink[]>([])
+  const [venues, setVenues] = useState<RolloutVenue[]>([])
+  const [pricing, setPricing] = useState<AccountPricing[]>([])
+  const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState<string | null>(null)
   const [writingFor, setWritingFor] = useState<string | null>(null)
@@ -79,8 +90,8 @@ export default function CoreRangePage() {
   const cols = useTable<Row>('core-range', COLUMNS)
 
   async function load() {
-    const [p, r, i] = await Promise.all([getProducts(), getRecipes(), getIngredients()])
-    setProducts(p); setRecipes(r); setIngredients(i)
+    const [p, r, i, m, v, pr, o] = await Promise.all([getProducts(), getRecipes(), getIngredients(), getAllMenuDrinks(), getRollouts(), getAllPricing(), getAllOrders()])
+    setProducts(p); setRecipes(r); setIngredients(i); setMenuDrinks(m); setVenues(v); setPricing(pr); setOrders(o)
     setLoading(false)
   }
 
@@ -144,12 +155,31 @@ export default function CoreRangePage() {
     } finally { setBusy(false) }
   }
 
-  async function moveRecipe(r: Row, recipe: Recipe) {
+  // Where a recipe is in use: venue menus, account price lists, orders.
+  function usageOf(r: Row, x: Recipe) {
+    const venueName = (id: string) => venues.find((v) => v.id === id)?.name ?? 'a venue'
+    const onMenus = menuDrinks.filter((d) =>
+      d.recipeId === x.id ||
+      (!d.recipeId && !!x.productId && d.productId === x.productId) ||
+      (!d.recipeId && !d.productId && d.overlap === 'same' && d.classicName === r.spec.name && x.productId === r.product?.id)
+    ).map((d) => `${venueName(d.venueId)} · ${d.name}`)
+    const priceLists = x.productId ? [...new Set(pricing.filter((p) => p.productId === x.productId).map((p) => p.accountName))] : []
+    const withIt = x.productId ? orders.filter((o) => o.status !== 'cancelled' && o.lineItems.some((li) => li.productId === x.productId)) : []
+    const last = withIt.map((o) => o.createdAt).sort((a, b) => b.getTime() - a.getTime())[0]
+    return { onMenus, priceLists, orderCount: withIt.length, last }
+  }
+
+  // One recipe sets the drink's cost. Choosing one filed elsewhere moves it here.
+  async function chooseRecipe(r: Row, x: Recipe) {
     if (!r.product) return
-    const from = products.find((p) => p.id === recipe.productId)
-    if (!confirm(`Link the recipe "${recipe.name}"${recipe.variation ? ` (${recipe.variation})` : ''} to ${r.spec.name} (${r.product.productCode})?${from ? `\n\nIt is linked to ${from.name} (${from.productCode}) now — that product will lose it.` : ''}`)) return
-    await updateRecipe(recipe.id, { productId: r.product.id, productCode: r.product.productCode, productName: r.product.name })
-    toast.success(`${recipe.name} now belongs to ${r.spec.name}`)
+    if (x.productId !== r.product.id) {
+      const from = products.find((p) => p.id === x.productId)
+      if (!confirm(`Use "${x.name}"${x.variation ? ` (${x.variation})` : ''} for ${r.spec.name}?${from ? `\n\nIt is linked to ${from.name} (${from.productCode}) now and will move to ${r.product.productCode}.` : ''}`)) return
+      await updateRecipe(x.id, { productId: r.product.id, productCode: r.product.productCode, productName: r.product.name })
+    }
+    await updateProduct(r.product.id, { recipeId: x.id })
+    await syncProductCostForRecipe({ ...x, productId: r.product.id })
+    toast.success(`${r.spec.name} now costs from "${x.name}"${x.variation ? ` (${x.variation})` : ''}`)
     await load()
   }
 
@@ -268,13 +298,20 @@ export default function CoreRangePage() {
                       <td style={{ padding: '10px 12px', textAlign: 'right' }}><GpBadge value={r.ourGp} kind="ours" /></td>
                       <td style={{ padding: '10px 12px', textAlign: 'right' }}><GpBadge value={r.theirGp} kind="venue" /></td>
                       <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '13px', color: r.costPerLitre !== null ? SECONDARY : '#b45309', fontVariantNumeric: 'tabular-nums' }} title={r.costNote}>
-                        {r.costPerLitre !== null ? money(r.costPerLitre) : <span style={{ fontSize: '11px' }}>{r.costNote ?? '—'}</span>}
+                        {r.costPerLitre !== null
+                          ? <>{money(r.costPerLitre)}{!r.recipe && <span style={{ display: 'block', fontSize: '10.5px', color: '#b45309' }}>typed cost, no recipe</span>}</>
+                          : <span style={{ fontSize: '11px' }}>{r.costNote ?? '—'}</span>}
                       </td>
                       <td style={{ padding: '10px 12px', fontSize: '13px' }}>
                         {r.recipe ? (
                           <>
                             <Link href={`/recipes/${r.recipe.id}`} style={{ color: '#1d4ed8', fontWeight: 600 }}>{r.recipe.name}</Link>
-                            <span style={{ display: 'block', fontSize: '11px', color: MUTED }}>{r.recipe.variation ?? 'house'}{r.recipeCount > 1 ? ` · ${r.recipeCount} recipes` : ''}</span>
+                            <span style={{ display: 'block', fontSize: '11px', color: MUTED }}>
+                              {r.recipe.variation ?? 'house'} · {r.product?.recipeId === r.recipe.id
+                                ? <strong style={{ color: '#166534' }}>chosen</strong>
+                                : r.recipeCount > 1 ? <strong style={{ color: '#b45309' }}>auto-picked of {r.recipeCount}</strong> : 'only one'}
+                              {' · '}<button onClick={() => setOpen(isOpen ? null : r.spec.name)} style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '11px', color: '#1d4ed8', textDecoration: 'underline' }}>compare ▾</button>
+                            </span>
                           </>
                         ) : r.product ? (
                           <button onClick={() => setWritingFor(r.product!.id)} style={{ border: '1px solid #fecaca', background: '#fef2f2', color: '#991b1b', borderRadius: '20px', padding: '3px 11px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
@@ -288,55 +325,50 @@ export default function CoreRangePage() {
                           : <span style={{ fontSize: '12px', color: '#166534' }}>✓</span>}
                       </td>
                     </tr>
-                    {isOpen && (
-                      <tr>
-                        <td colSpan={COLUMNS.length} style={{ padding: '12px 18px 16px', background: '#fafafa', borderTop: '1px solid #f3f4f6' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '18px' }}>
-                            <div>
-                              <p style={{ margin: '0 0 6px', fontSize: '10px', fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Recipes on {r.product?.productCode ?? 'this drink'}</p>
-                              {r.product && recipes.filter((x) => x.productId === r.product!.id).map((x) => (
-                                <p key={x.id} style={{ margin: '3px 0', fontSize: '13px' }}>
-                                  <Link href={`/recipes/${x.id}`} style={{ color: '#1d4ed8' }}>{x.name}</Link>
-                                  <span style={{ color: MUTED }}> · {x.variation ?? 'house'}{x.id === r.recipe?.id ? ' · sets the cost' : ''}</span>
-                                </p>
+                    {isOpen && (() => {
+                      const candidates = [
+                        ...(r.product ? recipes.filter((x) => x.productId === r.product!.id) : []),
+                        ...r.strayRecipes,
+                      ]
+                      return (
+                        <tr>
+                          <td colSpan={COLUMNS.length} style={{ padding: '14px 18px 18px', background: '#fafafa', borderTop: '1px solid #f3f4f6' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                              <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: INK }}>
+                                {candidates.length ? `${candidates.length} recipe${candidates.length === 1 ? '' : 's'} for ${r.spec.name} — pick the one that sets its cost` : `No recipe for ${r.spec.name} yet`}
+                              </p>
+                              {r.product && <Button size="sm" variant="secondary" onClick={() => setWritingFor(r.product!.id)}>+ Add a recipe</Button>}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '12px' }}>
+                              {candidates.map((x) => (
+                                <RecipeCard
+                                  key={x.id}
+                                  recipe={x}
+                                  ingredients={ingredients}
+                                  sets={r.recipe?.id === x.id}
+                                  chosen={r.product?.recipeId === x.id}
+                                  filedOn={x.productId === r.product?.id ? undefined : (products.find((p) => p.id === x.productId) ?? null)}
+                                  usage={usageOf(r, x)}
+                                  onUse={() => chooseRecipe(r, x)}
+                                />
                               ))}
-                              {r.recipeCount === 0 && <p style={{ margin: 0, fontSize: '13px', color: MUTED }}>None yet.</p>}
-                              {r.product && <button onClick={() => setWritingFor(r.product!.id)} style={{ marginTop: '6px', border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '12.5px', color: '#1d4ed8', textDecoration: 'underline' }}>+ Add another recipe</button>}
                             </div>
-                            <div>
-                              <p style={{ margin: '0 0 6px', fontSize: '10px', fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Recipes called {r.spec.name} on other products</p>
-                              {r.strayRecipes.length === 0 && <p style={{ margin: 0, fontSize: '13px', color: MUTED }}>None.</p>}
-                              {r.strayRecipes.map((x) => {
-                                const on = products.find((p) => p.id === x.productId)
-                                return (
-                                  <div key={x.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '3px 0', fontSize: '13px' }}>
-                                    <span style={{ flex: 1 }}>
-                                      <Link href={`/recipes/${x.id}`} style={{ color: '#1d4ed8' }}>{x.name}</Link>
-                                      <span style={{ color: MUTED }}> · {x.variation ?? 'house'} · {on ? `on ${on.name} (${on.productCode})` : 'not linked to anything'}</span>
-                                    </span>
-                                    {r.product && <Button size="sm" variant="secondary" onClick={() => moveRecipe(r, x)}>Move it here</Button>}
-                                  </div>
-                                )
-                              })}
-                            </div>
-                            <div>
-                              <p style={{ margin: '0 0 6px', fontSize: '10px', fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Other products with the same name</p>
-                              {r.dupProducts.length === 0 && <p style={{ margin: 0, fontSize: '13px', color: MUTED }}>None.</p>}
-                              {r.dupProducts.map((p) => (
-                                <p key={p.id} style={{ margin: '3px 0', fontSize: '13px', color: INK }}>
-                                  {p.name} <span style={{ color: MUTED, fontFamily: 'monospace', fontSize: '11.5px' }}>{p.productCode}</span>
-                                  <span style={{ color: p.isActive === false ? MUTED : '#b45309' }}> · {p.isActive === false ? 'already hidden' : 'still live'}</span>
-                                  {' · '}{recipes.filter((x) => x.productId === p.id).length} recipe(s)
-                                </p>
-                              ))}
-                              {r.dupProducts.some((p) => p.isActive !== false) && (
-                                <p style={{ margin: '6px 0 0', fontSize: '11.5px', color: MUTED }}>Remove live duplicates from the Catalog (× on the row) once their recipes and prices are on the right product.</p>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
+                            {r.dupProducts.length > 0 && (
+                              <div style={{ marginTop: '14px' }}>
+                                <p style={{ margin: '0 0 6px', fontSize: '10px', fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Other products with the same name</p>
+                                {r.dupProducts.map((p) => (
+                                  <p key={p.id} style={{ margin: '3px 0', fontSize: '13px', color: INK }}>
+                                    {p.name} <span style={{ color: MUTED, fontFamily: 'monospace', fontSize: '11.5px' }}>{p.productCode}</span>
+                                    <span style={{ color: p.isActive === false ? MUTED : '#b45309' }}> · {p.isActive === false ? 'hidden' : 'still live'}</span>
+                                    {' · '}{recipes.filter((x) => x.productId === p.id).length} recipe(s) · {pricing.filter((x) => x.productId === p.id).length} price list(s)
+                                  </p>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })()}
                   </React.Fragment>
                 )
               })}
@@ -350,6 +382,64 @@ export default function CoreRangePage() {
         against what the serve costs them from us — green at {VENUE_TARGET}%. Every account&apos;s price for these drinks starts from the price
         and RSP here; change it for one account on their price list.
       </p>
+    </div>
+  )
+}
+
+function RecipeCard({ recipe, ingredients, sets, chosen, filedOn, usage, onUse }: {
+  recipe: Recipe
+  ingredients: Ingredient[]
+  sets: boolean
+  chosen: boolean
+  /** undefined when it is on this drink; the product it sits on otherwise (null = on nothing). */
+  filedOn?: Product | null
+  usage: { onMenus: string[]; priceLists: string[]; orderCount: number; last?: Date }
+  onUse: () => void
+}) {
+  const [showLines, setShowLines] = useState(false)
+  const c = computeRecipeCost(recipe, ingredients)
+  return (
+    <div style={{ background: '#fff', border: `1.5px solid ${sets ? '#86efac' : '#e5e7eb'}`, borderRadius: '10px', padding: '12px 14px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+        <div style={{ minWidth: 0 }}>
+          <Link href={`/recipes/${recipe.id}`} style={{ fontSize: '14px', fontWeight: 700, color: INK }}>{recipe.name}</Link>
+          <span style={{ display: 'block', fontSize: '12px', color: SECONDARY }}>
+            {recipe.variation ?? 'house'} · {recipe.ingredients.length} lines · {c.complete ? `${money(c.costPerLitre)}/L` : <span style={{ color: '#b45309' }}>unpriced: {c.missingIngredients.slice(0, 2).join(', ')}</span>}
+          </span>
+          {filedOn !== undefined && (
+            <span style={{ display: 'block', fontSize: '11.5px', color: '#b45309' }}>
+              {filedOn ? `filed on ${filedOn.name} (${filedOn.productCode})` : 'not linked to any product'}
+            </span>
+          )}
+        </div>
+        {sets
+          ? <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 9px', borderRadius: '20px', background: '#dcfce7', color: '#166534', whiteSpace: 'nowrap' }}>✓ sets the cost{chosen ? '' : ' (auto)'}</span>
+          : <Button size="sm" onClick={onUse}>Use this one</Button>}
+      </div>
+      {sets && !chosen && <button onClick={onUse} style={{ marginTop: '6px', border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '11.5px', color: '#1d4ed8', textDecoration: 'underline' }}>Lock it in as the one</button>}
+
+      <div style={{ marginTop: '8px', fontSize: '12px', color: SECONDARY, lineHeight: 1.55 }}>
+        <div><strong style={{ color: INK }}>On menus:</strong> {usage.onMenus.length ? usage.onMenus.join(' · ') : 'none'}</div>
+        <div><strong style={{ color: INK }}>Price lists:</strong> {usage.priceLists.length ? usage.priceLists.join(', ') : 'none'}</div>
+        <div><strong style={{ color: INK }}>Orders:</strong> {usage.orderCount ? `${usage.orderCount}${usage.last ? `, last ${format(usage.last, 'd MMM yyyy')}` : ''}` : 'none'}</div>
+      </div>
+
+      <button onClick={() => setShowLines((v) => !v)} style={{ marginTop: '6px', border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '12px', color: '#1d4ed8', textDecoration: 'underline' }}>
+        {showLines ? 'Hide ingredients' : 'Show ingredients'}
+      </button>
+      {showLines && (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', marginTop: '6px' }}>
+          <tbody>
+            {c.lines.map((l, i) => (
+              <tr key={l.name + i} style={{ borderTop: '1px solid #f3f4f6' }}>
+                <td style={{ padding: '4px 6px 4px 0', color: INK }}>{l.name}</td>
+                <td style={{ padding: '4px 6px', textAlign: 'right', color: SECONDARY, whiteSpace: 'nowrap' }}>{l.qtyPer1L.toFixed(l.qtyPer1L < 1 ? 3 : 1)} {l.unit}/L</td>
+                <td style={{ padding: '4px 0', textAlign: 'right', color: l.costPer1L === null ? '#b45309' : SECONDARY, whiteSpace: 'nowrap' }}>{l.costPer1L === null ? 'no price' : money(l.costPer1L)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }
