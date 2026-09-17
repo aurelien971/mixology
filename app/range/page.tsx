@@ -76,8 +76,6 @@ export default function CoreRangePage() {
   const [open, setOpen] = useState<string | null>(null)
   const [writingFor, setWritingFor] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [bulkRsp, setBulkRsp] = useState('')
-  const [bulkPpl, setBulkPpl] = useState('')
   const cols = useTable<Row>('core-range', COLUMNS)
 
   async function load() {
@@ -129,31 +127,6 @@ export default function CoreRangePage() {
     if (!r.product) return
     setProducts((prev) => prev.map((p) => (p.id === r.product!.id ? { ...p, ...data } : p)))
     try { await updateProduct(r.product.id, data) } catch { toast.error(`Could not save the ${what}`); await load() }
-  }
-
-  // One number for the whole range. Rows with a different value already are
-  // named before anything is overwritten.
-  async function applyAll(field: 'defaultRsp' | 'defaultPricePerLitre', raw: string) {
-    const n = parseFloat(raw)
-    if (!Number.isFinite(n) || n <= 0) return toast.error('Type a price first')
-    const value = r2(n)
-    const label = field === 'defaultRsp' ? 'RSP' : 'price per litre'
-    const targets = rows.filter((r) => r.product)
-    const differ = targets.filter((r) => {
-      const cur = field === 'defaultRsp' ? r.rsp : r.ppl
-      return cur !== undefined && Math.abs(cur - value) >= 0.01
-    })
-    if (differ.length && !confirm(`Set the ${label} to £${value.toFixed(2)} on all ${targets.length} drinks?\n\nThis replaces a different ${label} on: ${differ.map((r) => r.spec.name).join(', ')}.`)) return
-    setBusy(true)
-    const ids = new Set(targets.map((r) => r.product!.id))
-    setProducts((prev) => prev.map((p) => (ids.has(p.id) ? { ...p, [field]: value } : p)))
-    try {
-      await Promise.all(targets.map((r) => updateProduct(r.product!.id, { [field]: value })))
-      toast.success(`${label[0].toUpperCase()}${label.slice(1)} set to £${value.toFixed(2)} on ${targets.length} drinks`)
-    } catch {
-      toast.error('Some did not save — reloading')
-      await load()
-    } finally { setBusy(false) }
   }
 
   async function makeProduct(r: Row) {
@@ -236,26 +209,9 @@ export default function CoreRangePage() {
         ))}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '18px', flexWrap: 'wrap', background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: '12px', padding: '12px 16px', marginBottom: '12px' }}>
-        <span style={{ fontSize: '13px', fontWeight: 700, color: INK }}>Same for all {rows.filter((r) => r.product).length}</span>
-        {([
-          { key: 'defaultRsp' as const, label: 'RSP', value: bulkRsp, set: setBulkRsp, hint: 'inc VAT' },
-          { key: 'defaultPricePerLitre' as const, label: 'Price / L', value: bulkPpl, set: setBulkPpl, hint: 'our price' },
-        ]).map((b) => (
-          <span key={b.key} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: SECONDARY }}>
-            {b.label} £
-            <input value={b.value} onChange={(e) => b.set(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" placeholder={b.hint}
-              onKeyDown={(e) => { if (e.key === 'Enter') applyAll(b.key, b.value) }}
-              style={{ width: '90px', padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '13px', textAlign: 'right', fontFamily: 'monospace' }} />
-            <Button size="sm" variant="secondary" onClick={() => applyAll(b.key, b.value)} disabled={busy || !b.value}>Apply to all</Button>
-          </span>
-        ))}
-        <span style={{ fontSize: '11.5px', color: MUTED }}>Their GP needs both. Any row can still be changed on its own.</span>
-      </div>
-
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', gap: '10px', flexWrap: 'wrap' }}>
         <span style={{ fontSize: '12.5px', color: SECONDARY }}>
-          Type in <strong>Serve</strong>, <strong>Price / L</strong> or <strong>RSP</strong> — it saves when you leave the box. Click a drink to see its recipes and anything filed under the wrong product.
+          Every drink has its own <strong>Serve</strong>, <strong>Price / L</strong> and <strong>RSP</strong> — type in the box and it saves when you leave it. Click a drink to see its recipes and anything filed under the wrong product.
         </span>
         <cols.ResetButton />
       </div>

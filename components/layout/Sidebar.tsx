@@ -85,6 +85,18 @@ const nav = [
     ),
   },
   {
+    label: 'Core range',
+    href: '/range',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+        <rect x="2.5" y="3" width="13" height="12" rx="2" stroke="currentColor" strokeWidth="1.4" fill="none"/>
+        <line x1="2.5" y1="7" x2="15.5" y2="7" stroke="currentColor" strokeWidth="1.2"/>
+        <line x1="7" y1="7" x2="7" y2="15" stroke="currentColor" strokeWidth="1.1" opacity=".6"/>
+        <line x1="11.3" y1="7" x2="11.3" y2="15" stroke="currentColor" strokeWidth="1.1" opacity=".6"/>
+      </svg>
+    ),
+  },
+  {
     label: 'Recipes',
     href: '/recipes',
     icon: (
