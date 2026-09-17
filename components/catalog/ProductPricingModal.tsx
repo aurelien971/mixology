@@ -9,6 +9,7 @@ import { getRecipes } from '@/lib/firestore/recipes'
 import { getAllOrders } from '@/lib/firestore/orders'
 import { getIngredients } from '@/lib/firestore/ingredients'
 import { computeRecipeCost } from '@/lib/costing'
+import { primaryRecipe } from '@/lib/liveCost'
 import { Product, Account, AccountPricing, Recipe, Ingredient, Order } from '@/types'
 import { format, formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -70,7 +71,7 @@ export default function ProductPricingModal({ product, onClose }: Props) {
   // Cost comes straight off the recipe, so a price typed here is judged against
   // what the drink actually costs today rather than a number someone remembered.
   const cost = useMemo(() => {
-    const recipe = recipes.find((r) => r.productId === product.id)
+    const recipe = primaryRecipe(product, recipes)
     if (!recipe) return null
     const c = computeRecipeCost(recipe, ingredients)
     const serve = product.recommendedServingG || 100

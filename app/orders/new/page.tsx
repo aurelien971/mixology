@@ -5,10 +5,14 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import { getAccounts, createAccount } from '@/lib/firestore/accounts'
-import { getPricingForAccount } from '@/lib/firestore/catalog'
+import { getPricingForAccount, getProducts } from '@/lib/firestore/catalog'
+import { getRecipes } from '@/lib/firestore/recipes'
+import { getIngredients } from '@/lib/firestore/ingredients'
+import { liveCost } from '@/lib/liveCost'
+import PriceForm from '@/components/accounts/PriceForm'
 import { createOrder, generateOrderNumber } from '@/lib/firestore/orders'
 import { createPayment } from '@/lib/firestore/payments'
-import { Account, AccountPricing, OrderLineItem, PAYMENT_TERMS_DAYS, BAEK_PRICE_PER_CASE, BAEK_BOTTLES_PER_CASE, BaekFlavour } from '@/types'
+import { Account, AccountPricing, Product, Recipe, Ingredient, OrderLineItem, PAYMENT_TERMS_DAYS, BAEK_PRICE_PER_CASE, BAEK_BOTTLES_PER_CASE, BaekFlavour } from '@/types'
 import { addDays } from 'date-fns'
 import toast from 'react-hot-toast'
 
@@ -35,9 +39,16 @@ export default function NewOrderPage() {
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [loadingPricing, setLoadingPricing] = useState(false)
+  // Pricing a product from here, so a new drink does not need a trip to the account page.
+  const [products, setProducts] = useState<Product[]>([])
+  const [recipes, setRecipes] = useState<Recipe[]>([])
+  const [ingredients, setIngredients] = useState<Ingredient[]>([])
+  const [priceSearch, setPriceSearch] = useState('')
+  const [pricingProduct, setPricingProduct] = useState<Product | null>(null)
 
   useEffect(() => {
     getAccounts().then(setAccounts)
+    Promise.all([getProducts(), getRecipes(), getIngredients()]).then(([p, r, i]) => { setProducts(p); setRecipes(r); setIngredients(i) })
   }, [])
 
   useEffect(() => {
@@ -230,7 +241,7 @@ export default function NewOrderPage() {
             {loadingPricing ? (
               <p className="text-sm text-gray-400">Loading pricing...</p>
             ) : pricing.length === 0 ? (
-              <p className="text-sm text-gray-400">No pricing set up for this account yet. Go to the account page → Pricing tab.</p>
+              <p className="text-sm text-gray-400">No prices for this account yet — price a product below and it goes straight onto the order.</p>
             ) : (
               <div className="grid grid-cols-2 gap-2">
                 {pricing.map((p) => {
@@ -259,6 +270,52 @@ export default function NewOrderPage() {
                     </button>
                   )
                 })}
+              </div>
+            )}
+
+            {/* Price another product without leaving the order */}
+            {!loadingPricing && selectedAccount && (
+              <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid #f3f4f6' }}>
+                {pricingProduct ? (
+                  <PriceForm
+                    key={pricingProduct.id}
+                    product={pricingProduct}
+                    costPerLitre={liveCost(pricingProduct, recipes, ingredients).perLitre}
+                    costNote={liveCost(pricingProduct, recipes, ingredients).fromRecipe ? 'recipe has unpriced ingredients' : 'no recipe linked'}
+                    target={{ accountId: selectedAccount.id, accountName: selectedAccount.tradingName || selectedAccount.legalName, groupId: selectedAccount.groupId, groupName: selectedAccount.groupName }}
+                    onCancel={() => setPricingProduct(null)}
+                    onSaved={async (productId) => {
+                      const fresh = await getPricingForAccount(selectedAccount.id)
+                      setPricing(fresh)
+                      const entry = fresh.find((x) => x.productId === productId)
+                      if (entry) addLineItem(entry)
+                      setPricingProduct(null)
+                      setPriceSearch('')
+                    }}
+                  />
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                      <p className="text-xs text-gray-500" style={{ margin: 0 }}>+ Price another product for {selectedAccount.tradingName || selectedAccount.legalName}</p>
+                      <input value={priceSearch} onChange={(e) => setPriceSearch(e.target.value)} placeholder="Search products…"
+                        style={{ padding: '6px 10px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12.5px', width: '220px' }} />
+                    </div>
+                    {priceSearch.trim().length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {products
+                          .filter((p) => p.isActive !== false && !pricing.some((x) => x.productId === p.id))
+                          .filter((p) => p.name.toLowerCase().includes(priceSearch.trim().toLowerCase()) || p.productCode.toLowerCase().includes(priceSearch.trim().toLowerCase()))
+                          .slice(0, 30)
+                          .map((p) => (
+                            <button key={p.id} onClick={() => setPricingProduct(p)}
+                              style={{ padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 500, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', color: '#374151' }}>
+                              {p.name} <span style={{ color: '#9ca3af', fontFamily: 'monospace', fontSize: '11px' }}>{p.productCode}</span>
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
           </div>

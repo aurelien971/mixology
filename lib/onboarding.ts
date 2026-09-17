@@ -5,6 +5,7 @@ import {
 } from '@/types'
 import { splitRecipeCost } from '@/lib/pricing'
 import type { BriefDrink } from '@/lib/briefImport'
+import { primaryRecipe } from '@/lib/liveCost'
 
 /**
  * The rules of onboarding a venue's menu, in one place so the board, the venue
@@ -154,8 +155,8 @@ export function drinkState(d: MenuDrink, venue: RolloutVenue, products: Product[
   const classic = classicProduct(d.classicName, products)
   const ownProduct = d.productId ? products.find((p) => p.id === d.productId) : undefined
   const own = d.overlap === 'same' ? ownProduct ?? classic : ownProduct && ownProduct.id !== classic?.id ? ownProduct : undefined
-  const recipe = own ? recipes.find((r) => r.productId === own.id) : undefined
-  const classicRecipe = classic ? recipes.find((r) => r.productId === classic.id) : undefined
+  const recipe = own ? primaryRecipe(own, recipes) : undefined
+  const classicRecipe = classic ? primaryRecipe(classic, recipes) : undefined
   const recipeNeed: RecipeNeed = recipe ? 'ready' : d.overlap === 'same' ? 'classic_missing' : d.overlap === 'twist' ? 'adapt' : 'write'
   const basis = recipe ?? (d.overlap === 'twist' ? classicRecipe : undefined)
   let costPerLitre: number | null = null

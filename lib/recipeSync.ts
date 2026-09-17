@@ -4,6 +4,7 @@ import { getIngredients, updateIngredient } from '@/lib/firestore/ingredients'
 import { updateProduct } from '@/lib/firestore/catalog'
 import { getProducts } from '@/lib/firestore/catalog'
 import { computeRecipeCost, costPerServingFromLitre, computeProcessCost } from '@/lib/costing'
+import { primaryRecipe } from '@/lib/liveCost'
 
 // Re-derive every process ingredient's price from its sub-ingredients.
 // Call before recomputing product costs so recipes using processes get fresh numbers.
@@ -29,14 +30,17 @@ export async function syncProductCostForRecipe(
 ): Promise<boolean> {
   if (!recipe.productId) return false
   const ingredients = preloaded?.ingredients ?? await getIngredients()
-  const cost = computeRecipeCost(recipe, ingredients)
+  const [products, recipes] = await Promise.all([getProducts(), getRecipes()])
+  const product = products.find(p => p.id === recipe.productId)
+  // With several recipes on one product, the cost follows the same recipe the
+  // rest of the app shows — not whichever one happened to be saved last.
+  const source = (product && primaryRecipe(product, recipes)) ?? recipe
+  const cost = computeRecipeCost(source, ingredients)
   if (!cost.complete) {
     // Some ingredients unpriced — flag as missing rather than writing a wrong number
     await updateProduct(recipe.productId, { costMissing: true })
     return false
   }
-  const products = await getProducts()
-  const product = products.find(p => p.id === recipe.productId)
   const servingG = product?.recommendedServingG || 200
   await updateProduct(recipe.productId, {
     costToMake: costPerServingFromLitre(cost.costPerLitre, servingG),
@@ -50,11 +54,10 @@ export async function recomputeAllProductCosts(): Promise<{ updated: number; inc
   const [recipes, rawIngredients, products] = await Promise.all([getRecipes(), getIngredients(), getProducts()])
   const ingredients = await recomputeProcessPrices(rawIngredients)
   let updated = 0, incomplete = 0
-  for (const recipe of recipes) {
-    if (!recipe.productId) continue
+  for (const product of products) {
+    const recipe = primaryRecipe(product, recipes)
+    if (!recipe) continue
     const cost = computeRecipeCost(recipe, ingredients)
-    const product = products.find(p => p.id === recipe.productId)
-    if (!product) continue
     if (!cost.complete) { incomplete++; await updateProduct(product.id, { costMissing: true }); continue }
     const servingG = product.recommendedServingG || 200
     await updateProduct(product.id, {

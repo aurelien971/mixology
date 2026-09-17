@@ -10,6 +10,9 @@ import AddProductModal from '@/components/catalog/AddProductModal'
 import EditProductModal from '@/components/catalog/EditProductModal'
 import ProductPricingModal from '@/components/catalog/ProductPricingModal'
 import { getProducts, getAllPricing, updateProduct } from '@/lib/firestore/catalog'
+import { getRecipes } from '@/lib/firestore/recipes'
+import { getIngredients } from '@/lib/firestore/ingredients'
+import { liveCost } from '@/lib/liveCost'
 import { Product, AccountPricing } from '@/types'
 import { useTable, ColumnDef } from '@/hooks/useTable'
 import toast from 'react-hot-toast'
@@ -58,8 +61,20 @@ export default function CatalogPage() {
   const cols = useTable<Product>('catalog', COLUMNS)
 
   function load() {
-    Promise.all([getProducts(), getAllPricing()])
-      .then(([prods, pricing]) => { setProducts(prods); setAllPricing(pricing) })
+    Promise.all([getProducts(), getAllPricing(), getRecipes(), getIngredients()])
+      .then(([prods, pricing, recipes, ingredients]) => {
+        // The cost shown is the recipe's, worked out now — the same number the
+        // recipe and every price list show. A typed cost only stands in when a
+        // product has no recipe.
+        setProducts(prods.map((p) => {
+          const c = liveCost(p, recipes, ingredients)
+          if (!c.fromRecipe) return p
+          return c.perLitre === null
+            ? { ...p, costMissing: true }
+            : { ...p, costToMake: (c.perLitre * (p.recommendedServingG || 100)) / 1000, costMissing: false }
+        }))
+        setAllPricing(pricing)
+      })
       .finally(() => setLoading(false))
   }
 

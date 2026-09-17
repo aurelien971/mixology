@@ -1,5 +1,8 @@
 'use client'
 
+import { getProducts as fetchProducts, createProduct } from '@/lib/firestore/catalog'
+import { nextCode } from '@/lib/coreRange'
+
 import { useEffect, useMemo, useState } from 'react'
 import { Recipe, RecipeIngredient, RecipeAnalytical, Product, Ingredient, PackUnit, IngredientFormat, Currency, RecipeUnit, INGREDIENT_FORMATS, CURRENCY_SYMBOLS } from '@/types'
 import { createRecipe, updateRecipe } from '@/lib/firestore/recipes'
@@ -77,6 +80,9 @@ export default function RecipeEditor({
   const [variation, setVariation] = useState(src?.variation ?? '')
   const [createdBy, setCreatedBy] = useState(src?.createdBy ?? '')
   const [productId, setProductId] = useState(existing?.productId ?? draft?.productId ?? presetProductId ?? '')
+  // Making the product from here saves a trip to the catalog to create an empty one.
+  const [newProductName, setNewProductName] = useState('')
+  const [newServing, setNewServing] = useState('100')
   const [instructions, setInstructions] = useState(src?.cookingInstructions ?? '')
   // Batch volume: stored data is per 1000L, so existing/parsed recipes load as a 1000L batch.
   // Fresh manual recipes default to a realistic 10L batch — Dima types what he actually makes.
@@ -322,7 +328,23 @@ export default function RecipeEditor({
           return row
         })
 
-      const product = products.find(p => p.id === productId)
+      let linkedId = productId
+      let product = products.find(p => p.id === productId)
+      let createdCode: string | null = null
+      if (productId === '__new__') {
+        const all = await fetchProducts()
+        const code = `FL-${nextCode(all)}`
+        const serving = parseFloat(newServing)
+        const productName = newProductName.trim() || name.trim()
+        linkedId = await createProduct({
+          productCode: code, baseCode: code, name: productName,
+          recommendedServingG: Number.isFinite(serving) && serving > 0 ? serving : 100,
+          volumeLitres: 5, costToMake: 0, costMissing: true,
+          isNonAlcoholic: false, isCoreRange: false, isClassic: false, isActive: true,
+        })
+        product = { id: linkedId, productCode: code, name: productName } as Product
+        createdCode = code
+      }
       const payload: Omit<Recipe, 'id' | 'createdAt' | 'updatedAt'> = {
         name: name.trim(),
         ingredients,
@@ -334,8 +356,8 @@ export default function RecipeEditor({
       if (approxTime !== '' && parseFloat(approxTime) > 0) payload.approxTimeMinutes = parseFloat(approxTime)
       if (createdBy.trim()) payload.createdBy = createdBy.trim()
       if (existing?.version) payload.version = existing.version
-      if (productId) {
-        payload.productId = productId
+      if (linkedId) {
+        payload.productId = linkedId
         payload.productCode = product?.productCode
         payload.productName = product?.name
       }
@@ -349,12 +371,14 @@ export default function RecipeEditor({
       }
 
       // 3. Push calculated cost into the linked catalog product
-      if (productId) {
+      if (linkedId) {
         const fresh = await getIngredients()
         await syncProductCostForRecipe({ ...payload, id: recipeId, createdAt: new Date(), updatedAt: new Date() } as Recipe, { ingredients: fresh })
       }
 
-      toast.success(existing ? 'Recipe updated' : `Recipe saved${productId ? ' — product cost updated' : ''}`)
+      toast.success(createdCode
+        ? `Recipe saved — product ${createdCode} created, ready to price and order`
+        : existing ? 'Recipe updated' : `Recipe saved${linkedId ? ' — product cost updated' : ''}`)
       onSaved()
       onClose()
     } catch (e) {
@@ -432,10 +456,20 @@ export default function RecipeEditor({
               <label style={labelStyle}>Linked product (drives COGS in catalog & finances)</label>
               <select style={{ ...inputStyle, cursor: 'pointer' }} value={productId} onChange={e => setProductId(e.target.value)}>
                 <option value="">— not linked —</option>
+                <option value="__new__">+ Create a new product from this recipe</option>
                 {products.map(p => (
                   <option key={p.id} value={p.id}>{p.productCode} · {p.name}</option>
                 ))}
               </select>
+              {productId === '__new__' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px', marginTop: '8px' }}>
+                  <input style={inputStyle} value={newProductName} onChange={e => setNewProductName(e.target.value)} placeholder={name.trim() || 'Product name — defaults to the recipe name'} />
+                  <input style={inputStyle} inputMode="decimal" value={newServing} onChange={e => setNewServing(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Serve ml" title="Serving size in ml" />
+                </div>
+              )}
+              {!productId && (
+                <p style={{ margin: '5px 0 0', fontSize: '11.5px', color: '#b45309' }}>Not linked — it can&apos;t be priced or ordered until it is. Pick &ldquo;Create a new product&rdquo; to do it here.</p>
+              )}
             </div>
             <div>
               <label style={labelStyle}>Batch volume (litres) *</label>
