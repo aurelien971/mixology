@@ -123,7 +123,9 @@ export default function CoreRangePage() {
       theirGp: net > 0 && perServe !== null ? ((net - perServe) / net) * 100 : null,
       pplFor80: net > 0 && serve ? r2((net * (1 - VENUE_TARGET / 100) * 1000) / serve) : null,
       costNote: !product ? 'no product' : cost && cost.perLitre === null ? (cost.fromRecipe ? `unpriced: ${cost.missing.slice(0, 2).join(', ')}` : 'no recipe') : undefined,
-      dupProducts: products.filter((p) => p.id !== product?.id && keys.includes(normalizeDrinkName(p.name))),
+      // Hidden empty shells (no recipe, no price list) are noise, not versions.
+      dupProducts: products.filter((p) => p.id !== product?.id && keys.includes(normalizeDrinkName(p.name))
+        && (p.isActive !== false || recipes.some((x) => x.productId === p.id) || pricing.some((x) => x.productId === p.id))),
       strayRecipes: recipes.filter((r) => r.productId !== product?.id && r.status !== 'discontinued' && keys.includes(normalizeDrinkName(r.name))),
     }
   })
