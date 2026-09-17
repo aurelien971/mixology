@@ -61,7 +61,8 @@ export default function PriceForm({ product, existing, costPerLitre, costNote, t
   const [dflt, setDflt] = useState<number | undefined>(product.defaultPricePerLitre)
   const [vol, setVol] = useState(String(startVol))
   const [serve, setServe] = useState(String(existing?.recommendedServingG || product.recommendedServingG || 100))
-  const [rsp, setRsp] = useState(existing?.rrp ? String(existing.rrp) : product.defaultRsp ? String(product.defaultRsp) : '')
+  // The RSP belongs to the drink, not the venue: it starts from the drink's default.
+  const [rsp, setRsp] = useState(product.defaultRsp ? String(product.defaultRsp) : existing?.rrp ? String(existing.rrp) : '')
   const [saving, setSaving] = useState(false)
 
   const pplN = parseFloat(ppl) || 0
@@ -100,6 +101,10 @@ export default function PriceForm({ product, existing, costPerLitre, costNote, t
       if (target.groupId) entry.groupId = target.groupId
       if (target.groupName) entry.groupName = target.groupName
       await upsertAccountPricing(entry)
+      // Changing the RSP here changes it for the drink everywhere.
+      if (rspN > 0 && Math.abs(rspN - (product.defaultRsp ?? 0)) >= 0.01) {
+        await updateProduct(product.id, { defaultRsp: rspN })
+      }
       toast.success(`${product.name} priced for ${target.accountName}`)
       onSaved(product.id)
     } catch (e) {
@@ -146,7 +151,7 @@ export default function PriceForm({ product, existing, costPerLitre, costNote, t
           </div></label>
         <label><span style={label}>Serving (ml) *</span>
           <input style={field} inputMode="decimal" value={serve} onChange={(e) => setServe(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="100" /></label>
-        <label><span style={label}>RSP — their menu price</span>
+        <label><span style={label}>RSP — same for every venue</span>
           <input style={field} inputMode="decimal" value={rsp} onChange={(e) => setRsp(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="£ inc VAT e.g. 14.00" /></label>
       </div>
 

@@ -171,7 +171,7 @@ export function drinkState(d: MenuDrink, venue: RolloutVenue, products: Product[
   }
   const serve = serveOf(d) ?? (own?.recommendedServingG || null)
   const costPerServe = costPerLitre !== null && serve ? (costPerLitre * serve) / 1000 : null
-  return { own, recipe, recipeNeed, costPerLitre, costPerServe, costIsEstimate: !recipe && !!basis, serve, gp: gpCheck(d, venue, costPerServe) }
+  return { own, recipe, recipeNeed, costPerLitre, costPerServe, costIsEstimate: !recipe && !!basis, serve, gp: gpCheck(d.menuPrice ? d : { ...d, menuPrice: own?.defaultRsp }, venue, costPerServe) }
 }
 
 export interface ReadinessCheck { key: string; label: string; done: boolean; detail: string; goto: 'menu' | 'gp' | 'recipes' | 'tastings' }

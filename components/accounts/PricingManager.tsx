@@ -21,6 +21,7 @@ interface Props {
 interface Row {
   p: AccountPricing
   ppl: number
+  rsp: number
   perServe: number
   costPerServe: number | null
   venueGp: number | null
@@ -33,7 +34,7 @@ const COLUMNS: ColumnDef<Row>[] = [
   { key: 'serve',   label: 'Serve',         width: 70,  align: 'right', sortValue: (r) => r.p.recommendedServingG },
   { key: 'ppl',     label: 'Price / L',     width: 90,  align: 'right', sortValue: (r) => r.ppl, descFirst: true },
   { key: 'serveP',  label: 'Price / serve', width: 100, align: 'right', sortValue: (r) => r.perServe, descFirst: true },
-  { key: 'rsp',     label: 'RSP',           width: 80,  align: 'right', sortValue: (r) => r.p.rrp || null, descFirst: true },
+  { key: 'rsp',     label: 'RSP',           width: 80,  align: 'right', sortValue: (r) => r.rsp || null, descFirst: true },
   { key: 'cost',    label: 'Cost / serve',  width: 96,  align: 'right', sortValue: (r) => r.costPerServe, descFirst: true },
   { key: 'venueGp', label: 'Venue GP',      width: 92,  align: 'right', sortValue: (r) => r.venueGp, descFirst: true },
   { key: 'ourGp',   label: 'Our GP',        width: 92,  align: 'right', sortValue: (r) => r.ourGp, descFirst: true },
@@ -86,8 +87,10 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
   const rows: Row[] = pricing.map((p) => {
     const vol = p.volumeLitres ?? 5
     const ppl = p.pricePerLitre > 0 ? p.pricePerLitre : vol > 0 ? p.pricePerUnit / vol : 0
-    const m = priceMetrics(ppl, p.recommendedServingG, p.rrp, costOf(p.productId).perLitre)
-    return { p, ppl, perServe: m.perServe, costPerServe: m.costPerServe, venueGp: m.venueGp, ourGp: m.ourGp }
+    // One RSP per drink, whichever venue it is on.
+    const rsp = products.find((x) => x.id === p.productId)?.defaultRsp ?? p.rrp
+    const m = priceMetrics(ppl, p.recommendedServingG, rsp, costOf(p.productId).perLitre)
+    return { p, ppl, rsp, perServe: m.perServe, costPerServe: m.costPerServe, venueGp: m.venueGp, ourGp: m.ourGp }
   })
 
   async function handleDelete(p: AccountPricing) {
@@ -168,7 +171,7 @@ export default function PricingManager({ accountId, accountName, groupId, groupN
                       })()}
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '13px', color: '#111827', fontVariantNumeric: 'tabular-nums' }}>{r.perServe > 0 ? money(r.perServe) : '—'}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '13px', color: r.p.rrp ? '#374151' : '#d1d5db', fontVariantNumeric: 'tabular-nums' }}>{r.p.rrp ? money(r.p.rrp) : '—'}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '13px', color: r.rsp ? '#374151' : '#d1d5db', fontVariantNumeric: 'tabular-nums' }}>{r.rsp ? money(r.rsp) : '—'}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '13px', color: r.costPerServe !== null ? '#374151' : '#b45309', fontVariantNumeric: 'tabular-nums' }}
                       title={costNote(r.p.productId)}>{r.costPerServe !== null ? money(r.costPerServe) : 'no cost'}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}><GpBadge value={r.venueGp} kind="venue" /></td>

@@ -49,6 +49,7 @@ export default function ProductPricingModal({ product, onClose }: Props) {
   const [classic, setClassic] = useState(!!product.isClassic)
   const [flipping, setFlipping] = useState(false)
   const [dflt, setDflt] = useState(product.defaultPricePerLitre ? String(product.defaultPricePerLitre) : '')
+  const [dfltRsp, setDfltRsp] = useState(product.defaultRsp ? String(product.defaultRsp) : '')
   const [savingDefault, setSavingDefault] = useState(false)
 
   // new row
@@ -255,10 +256,12 @@ export default function ProductPricingModal({ product, onClose }: Props) {
         {(() => {
           const n = parseFloat(dflt) || 0
           const serve = product.recommendedServingG || 100
-          const changed = Math.abs(n - (product.defaultPricePerLitre ?? 0)) >= 0.01
+          const rspN = parseFloat(dfltRsp) || 0
+          const changed = Math.abs(n - (product.defaultPricePerLitre ?? 0)) >= 0.01 || Math.abs(rspN - (product.defaultRsp ?? 0)) >= 0.01
+          const venueGp = rspN > 0 && n > 0 ? ((rspN / 1.2 - (n * serve) / 1000) / (rspN / 1.2)) * 100 : null
           return (
             <div style={{ border: '1px solid #f3f4f6', borderRadius: '10px', padding: '14px 16px', marginBottom: '18px' }}>
-              <p style={{ fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Default price</p>
+              <p style={{ fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Default price and RSP — the same for every venue</p>
               <div style={{ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#6b7280' }}>
                   £
@@ -266,16 +269,27 @@ export default function ProductPricingModal({ product, onClose }: Props) {
                     style={{ ...input, width: '110px', textAlign: 'right', fontFamily: 'monospace' }} />
                   / litre
                 </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#6b7280' }}>
+                  RSP £
+                  <input value={dfltRsp} onChange={(e) => setDfltRsp(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" placeholder="inc VAT"
+                    style={{ ...input, width: '90px', textAlign: 'right', fontFamily: 'monospace', ...(rspN ? {} : { background: '#fffbeb', border: '1.5px solid #fcd34d' }) }} />
+                </span>
+                {venueGp !== null && (
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: venueGp >= 80 ? '#166534' : venueGp >= 75 ? '#b45309' : '#b91c1c' }}>venue GP {venueGp.toFixed(0)}%</span>
+                )}
                 {n > 0 && <span style={{ fontSize: '13px', color: '#374151' }}><strong>{money((n * serve) / 1000)}</strong> a {serve}ml serve</span>}
                 {n > 0 && cost?.complete && (
                   <span style={{ fontSize: '13px', fontWeight: 700, color: (n - cost.perLitre) / n >= 0.5 ? '#166534' : (n - cost.perLitre) / n >= 0.3 ? '#b45309' : '#b91c1c' }}>
                     our GP {(((n - cost.perLitre) / n) * 100).toFixed(0)}%
                   </span>
                 )}
-                <Button size="sm" disabled={savingDefault || !changed || n <= 0} loading={savingDefault} onClick={async () => {
+                <Button size="sm" disabled={savingDefault || !changed || (n <= 0 && rspN <= 0)} loading={savingDefault} onClick={async () => {
                   setSavingDefault(true)
                   try {
-                    await updateProduct(product.id, { defaultPricePerLitre: Math.round(n * 100) / 100 })
+                    await updateProduct(product.id, {
+                      ...(n > 0 ? { defaultPricePerLitre: Math.round(n * 100) / 100 } : {}),
+                      ...(rspN > 0 ? { defaultRsp: Math.round(rspN * 100) / 100 } : {}),
+                    })
                     toast.success(`Default price saved for ${product.name}`)
                   } catch { toast.error('Could not save') } finally { setSavingDefault(false) }
                 }}>Save default</Button>

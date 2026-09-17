@@ -63,7 +63,7 @@ export default function MenuDrinkPanel({ ctx, drink: d, onClose }: { ctx: VenueC
     fixes.push({ key: 'ingredients', kind: 'ingredients', label: 'Price the ingredients its recipe is missing', href: st.recipe ? `/recipes/${st.recipe.id}` : '/recipes/fill' })
   }
   if (!st.serve) fixes.push({ key: 'serve', kind: 'num', field: 'serveMl', label: 'Set the serve size (ml)' })
-  if (!d.menuPrice) fixes.push({ key: 'menu', kind: 'num', field: 'menuPrice', label: 'Add their menu price (£, inc VAT)' })
+  if (!d.menuPrice && !st.own?.defaultRsp) fixes.push({ key: 'menu', kind: 'num', field: 'menuPrice', label: 'Add their menu price (£, inc VAT)' })
   if (!d.ourPrice) {
     if (g.suggested !== undefined) fixes.push({ key: 'price', kind: 'use', value: g.suggested, label: `Set our price — ${money(g.suggested)} a serve keeps them ${target}%` })
     else if (defaultPerServe) fixes.push({ key: 'price', kind: 'use', value: defaultPerServe, label: `Set our price — our default is ${money(defaultPerServe)} a serve` })
@@ -414,7 +414,8 @@ export default function MenuDrinkPanel({ ctx, drink: d, onClose }: { ctx: VenueC
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px' }}>
               <label><span style={{ ...kicker, margin: '0 0 4px', display: 'block' }}>Their menu price</span>
-                <NumInput value={d.menuPrice} placeholder="£" width="100%" onSave={(n) => patch({ menuPrice: n, ...unconfirm })} /></label>
+                <NumInput value={d.menuPrice} placeholder={st.own?.defaultRsp ? `£${st.own.defaultRsp.toFixed(2)}` : '£'} width="100%" onSave={(n) => patch({ menuPrice: n, ...unconfirm })} />
+                {!d.menuPrice && st.own?.defaultRsp && <span style={{ display: 'block', marginTop: '3px', fontSize: '11px', color: MUTED }}>default RSP</span>}</label>
               <label><span style={{ ...kicker, margin: '0 0 4px', display: 'block' }}>Our price / serve</span>
                 <NumInput value={d.ourPrice} placeholder="£" width="100%" onSave={(n) => patch({ ourPrice: n, ...unconfirm })} />
                 {defaultPerServe !== undefined && (
