@@ -531,6 +531,7 @@ export const CORE_RANGE: CoreClassicSpec[] = [
   { name: 'White Russian',                                                         category: 'Rocks' },
   { name: 'Amaretto Sour',                                                         category: 'Rocks' },
   { name: 'Pornstar Martini', aliases: ['Passionfruit Martini', 'Porn Star Martini'], category: 'Coupe' },
+  { name: 'Lychee Martini',   aliases: ['Lychee'],                                 category: 'Coupe' },
 ]
 
 export const CLASSIC_COCKTAILS = CORE_RANGE.map((c) => c.name)
