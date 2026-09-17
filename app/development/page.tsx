@@ -342,7 +342,7 @@ export default function DevelopmentPage() {
               </table>
               {offList.length > 0 && (
                 <p style={{ margin: 0, padding: '10px 12px', fontSize: '11.5px', color: '#6b7280', borderTop: '1px solid #f3f4f6' }}>
-                  Also flagged as a classic but not one of the twenty: {offList.map((p) => p.name).join(', ')}. Untick
+                  Also flagged as a classic but not in the core range: {offList.map((p) => p.name).join(', ')}. Untick
                   them from the catalog if they should not be in the rollout.
                 </p>
               )}

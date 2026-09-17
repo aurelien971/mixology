@@ -27,7 +27,7 @@ import {
 import toast from 'react-hot-toast'
 
 /**
- * The core range, and nothing else: the twenty drinks, each with its recipe,
+ * The core range, and nothing else: the core drinks, each with its recipe,
  * serve, our price per litre, the RSP a venue sells it at, what it costs us,
  * and who keeps what. Prices set here are every drink's default — each
  * account's price list starts from them.
@@ -214,7 +214,7 @@ export default function CoreRangePage() {
 
       <Header
         title="Core range"
-        subtitle="The twenty drinks we sell everywhere — recipe, price, RSP, cost and margins in one place. Prices here are every drink's default."
+        subtitle="The drinks we sell everywhere — recipe, price, RSP, cost and margins in one place. Prices here are every drink's default."
         action={
           <div style={{ display: 'flex', gap: '8px' }}>
             <Link href="/catalog?core=1"><Button size="sm" variant="ghost">Catalog</Button></Link>

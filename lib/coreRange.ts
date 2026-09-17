@@ -6,7 +6,7 @@ import { createProduct, updateProduct } from '@/lib/firestore/catalog'
 /**
  * Setting up the core classics range.
  *
- * The twenty drinks are the target; the catalog is whatever has accumulated.
+ * The core drinks are the target; the catalog is whatever has accumulated.
  * Matching is deliberately strict — an exact name or a spelling we have listed
  * as an alias. Anything looser and "Mango Chutney Margarita" quietly becomes
  * the Margarita, which is exactly how six of the last eleven got mislinked.
@@ -49,7 +49,7 @@ export function reconcileCoreRange(products: Product[], recipes: Recipe[]): Rang
   })
 }
 
-/** Drinks carrying the classic flag that are not one of the twenty. */
+/** Drinks carrying the classic flag that are not in the core range. */
 export function strays(products: Product[]): Product[] {
   const keys = new Set(CORE_RANGE.flatMap(classicKeys))
   return products.filter((p) => p.isClassic && !keys.has(normalizeDrinkName(p.name)))
@@ -65,7 +65,7 @@ export function nextCode(products: Product[]): number {
 export interface RangeResult { flagged: number; created: number }
 
 /**
- * Put all twenty in the range: flag what exists, create what does not.
+ * Put every core drink in the range: flag what exists, create what does not.
  * Codes carry on from the highest one in the catalog so they stay unique.
  */
 export async function applyCoreRange(rows: RangeRow[], products: Product[]): Promise<RangeResult> {
