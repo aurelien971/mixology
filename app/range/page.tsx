@@ -69,7 +69,7 @@ const COLUMNS: ColumnDef<Row>[] = [
   { key: 'theirGp', label: 'Venue GP',         width: 92,  align: 'right', sortValue: (r) => r.theirGp, descFirst: true },
   { key: 'costL',   label: 'Cost / L',         width: 90,  align: 'right', sortValue: (r) => r.costPerLitre, descFirst: true },
   { key: 'recipe',  label: 'Recipe',           width: 190, sortValue: (r) => (r.recipe ? r.recipe.name : null) },
-  { key: 'dups',    label: 'Filed elsewhere',  width: 130, sortValue: (r) => r.dupProducts.length + r.strayRecipes.length, descFirst: true },
+  { key: 'dups',    label: 'Other versions',  width: 130, sortValue: (r) => r.dupProducts.length + r.strayRecipes.length, descFirst: true },
 ]
 
 const money = (n: number) => `£${n.toFixed(2)}`
@@ -245,7 +245,7 @@ export default function CoreRangePage() {
           { l: 'Priced (price + RSP)', v: `${priced} of ${rows.length}`, warn: priced < rows.length },
           { l: 'Average our GP', v: avgOur !== null ? `${avgOur.toFixed(1)}%` : '—' },
           { l: 'Average their GP', v: avgTheir !== null ? `${avgTheir.toFixed(1)}%` : '—' },
-          { l: 'Filed elsewhere', v: `${tidy}`, warn: tidy > 0 },
+          { l: 'Have other versions', v: `${tidy}` },
         ].map((t) => (
           <div key={t.l} style={{ background: '#fff', border: '1px solid #f3f4f6', borderRadius: '12px', padding: '12px 14px' }}>
             <p style={{ margin: 0, fontSize: '10px', fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t.l}</p>
@@ -336,8 +336,8 @@ export default function CoreRangePage() {
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         {flagged
-                          ? <button onClick={() => setOpen(isOpen ? null : r.spec.name)} style={{ border: '1px solid #fde68a', background: '#fffbeb', color: '#92400e', borderRadius: '20px', padding: '2px 10px', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer' }}>{flagged} to tidy</button>
-                          : <span style={{ fontSize: '12px', color: '#166534' }}>✓</span>}
+                          ? <button onClick={() => setOpen(isOpen ? null : r.spec.name)} title="Other products or recipes with this drink's name — client versions, kept as they are" style={{ border: '1px solid #e5e7eb', background: '#fff', color: SECONDARY, borderRadius: '20px', padding: '2px 10px', fontSize: '11.5px', fontWeight: 600, cursor: 'pointer' }}>{flagged} other version{flagged === 1 ? '' : 's'}</button>
+                          : <span style={{ fontSize: '12px', color: MUTED }}>—</span>}
                       </td>
                     </tr>
                     {isOpen && (() => {
@@ -352,13 +352,13 @@ export default function CoreRangePage() {
                           <td colSpan={COLUMNS.length} style={{ padding: '14px 18px 18px', background: '#fafafa', borderTop: '1px solid #f3f4f6' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', marginBottom: '10px', flexWrap: 'wrap' }}>
                               <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: INK }}>
-                                {candidates.length ? `${candidates.length} recipe${candidates.length === 1 ? '' : 's'} for ${r.spec.name} — pick the one that sets its cost` : `No recipe for ${r.spec.name} yet`}
+                                {candidates.length ? `${candidates.length} recipe${candidates.length === 1 ? '' : 's'} for ${r.spec.name} — pick the one the core range costs from` : `No recipe for ${r.spec.name} yet`}
                               </p>
                               {r.product && <Button size="sm" variant="secondary" onClick={() => setWritingFor(r.product!.id)}>+ Add a recipe</Button>}
                             </div>
                             {shared && (
                               <p style={{ margin: '-4px 0 10px', fontSize: '12px', color: SECONDARY }}>
-                                Menus, price lists and orders belong to the drink ({r.product?.productCode}), not to one recipe — so recipes on the same drink show the same. Compare the cost and ingredients, keep one, retire the rest.
+                                Menus, price lists and orders belong to the drink ({r.product?.productCode}), not to one recipe — so recipes on the same drink show the same. Pick the one the core range costs from; the others stay as they are for their clients.
                               </p>
                             )}
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '12px' }}>
@@ -386,7 +386,7 @@ export default function CoreRangePage() {
                             )}
                             {r.dupProducts.length > 0 && (
                               <div style={{ marginTop: '14px' }}>
-                                <p style={{ margin: '0 0 6px', fontSize: '10px', fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Other products with the same name</p>
+                                <p style={{ margin: '0 0 6px', fontSize: '10px', fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Other versions of this drink — kept as they are, shown for reference</p>
                                 {r.dupProducts.map((p) => (
                                   <p key={p.id} style={{ margin: '3px 0', fontSize: '13px', color: INK }}>
                                     {p.name} <span style={{ color: MUTED, fontFamily: 'monospace', fontSize: '11.5px' }}>{p.productCode}</span>
@@ -449,7 +449,7 @@ function RecipeCard({ recipe, ingredients, sets, chosen, filedOn, usage, onUse, 
           ? <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 9px', borderRadius: '20px', background: '#dcfce7', color: '#166534', whiteSpace: 'nowrap' }}>✓ sets the cost{chosen ? '' : ' (auto)'}</span>
           : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
               <Button size="sm" onClick={onUse}>Use this one</Button>
-              <button onClick={onRetire} style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '11.5px', color: '#dc2626', textDecoration: 'underline' }}>Retire this one</button>
+              <button onClick={onRetire} style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '11.5px', color: MUTED, textDecoration: 'underline' }} title="Only if this recipe is no longer made for anyone">Retire (no longer made)</button>
             </div>}
       </div>
       {sets && !chosen && <button onClick={onUse} style={{ marginTop: '6px', border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '11.5px', color: '#1d4ed8', textDecoration: 'underline' }}>Lock it in as the one</button>}
