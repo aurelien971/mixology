@@ -101,7 +101,7 @@ export default function DevelopmentPage() {
     [products]
   )
 
-  // The twenty against the catalog: what is already in, what needs the flag,
+  // The core drinks against the catalog: what is already in, what needs the flag,
   // what does not exist yet, and which of them have no recipe to cost.
   const range = useMemo<RangeRow[]>(() => reconcileCoreRange(products, recipes), [products, recipes])
   const todo = range.filter((r) => r.state !== 'linked').length
@@ -277,7 +277,7 @@ export default function DevelopmentPage() {
               <p style={{ margin: 0, fontSize: '12.5px', color: '#6b7280', lineHeight: 1.5 }}>
                 {todo > 0
                   ? `${range.filter((r) => r.state === 'match').length} already in the catalog need the flag, ${range.filter((r) => r.state === 'create').length} do not exist yet.`
-                  : 'All twenty are in the catalog and flagged.'}
+                  : 'Every core drink is in the catalog and flagged.'}
                 {noRecipe > 0 && <> <strong style={{ color: '#b45309' }}>{noRecipe} have no recipe</strong>, so nothing can be costed for them yet.</>}
               </p>
             </div>
