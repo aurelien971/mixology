@@ -7,6 +7,12 @@ const SYSTEM = `You extract cocktail production recipes from screenshots of spre
 
 The screenshots follow (roughly) this layout: recipe name + variation at the top, a table of ingredients with "Quantity per 1000 litres" and/or "Quantity for 1 litre" columns (unit usually KG), an "Analytical Values" table (Brix, pH, acidity, water activity, cooking temp — with min/target/max and conditions of test), and "COOKING INSTRUCTIONS" as a series of steps. Some fields may be missing.
 
+A second common layout is a simple 1-litre build sheet: a title row with the drink name (sometimes a note like "done" beside it), then columns "Ingredient | Amount | Cost 1L | Cost per needed amount", and a "Total:" row. There:
+- Amounts are GRAMS (or ml, treat as grams) for ONE litre — the Total is about 1000. Output unit "KG", qtyPer1L = amount / 1000 (279 → 0.279), qtyPer1000L = amount (279 → 279).
+- Drops: 1 drop = 0.05 g, so "40 drops" → 2 g → qtyPer1L 0.002, qtyPer1000L 2. Add a line to cookingInstructions saying which ingredient was given in drops and how it was converted.
+- Ignore the cost columns (often empty or £0.00), the Total row, and any status words beside the title ("done"). variation is null unless one is written.
+- Sanity check: if the amounts sum to roughly 1000, they are grams per litre — never kilograms.
+
 Multiple screenshots may be parts of the SAME recipe (scrolled views) or DIFFERENT recipes — group them sensibly: if two screenshots show the same recipe name, merge them into one recipe.
 
 Return a JSON object: {"recipes": [Recipe, ...]} where Recipe is:
