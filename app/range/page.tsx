@@ -52,17 +52,17 @@ interface Row {
 }
 
 const COLUMNS: ColumnDef<Row>[] = [
-  { key: 'drink',   label: 'Drink',         width: 190, sortValue: (r) => r.order },
-  { key: 'recipe',  label: 'Recipe',        width: 190, sortValue: (r) => (r.recipe ? r.recipe.name : null) },
-  { key: 'serve',   label: 'Serve ml',      width: 88,  align: 'right', sortValue: (r) => r.serve, descFirst: true },
-  { key: 'ppl',     label: 'Price / L',     width: 120, align: 'right', sortValue: (r) => r.ppl, descFirst: true },
-  { key: 'rsp',     label: 'RSP',           width: 100, align: 'right', sortValue: (r) => r.rsp, descFirst: true },
-  { key: 'serveP',  label: 'Price / serve', width: 100, align: 'right', sortValue: (r) => r.perServe, descFirst: true },
-  { key: 'costL',   label: 'Cost / L',      width: 90,  align: 'right', sortValue: (r) => r.costPerLitre, descFirst: true },
-  { key: 'costS',   label: 'Cost / serve',  width: 96,  align: 'right', sortValue: (r) => r.costPerServe, descFirst: true },
-  { key: 'ourGp',   label: 'Our GP',        width: 88,  align: 'right', sortValue: (r) => r.ourGp, descFirst: true },
-  { key: 'theirGp', label: 'Their GP',      width: 88,  align: 'right', sortValue: (r) => r.theirGp, descFirst: true },
-  { key: 'dups',    label: 'Filed elsewhere', width: 130, sortValue: (r) => r.dupProducts.length + r.strayRecipes.length, descFirst: true },
+  { key: 'drink',   label: 'Drink',            width: 190, sortValue: (r) => r.order },
+  { key: 'rsp',     label: 'RSP £ (inc VAT)',  width: 118, align: 'right', sortValue: (r) => r.rsp, descFirst: true },
+  { key: 'ppl',     label: 'Price / L £',      width: 124, align: 'right', sortValue: (r) => r.ppl, descFirst: true },
+  { key: 'serve',   label: 'Serve ml',         width: 92,  align: 'right', sortValue: (r) => r.serve, descFirst: true },
+  { key: 'serveP',  label: 'Price / serve',    width: 100, align: 'right', sortValue: (r) => r.perServe, descFirst: true },
+  { key: 'costS',   label: 'Cost / serve',     width: 96,  align: 'right', sortValue: (r) => r.costPerServe, descFirst: true },
+  { key: 'ourGp',   label: 'Our GP',           width: 88,  align: 'right', sortValue: (r) => r.ourGp, descFirst: true },
+  { key: 'theirGp', label: 'Venue GP',         width: 92,  align: 'right', sortValue: (r) => r.theirGp, descFirst: true },
+  { key: 'costL',   label: 'Cost / L',         width: 90,  align: 'right', sortValue: (r) => r.costPerLitre, descFirst: true },
+  { key: 'recipe',  label: 'Recipe',           width: 190, sortValue: (r) => (r.recipe ? r.recipe.name : null) },
+  { key: 'dups',    label: 'Filed elsewhere',  width: 130, sortValue: (r) => r.dupProducts.length + r.strayRecipes.length, descFirst: true },
 ]
 
 const money = (n: number) => `£${n.toFixed(2)}`
@@ -211,7 +211,7 @@ export default function CoreRangePage() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', gap: '10px', flexWrap: 'wrap' }}>
         <span style={{ fontSize: '12.5px', color: SECONDARY }}>
-          Every drink has its own <strong>Serve</strong>, <strong>Price / L</strong> and <strong>RSP</strong> — type in the box and it saves when you leave it. Click a drink to see its recipes and anything filed under the wrong product.
+          <strong>Yellow boxes are empty.</strong> Type each drink&apos;s <strong>RSP</strong>, <strong>Price / L</strong> and <strong>Serve</strong> straight into the row — it saves when you press Enter or click away. Click a drink to see its recipes and anything filed under the wrong product.
         </span>
         <cols.ResetButton />
       </div>
@@ -244,6 +244,32 @@ export default function CoreRangePage() {
                           </button>
                         )}
                       </td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                        {r.product && <NumInput value={r.rsp} width="90px" placeholder="type RSP" highlightEmpty onSave={(n) => setField(r, { defaultRsp: n }, 'RSP')} />}
+                      </td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                        {r.product && (
+                          <>
+                            <NumInput value={r.ppl} width="96px" placeholder="type price" highlightEmpty onSave={(n) => setField(r, { defaultPricePerLitre: n }, 'price')} />
+                            {r.pplFor80 !== null && (r.ppl === undefined || Math.abs(r.ppl - r.pplFor80) >= 0.01) && (
+                              <button onClick={() => setField(r, { defaultPricePerLitre: r.pplFor80! }, 'price')} title={`The most per litre that leaves them ${VENUE_TARGET}% on the RSP`}
+                                style={{ display: 'block', marginLeft: 'auto', marginTop: '3px', border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '11px', color: '#1d4ed8', textDecoration: 'underline' }}>
+                                {VENUE_TARGET}%: {money(r.pplFor80)}
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                        {r.product && <NumInput value={r.serve ?? undefined} decimals={0} width="70px" placeholder="type ml" highlightEmpty onSave={(n) => n && setField(r, { recommendedServingG: n }, 'serve')} />}
+                      </td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '13px', color: r.perServe !== null ? INK : '#d1d5db', fontVariantNumeric: 'tabular-nums' }}>{r.perServe !== null ? money(r.perServe) : '—'}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '13px', color: r.costPerServe !== null ? SECONDARY : '#d1d5db', fontVariantNumeric: 'tabular-nums' }}>{r.costPerServe !== null ? money(r.costPerServe) : '—'}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right' }}><GpBadge value={r.ourGp} kind="ours" /></td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right' }}><GpBadge value={r.theirGp} kind="venue" /></td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '13px', color: r.costPerLitre !== null ? SECONDARY : '#b45309', fontVariantNumeric: 'tabular-nums' }} title={r.costNote}>
+                        {r.costPerLitre !== null ? money(r.costPerLitre) : <span style={{ fontSize: '11px' }}>{r.costNote ?? '—'}</span>}
+                      </td>
                       <td style={{ padding: '10px 12px', fontSize: '13px' }}>
                         {r.recipe ? (
                           <>
@@ -256,32 +282,6 @@ export default function CoreRangePage() {
                           </button>
                         ) : <span style={{ color: MUTED }}>—</span>}
                       </td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                        {r.product && <NumInput value={r.serve ?? undefined} decimals={0} width="64px" placeholder="ml" onSave={(n) => n && setField(r, { recommendedServingG: n }, 'serve')} />}
-                      </td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                        {r.product && (
-                          <>
-                            <NumInput value={r.ppl} width="84px" placeholder="£" onSave={(n) => setField(r, { defaultPricePerLitre: n }, 'price')} />
-                            {r.pplFor80 !== null && (r.ppl === undefined || Math.abs(r.ppl - r.pplFor80) >= 0.01) && (
-                              <button onClick={() => setField(r, { defaultPricePerLitre: r.pplFor80! }, 'price')} title={`The most per litre that leaves them ${VENUE_TARGET}% on the RSP`}
-                                style={{ display: 'block', marginLeft: 'auto', marginTop: '3px', border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '11px', color: '#1d4ed8', textDecoration: 'underline' }}>
-                                {VENUE_TARGET}%: {money(r.pplFor80)}
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                        {r.product && <NumInput value={r.rsp} width="76px" placeholder="£" onSave={(n) => setField(r, { defaultRsp: n }, 'RSP')} />}
-                      </td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '13px', color: r.perServe !== null ? INK : '#d1d5db', fontVariantNumeric: 'tabular-nums' }}>{r.perServe !== null ? money(r.perServe) : '—'}</td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '13px', color: r.costPerLitre !== null ? SECONDARY : '#b45309', fontVariantNumeric: 'tabular-nums' }} title={r.costNote}>
-                        {r.costPerLitre !== null ? money(r.costPerLitre) : <span style={{ fontSize: '11px' }}>{r.costNote ?? '—'}</span>}
-                      </td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '13px', color: r.costPerServe !== null ? SECONDARY : '#d1d5db', fontVariantNumeric: 'tabular-nums' }}>{r.costPerServe !== null ? money(r.costPerServe) : '—'}</td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right' }}><GpBadge value={r.ourGp} kind="ours" /></td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right' }}><GpBadge value={r.theirGp} kind="venue" /></td>
                       <td style={{ padding: '10px 12px' }}>
                         {flagged
                           ? <button onClick={() => setOpen(isOpen ? null : r.spec.name)} style={{ border: '1px solid #fde68a', background: '#fffbeb', color: '#92400e', borderRadius: '20px', padding: '2px 10px', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer' }}>{flagged} to tidy</button>

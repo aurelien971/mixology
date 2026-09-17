@@ -59,12 +59,14 @@ export function Pill({ bg, fg, children, title }: { bg: string; fg: string; chil
 }
 
 /** A money or number field that saves when you leave it. Empty clears it. */
-export function NumInput({ value, onSave, placeholder, width = '90px', decimals = 2 }: {
+export function NumInput({ value, onSave, placeholder, width = '90px', decimals = 2, highlightEmpty = false }: {
   value?: number
   onSave: (v: number | undefined) => void
   placeholder?: string
   width?: string
   decimals?: number
+  /** Show an empty box in yellow, so what still needs typing stands out. */
+  highlightEmpty?: boolean
 }) {
   return (
     <input
@@ -81,7 +83,10 @@ export function NumInput({ value, onSave, placeholder, width = '90px', decimals 
         onSave(n)
       }}
       onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-      style={{ ...input, width, padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', fontSize: '13px' }}
+      style={{
+        ...input, width, padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', fontSize: '13px',
+        ...(highlightEmpty && value === undefined ? { background: '#fffbeb', border: '1.5px solid #fcd34d' } : {}),
+      }}
     />
   )
 }
