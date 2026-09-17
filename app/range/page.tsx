@@ -86,6 +86,7 @@ export default function CoreRangePage() {
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState<string | null>(null)
   const [writingFor, setWritingFor] = useState<string | null>(null)
+  const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null)
   const [busy, setBusy] = useState(false)
   const cols = useTable<Row>('core-range', COLUMNS)
 
@@ -219,6 +220,11 @@ export default function CoreRangePage() {
       {writingFor && writingProduct && (
         <RecipeEditor key={writingFor} presetProductId={writingFor} products={products.filter((p) => p.isActive !== false)}
           onSaved={async () => { await load() }} onClose={() => setWritingFor(null)} />
+      )}
+
+      {editingRecipe && (
+        <RecipeEditor key={editingRecipe.id} existing={editingRecipe} products={products.filter((p) => p.isActive !== false || p.id === editingRecipe.productId)}
+          onSaved={async () => { await load() }} onClose={() => setEditingRecipe(null)} />
       )}
 
       <Header
@@ -367,6 +373,7 @@ export default function CoreRangePage() {
                                   usage={usageOf(r, x)}
                                   onUse={() => chooseRecipe(r, x)}
                                   onRetire={() => retireRecipe(x, true)}
+                                  onEdit={() => setEditingRecipe(x)}
                                 />
                               ))}
                             </div>
@@ -410,7 +417,7 @@ export default function CoreRangePage() {
   )
 }
 
-function RecipeCard({ recipe, ingredients, sets, chosen, filedOn, usage, onUse, onRetire }: {
+function RecipeCard({ recipe, ingredients, sets, chosen, filedOn, usage, onUse, onRetire, onEdit }: {
   recipe: Recipe
   ingredients: Ingredient[]
   sets: boolean
@@ -420,6 +427,7 @@ function RecipeCard({ recipe, ingredients, sets, chosen, filedOn, usage, onUse, 
   usage: { onMenus: string[]; priceLists: string[]; orderCount: number; last?: Date }
   onUse: () => void
   onRetire: () => void
+  onEdit: () => void
 }) {
   const [showLines, setShowLines] = useState(false)
   const c = computeRecipeCost(recipe, ingredients)
@@ -427,7 +435,7 @@ function RecipeCard({ recipe, ingredients, sets, chosen, filedOn, usage, onUse, 
     <div style={{ background: '#fff', border: `1.5px solid ${sets ? '#86efac' : '#e5e7eb'}`, borderRadius: '10px', padding: '12px 14px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
         <div style={{ minWidth: 0 }}>
-          <Link href={`/recipes/${recipe.id}`} style={{ fontSize: '14px', fontWeight: 700, color: INK }}>{recipe.name}</Link>
+          <button onClick={onEdit} title="Edit this recipe" style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '14px', fontWeight: 700, color: INK, textAlign: 'left' }}>{recipe.name}</button>
           <span style={{ display: 'block', fontSize: '12px', color: SECONDARY }}>
             {recipe.variation ?? 'house'} · {recipe.ingredients.length} lines · {c.complete ? `${money(c.costPerLitre)}/L` : <span style={{ color: '#b45309' }}>unpriced: {c.missingIngredients.slice(0, 2).join(', ')}</span>}
           </span>
@@ -452,6 +460,9 @@ function RecipeCard({ recipe, ingredients, sets, chosen, filedOn, usage, onUse, 
         <div><strong style={{ color: INK }}>Orders:</strong> {usage.orderCount ? `${usage.orderCount}${usage.last ? `, last ${format(usage.last, 'd MMM yyyy')}` : ''}` : 'none'}</div>
       </div>
 
+      <div style={{ display: 'flex', gap: '14px', alignItems: 'center', marginTop: '8px' }}>
+        <Button size="sm" variant="secondary" onClick={onEdit}>✎ Edit recipe</Button>
+      </div>
       <button onClick={() => setShowLines((v) => !v)} style={{ marginTop: '6px', border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '12px', color: '#1d4ed8', textDecoration: 'underline' }}>
         {showLines ? 'Hide ingredients' : 'Show ingredients'}
       </button>
