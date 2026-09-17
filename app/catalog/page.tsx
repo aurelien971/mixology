@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button'
 import AddProductModal from '@/components/catalog/AddProductModal'
 import EditProductModal from '@/components/catalog/EditProductModal'
 import ProductPricingModal from '@/components/catalog/ProductPricingModal'
+import RecipeEditor from '@/components/recipes/RecipeEditor'
 import { getProducts, getAllPricing, updateProduct } from '@/lib/firestore/catalog'
 import { getRecipes } from '@/lib/firestore/recipes'
 import { getIngredients } from '@/lib/firestore/ingredients'
@@ -20,7 +21,7 @@ import toast from 'react-hot-toast'
 // Both of these mirror what the cells render, so a column always sorts by the
 // thing you can actually see in it.
 function productType(p: Product): string {
-  return p.isNonAlcoholic ? 'N/A' : p.isCoreRange ? 'Core' : 'Venue'
+  return p.isNonAlcoholic ? 'N/A' : p.isCoreRange || p.isClassic ? 'Core' : 'Venue'
 }
 
 function unitCost(p: Product): number {
@@ -58,6 +59,9 @@ export default function CatalogPage() {
   const [hidden, setHidden] = useState(true)
   const [missingOnly, setMissingOnly] = useState(searchParams.get('missing') === '1')
   const [coreOnly, setCoreOnly] = useState(searchParams.get('core') === '1')
+  // Why a cost is missing: no recipe at all, or a recipe with unpriced ingredients.
+  const [costInfo, setCostInfo] = useState<Record<string, { recipeId?: string; missing: string[] }>>({})
+  const [writingFor, setWritingFor] = useState<string | null>(null)
   const [allPricing, setAllPricing] = useState<AccountPricing[]>([])
   const cols = useTable<Product>('catalog', COLUMNS)
 
@@ -67,13 +71,16 @@ export default function CatalogPage() {
         // The cost shown is the recipe's, worked out now — the same number the
         // recipe and every price list show. A typed cost only stands in when a
         // product has no recipe.
+        const info: Record<string, { recipeId?: string; missing: string[] }> = {}
         setProducts(prods.map((p) => {
           const c = liveCost(p, recipes, ingredients)
+          info[p.id] = { recipeId: c.recipe?.id, missing: c.missing }
           if (!c.fromRecipe) return p
           return c.perLitre === null
             ? { ...p, costMissing: true }
             : { ...p, costToMake: (c.perLitre * (p.recommendedServingG || 100)) / 1000, costMissing: false }
         }))
+        setCostInfo(info)
         setAllPricing(pricing)
       })
       .finally(() => setLoading(false))
@@ -121,6 +128,15 @@ export default function CatalogPage() {
         <AddProductModal
           onClose={() => setShowAddModal(false)}
           onSaved={() => { load() }}
+        />
+      )}
+      {writingFor && (
+        <RecipeEditor
+          key={writingFor}
+          presetProductId={writingFor}
+          products={products.filter((p) => p.isActive !== false)}
+          onSaved={() => load()}
+          onClose={() => setWritingFor(null)}
         />
       )}
       {pricingProduct && (
@@ -268,7 +284,11 @@ export default function CatalogPage() {
                       <p className="text-xs text-gray-400">{product.servingNotes}</p>
                     )}
                     {product.costMissing && (
-                      <p className="text-xs font-medium" style={{ color: '#92400e' }}>⚠ Cost missing — profit calculations affected</p>
+                      <p className="text-xs font-medium" style={{ color: '#92400e' }}>
+                        {costInfo[product.id]?.recipeId
+                          ? `⚠ Recipe has unpriced ingredients${costInfo[product.id].missing.length ? `: ${costInfo[product.id].missing.slice(0, 3).join(', ')}` : ''}`
+                          : '⚠ No recipe yet — add one and the cost fills itself in'}
+                      </p>
                     )}
                   </td>
                   <td className="px-5 py-3 text-sm text-gray-500">
@@ -296,7 +316,7 @@ export default function CatalogPage() {
                   <td className="px-5 py-3">
                     {product.isNonAlcoholic ? (
                       <Badge label="N/A" variant="green" />
-                    ) : product.isCoreRange ? (
+                    ) : product.isCoreRange || product.isClassic ? (
                       <Badge label="Core" variant="blue" />
                     ) : (
                       <Badge label="Venue" variant="gray" />
@@ -305,15 +325,29 @@ export default function CatalogPage() {
                   <td className="px-5 py-3 text-right">
                     {product.costMissing ? (
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                        {costInfo[product.id]?.recipeId ? (
+                          <Link href={`/recipes/${costInfo[product.id].recipeId}`} onClick={(e) => e.stopPropagation()}
+                            style={{ padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, background: '#92400e', color: '#fff', whiteSpace: 'nowrap', textDecoration: 'none' }}>
+                            Open recipe
+                          </Link>
+                        ) : (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setWritingFor(product.id) }}
+                            style={{
+                              padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                              background: '#92400e', color: '#fff', border: 'none', cursor: 'pointer',
+                              whiteSpace: 'nowrap' as const,
+                            }}
+                          >
+                            + Add recipe
+                          </button>
+                        )}
                         <button
                           onClick={(e) => { e.stopPropagation(); setEditingProduct(product) }}
-                          style={{
-                            padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
-                            background: '#92400e', color: '#fff', border: 'none', cursor: 'pointer',
-                            whiteSpace: 'nowrap' as const,
-                          }}
+                          title="Type a cost by hand instead"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px', color: '#b45309', textDecoration: 'underline', padding: '2px 4px', whiteSpace: 'nowrap' }}
                         >
-                          + Add cost
+                          type cost
                         </button>
                         <button
                           title="Remove from the platform"
