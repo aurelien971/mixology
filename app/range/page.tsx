@@ -87,6 +87,7 @@ export default function CoreRangePage() {
   const [open, setOpen] = useState<string | null>(null)
   const [writingFor, setWritingFor] = useState<string | null>(null)
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null)
+  const [changingFor, setChangingFor] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const cols = useTable<Row>('core-range', COLUMNS)
 
@@ -190,6 +191,7 @@ export default function CoreRangePage() {
       await updateRecipe(x.id, { productId: r.product.id, productCode: r.product.productCode, productName: r.product.name })
     }
     await updateProduct(r.product.id, { recipeId: x.id })
+    setChangingFor(null)
     await syncProductCostForRecipe({ ...x, productId: r.product.id })
     toast.success(`${r.spec.name} now costs from "${x.name}"${x.variation ? ` (${x.variation})` : ''}`)
     await load()
@@ -273,7 +275,8 @@ export default function CoreRangePage() {
             <tbody>
               {cols.sortRows(rows).map((r) => {
                 const isOpen = open === r.spec.name
-                const flagged = r.dupProducts.length + r.strayRecipes.length
+                const locked = !!r.product?.recipeId && r.recipe?.id === r.product.recipeId
+                const flagged = locked ? 0 : r.dupProducts.length + r.strayRecipes.length
                 return (
                   <React.Fragment key={r.spec.name}>
                     <tr style={{ borderTop: '1px solid #f3f4f6', background: isOpen ? '#fafafa' : undefined }}>
@@ -327,7 +330,7 @@ export default function CoreRangePage() {
                               {r.recipe.variation ?? 'house'} · {r.product?.recipeId === r.recipe.id
                                 ? <strong style={{ color: '#166534' }}>chosen</strong>
                                 : r.recipeCount > 1 ? <strong style={{ color: '#b45309' }}>auto-picked of {r.recipeCount}</strong> : 'only one'}
-                              {' · '}<button onClick={() => setOpen(isOpen ? null : r.spec.name)} style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '11px', color: '#1d4ed8', textDecoration: 'underline' }}>compare ▾</button>
+                              {' · '}<button onClick={() => setOpen(isOpen ? null : r.spec.name)} style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '11px', color: '#1d4ed8', textDecoration: 'underline' }}>{r.product?.recipeId === r.recipe.id ? 'view ▾' : 'compare ▾'}</button>
                             </span>
                           </>
                         ) : r.product ? (
@@ -348,13 +351,15 @@ export default function CoreRangePage() {
                         ...r.strayRecipes,
                       ]
                       const retired = r.product ? recipes.filter((x) => x.productId === r.product!.id && x.status === 'discontinued') : []
-                      const shared = candidates.filter((x) => x.productId === r.product?.id).length > 1
+                      const choosing = !locked || changingFor === r.spec.name
+                      const others = candidates.length - 1
+                      const shared = choosing && candidates.filter((x) => x.productId === r.product?.id).length > 1
                       return (
                         <tr>
                           <td colSpan={COLUMNS.length} style={{ padding: '14px 18px 18px', background: '#fafafa', borderTop: '1px solid #f3f4f6' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', marginBottom: '10px', flexWrap: 'wrap' }}>
                               <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: INK }}>
-                                {candidates.length ? `${candidates.length} recipe${candidates.length === 1 ? '' : 's'} for ${r.spec.name} — pick the one the core range costs from` : `No recipe for ${r.spec.name} yet`}
+                                {!choosing ? `${r.spec.name} recipe` : candidates.length ? `${candidates.length} recipe${candidates.length === 1 ? '' : 's'} for ${r.spec.name} — pick the one the core range costs from` : `No recipe for ${r.spec.name} yet`}
                               </p>
                               {r.product && <Button size="sm" variant="secondary" onClick={() => setWritingFor(r.product!.id)}>+ Add a recipe</Button>}
                             </div>
@@ -364,7 +369,7 @@ export default function CoreRangePage() {
                               </p>
                             )}
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '12px' }}>
-                              {candidates.map((x) => (
+                              {(choosing ? candidates : candidates.filter((x) => x.id === r.recipe?.id)).map((x) => (
                                 <RecipeCard
                                   key={x.id}
                                   recipe={x}
@@ -379,14 +384,21 @@ export default function CoreRangePage() {
                                 />
                               ))}
                             </div>
-                            {retired.length > 0 && (
+                            {locked && (choosing || others > 0) && (
+                              <p style={{ margin: '10px 0 0', fontSize: '12px' }}>
+                                <button onClick={() => setChangingFor(choosing ? null : r.spec.name)} style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '12px', color: MUTED, textDecoration: 'underline' }}>
+                                  {choosing ? 'Done' : others > 0 ? 'Change recipe' : ''}
+                                </button>
+                              </p>
+                            )}
+                            {choosing && retired.length > 0 && (
                               <p style={{ margin: '10px 0 0', fontSize: '12px', color: MUTED }}>
                                 Retired: {retired.map((x, i) => (
                                   <span key={x.id}>{i > 0 && ' · '}{x.name}{x.variation ? ` (${x.variation})` : ''} <button onClick={() => retireRecipe(x, false)} style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '12px', color: '#1d4ed8', textDecoration: 'underline' }}>bring back</button></span>
                                 ))}
                               </p>
                             )}
-                            {r.dupProducts.length > 0 && (
+                            {choosing && r.dupProducts.length > 0 && (
                               <div style={{ marginTop: '14px' }}>
                                 <p style={{ margin: '0 0 6px', fontSize: '10px', fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Other versions of this drink — kept as they are, shown for reference</p>
                                 {r.dupProducts.map((p) => (
