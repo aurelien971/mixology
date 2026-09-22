@@ -92,6 +92,8 @@ export interface Product {
   defaultPricePerLitre?: number // standard sell price/L for core range
   defaultRsp?: number           // the menu price we expect a venue to sell a serve at, inc VAT
   recipeId?: string             // the recipe that sets its cost, chosen by hand
+  batchLaborMinutes?: number    // hands-on minutes to make one standard batch (see costing settings), blends excluded
+  batchLaborBy?: LaborBy
   isActive: boolean
   createdAt: Date
   updatedAt: Date
@@ -166,6 +168,8 @@ export interface SubIngredient {
   unit: RecipeUnit
 }
 
+export type LaborBy = 'dima' | 'edward'
+
 export interface Ingredient {
   id: string
   name: string                  // canonical display name, e.g. "Citric Acid"
@@ -177,6 +181,8 @@ export interface Ingredient {
   isProcess?: boolean
   processDescription?: string   // quick description of how it's made
   laborMinutes?: number         // ACTIVE labour only (not resting/distilling time)
+  laborBatchSize?: number       // how much (in packUnit) those minutes make; defaults to packSize
+  laborBy?: LaborBy
   subIngredients?: SubIngredient[]
   // For processes: packSize = yield amount, packUnit = yield unit, packPrice = summed cost
   packDescription: string       // human label, e.g. "0.7L bottle", "25kg drum"

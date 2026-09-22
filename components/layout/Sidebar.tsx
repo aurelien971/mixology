@@ -97,6 +97,17 @@ const nav = [
     ),
   },
   {
+    label: 'Labour & batches',
+    href: '/labour',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+        <circle cx="9" cy="9.5" r="6.5" stroke="currentColor" strokeWidth="1.4" fill="none"/>
+        <path d="M9 5.5v4l2.5 1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+        <line x1="7" y1="1.8" x2="11" y2="1.8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
     label: 'Recipes',
     href: '/recipes',
     icon: (
