@@ -44,7 +44,11 @@ export async function uploadSignedDeliveryNote(
 /**
  * Deletes the signed delivery note from Storage.
  */
-export async function deleteSignedDeliveryNote(orderId: string): Promise<void> {
+export async function deleteSignedDeliveryNote(orderId: string, url?: string): Promise<void> {
+  // The stored link points at the exact file, whatever its name.
+  if (url) {
+    try { await deleteObject(ref(storage, url)); return } catch { /* fall back to the usual names */ }
+  }
   // Try both pdf and common image extensions
   const extensions = ['pdf', 'jpg', 'jpeg', 'png']
   for (const ext of extensions) {

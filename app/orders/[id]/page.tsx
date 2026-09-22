@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
+import { deleteField } from 'firebase/firestore'
 import { useParams, useRouter } from 'next/navigation'
 import { format, isPast } from 'date-fns'
 import Link from 'next/link'
@@ -161,8 +162,10 @@ export default function OrderDetailPage() {
     if (!order || !confirm('Remove the signed delivery note?')) return
     setUpdating(true)
     try {
-      await deleteSignedDeliveryNote(id)
-      await updateOrder(id, { signedDeliveryNoteUrl: undefined })
+      // Clear the link first — that is what the order shows. The file itself is
+      // tidied up after, and a missing file must not block the removal.
+      await updateOrder(id, { signedDeliveryNoteUrl: deleteField() as unknown as string })
+      await deleteSignedDeliveryNote(id, order.signedDeliveryNoteUrl).catch((e) => console.warn('Signed note file not deleted', e))
       toast.success('Signed delivery note removed')
       load()
     } catch (err) {
@@ -643,6 +646,10 @@ export default function OrderDetailPage() {
                       >
                         Remove signed note
                       </button>
+                      <label style={{ padding: '7px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 500, border: '1px solid #e5e7eb', color: uploading ? '#9ca3af' : '#374151', cursor: uploading ? 'not-allowed' : 'pointer' }}>
+                        {uploading ? `Uploading… ${uploadProgress}%` : 'Replace with a new file'}
+                        <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handleUploadSignedDN} disabled={uploading} style={{ display: 'none' }} />
+                      </label>
                     </div>
                   ) : (
                     <label style={{
