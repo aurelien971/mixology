@@ -237,6 +237,7 @@ export interface Recipe {
   analyticalValues: RecipeAnalytical[]
   cookingInstructions: string
   approxTimeMinutes?: number    // rough start-to-finish time to cook one batch
+  batchLitres?: number          // the batch the amounts were written for, so it reopens as written
   status: 'active' | 'discontinued'
   createdAt: Date
   updatedAt: Date

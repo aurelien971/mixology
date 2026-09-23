@@ -44,6 +44,20 @@ function unitFromStored(u: string): RecipeUnit {
   return 'kg'
 }
 
+/**
+ * One stored ingredient line back as the amount for this batch, in the unit a
+ * person would write it in: millilitres and grams for the small amounts a
+ * single-serve spec uses, litres and kilos for a production batch.
+ */
+function rowFromStored(i: RecipeIngredient, batch: number): Row {
+  const base = unitFromStored(i.unit)
+  const amount = i.qtyPer1L * batch
+  if (base !== 'unit' && amount > 0 && amount < 1) {
+    return { name: i.name, ingredientId: i.ingredientId, amount: String(r4(amount * 1000)), unit: base === 'L' ? 'ml' : 'g' }
+  }
+  return { name: i.name, ingredientId: i.ingredientId, amount: String(r4(amount)), unit: base }
+}
+
 export interface RecipeDraft {
   name: string
   variation?: string
@@ -55,6 +69,7 @@ export interface RecipeDraft {
   analyticalValues: RecipeAnalytical[]
   cookingInstructions: string
   approxTimeMinutes?: number
+  batchLitres?: number
 }
 
 const inputStyle: React.CSSProperties = {
@@ -89,16 +104,12 @@ export default function RecipeEditor({
     return d ? String(d) : ''
   })
   const [instructions, setInstructions] = useState(src?.cookingInstructions ?? '')
-  // Batch volume: stored data is per 1000L, so existing/parsed recipes load as a 1000L batch.
-  // Fresh manual recipes default to a realistic 10L batch — Dima types what he actually makes.
-  const [batchLitres, setBatchLitres] = useState(hasStoredIngredients ? '1000' : '10')
+  // Batch volume: a recipe reopens at the batch it was written for. Older ones
+  // have no batch stored and are per 1000L, so they load as a 1000L batch;
+  // fresh manual recipes default to 10L — Dima types what he actually makes.
+  const [batchLitres, setBatchLitres] = useState(String(src?.batchLitres ?? (hasStoredIngredients ? 1000 : 10)))
   const [rows, setRows] = useState<Row[]>(
-    (src?.ingredients ?? []).map(i => ({
-      name: i.name,
-      ingredientId: i.ingredientId,
-      amount: String(i.qtyPer1000L),
-      unit: unitFromStored(i.unit),
-    }))
+    (src?.ingredients ?? []).map(i => rowFromStored(i, src?.batchLitres ?? 1000))
   )
   const [analytical, setAnalytical] = useState<AnalyticalRow[]>(
     (src?.analyticalValues ?? []).map(a => ({
@@ -356,6 +367,7 @@ export default function RecipeEditor({
         analyticalValues,
         cookingInstructions: instructions,
         status: 'active',
+        batchLitres: batch,
       }
       if (variation.trim()) payload.variation = variation.trim()
       if (approxTime !== '' && parseFloat(approxTime) > 0) payload.approxTimeMinutes = parseFloat(approxTime)
