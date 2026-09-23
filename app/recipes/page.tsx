@@ -124,7 +124,7 @@ export default function RecipesPage() {
                   <p style={{ fontSize: '14px', fontWeight: 700, color: '#1d4ed8', margin: 0 }}>
                     📋 {pendingDrafts} imported recipe{pendingDrafts !== 1 ? 's' : ''} waiting for your approval
                   </p>
-                  <p style={{ fontSize: '12px', color: '#3b82f6', margin: '2px 0 0' }}>Extracted from the Cocktail Production blend sheets — review, tweak and approve</p>
+                  <p style={{ fontSize: '12px', color: '#3b82f6', margin: '2px 0 0' }}>Imported from spreadsheets and client specs — review, tweak and approve</p>
                 </div>
                 <span style={{ fontSize: '13px', fontWeight: 600, color: '#1d4ed8' }}>Review →</span>
               </div>

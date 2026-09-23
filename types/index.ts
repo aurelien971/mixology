@@ -248,6 +248,7 @@ export interface Recipe {
 export interface DraftIngredientRow {
   name: string
   qtyPer1L: number
+  unit?: 'KG' | 'L' | 'UNIT'    // defaults to KG, how the sheets have always come in
   matched: boolean              // true when it maps to an ingredient in the library
 }
 
@@ -268,6 +269,7 @@ export interface RecipeDraftDoc {
   cookingInstructions: string
   approxTimeMinutes?: number
   laborMinutes?: number
+  batchLitres?: number          // the batch the amounts were written for (a single serve, for a bar spec)
   status: 'pending'
   createdAt: Date
 }

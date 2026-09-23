@@ -76,10 +76,11 @@ export default function RecipeReviewPage() {
     productId: d.matchedProductId,
     ingredients: d.ingredients.map(i => ({
       name: i.name,
-      unit: 'KG',
+      unit: i.unit ?? 'KG',
       qtyPer1L: i.qtyPer1L,
       qtyPer1000L: Math.round(i.qtyPer1L * 1000 * 10000) / 10000,
     })),
+    batchLitres: d.batchLitres,
     analyticalValues: d.analyticalValues,
     cookingInstructions: d.cookingInstructions,
     approxTimeMinutes: d.approxTimeMinutes,
@@ -118,7 +119,7 @@ export default function RecipeReviewPage() {
 
       <Header
         title="Review imported recipes"
-        subtitle="Extracted from the Cocktail Production blend sheets — nothing goes live until you approve it"
+        subtitle="Imported from spreadsheets and client specs — nothing goes live until you approve it"
         action={<Link href="/recipes"><Button variant="secondary" size="sm">← Back to recipes</Button></Link>}
       />
 
