@@ -105,10 +105,14 @@ export async function upsertAccountPricing(
     ? Math.round((pricing.pricePerUnit / volumeLitres) * 100) / 100
     : pricing.pricePerLitre ?? 0
 
-  // GP uses ex-VAT RRP — venue's real margin after handing 20% VAT to HMRC
+  // The venue's margin is a per-serve number: what one serve costs them against
+  // the menu price net of VAT. (It used to be worked off the pack price, which
+  // compared a £100 bag with a £14 drink and stored nonsense.)
+  const serveMl = pricing.recommendedServingG || 0
+  const pricePerServe = serveMl > 0 ? (pricePerLitre * serveMl) / 1000 : 0
   const rrpExVat = pricing.rrp / 1.2
-  const venueGpPercent = rrpExVat > 0
-    ? Math.round(((rrpExVat - pricing.pricePerUnit) / rrpExVat) * 10000) / 100
+  const venueGpPercent = rrpExVat > 0 && pricePerServe > 0
+    ? Math.round(((rrpExVat - pricePerServe) / rrpExVat) * 10000) / 100
     : pricing.venueGpPercent
 
   const enriched = {
