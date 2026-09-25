@@ -5,6 +5,7 @@ import Link from 'next/link'
 import Header from '@/components/layout/Header'
 import Button from '@/components/ui/Button'
 import RecipeEditor, { RecipeDraft } from '@/components/recipes/RecipeEditor'
+import MultiRecipeImport from '@/components/recipes/MultiRecipeImport'
 import { getRecipes } from '@/lib/firestore/recipes'
 import { getProducts, updateProduct } from '@/lib/firestore/catalog'
 import { getIngredients } from '@/lib/firestore/ingredients'
@@ -22,6 +23,7 @@ export default function RecipesPage() {
   const [range, setRange]             = useState<'all' | 'classics' | 'core'>('all')
 
   const [editorState, setEditorState] = useState<{ existing?: Recipe; draft?: RecipeDraft; presetProductId?: string } | null>(null)
+  const [importing, setImporting]     = useState(false)
   const [pendingDrafts, setPendingDrafts] = useState(0)
 
   function load() {
@@ -96,6 +98,10 @@ export default function RecipesPage() {
         />
       )}
 
+      {importing && (
+        <MultiRecipeImport products={activeProducts} onDone={() => load()} onClose={() => setImporting(false)} />
+      )}
+
       <Header
         title="Recipes"
         subtitle="Master recipe file — every drink, its ingredients and cost"
@@ -107,6 +113,7 @@ export default function RecipesPage() {
             <Link href="/recipes/fill">
               <Button size="sm" variant="secondary">◇ Fill the gaps</Button>
             </Link>
+            <Button size="sm" variant="secondary" onClick={() => setImporting(true)}>📸 Import several recipes</Button>
             <Button size="sm" onClick={() => setEditorState({})}>+ New recipe</Button>
           </div>
         }
