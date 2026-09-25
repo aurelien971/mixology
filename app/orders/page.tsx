@@ -49,6 +49,7 @@ export default function OrdersPage() {
   const [search, setSearch] = useState('')
   const [showNoryModal,  setShowNoryModal]  = useState(false)
   const [typeFilter, setTypeFilter] = useState<'all' | 'order' | 'rd'>('all')
+  const [showArchived, setShowArchived] = useState(false)
   const cols = useTable<Order>('orders', COLUMNS)
 
   function load() {
@@ -71,7 +72,8 @@ export default function OrdersPage() {
         li.productName.toLowerCase().includes(q) || li.productCode.toLowerCase().includes(q)
       )
     const matchType = typeFilter === 'all' || (typeFilter === 'rd' ? o.type === 'rd' : o.type !== 'rd')
-    return matchStatus && matchSearch && matchType
+    const matchArchive = showArchived ? !!o.archived : !o.archived
+    return matchStatus && matchSearch && matchType && matchArchive
   })
   const filtered = cols.sortRows(rows)
 
@@ -134,6 +136,11 @@ export default function OrdersPage() {
               {l}
             </button>
           ))}
+          <button onClick={() => setShowArchived(v => !v)}
+            style={{ marginLeft: '8px', padding: '6px 12px', borderRadius: '8px', fontSize: '12.5px', fontWeight: 500, cursor: 'pointer',
+              border: '1px solid #e5e7eb', background: showArchived ? '#111827' : '#fff', color: showArchived ? '#fff' : '#6b7280' }}>
+            {showArchived ? 'Showing archived' : 'Show archived'}
+          </button>
         </div>
         <cols.ResetButton />
       </div>

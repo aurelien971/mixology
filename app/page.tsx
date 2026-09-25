@@ -72,7 +72,7 @@ export default function DashboardPage() {
   }, [])
 
   const range    = useMemo(() => getRange(rangeKey, customFrom, customTo), [rangeKey, customFrom, customTo])
-  const allActive = orders.filter(o => o.status !== 'cancelled' && o.type !== 'rd')
+  const allActive = orders.filter(o => o.status !== 'cancelled' && o.type !== 'rd' && !o.archived)
 
   const rangeOrders = useMemo(() => {
     const base = deliveredOnly ? allActive.filter(o => o.status === 'delivered') : allActive

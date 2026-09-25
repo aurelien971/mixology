@@ -318,6 +318,29 @@ export interface Order {
   rdBrief?: string
   rdOutcomes?: string[]
   rdPrice?: number
+
+  // The end-of-August reconciliation: one row per development, with the
+  // commercial context the finance team works from.
+  rdCategory?: string           // Coffees / Alcoholic cocktails / Non-alcoholic cocktails / Soft drinks
+  rdCategoryConfirmed?: string  // Yes / Mixed / To confirm
+  rdReference?: string          // as the sheet writes it — an invoice, an order or "New"
+  rdInvoiceMonth?: string       // e.g. Feb-26
+  rdInvoicedGbp?: number        // what has gone out on an invoice already
+  rdAgreedValueGbp?: number     // what it is worth once agreed
+  rdAgreedValueNote?: string    // "TBC" and the like, where there is no number yet
+  rdPercentToBill?: number      // 0–1
+  rdRevenueToDateGbp?: number   // agreed value × % to bill
+  rdToInvoiceGbp?: number       // revenue to date less invoiced; negative means a credit
+  rdStatusLabel?: string        // the sheet's own wording, e.g. "Sign-off due next week"
+  rdDecision?: string           // what Callum decided
+  rdPhase?: 'historical' | 'current'
+  rdSource?: string             // which sheet and when it was loaded
+
+  // Archived orders stay in the database but drop out of the lists, the
+  // dashboard and the finance figures.
+  archived?: boolean
+  archivedAt?: Date
+  archivedReason?: string
   createdAt: Date
   updatedAt: Date
 }

@@ -265,6 +265,12 @@ export default function OrderDetailPage() {
 
   return (
     <div>
+      {order.archived && (
+        <div style={{ padding: '10px 16px', marginBottom: '14px', borderRadius: '10px', background: '#f3f4f6', border: '1px solid #e5e7eb', fontSize: '13px', color: '#4b5563' }}>
+          <strong style={{ color: '#111827' }}>Archived.</strong> {order.archivedReason ?? 'Kept for the record and left out of the lists, the dashboard and the finance figures.'}
+          {order.archivedAt && ` (${format(order.archivedAt instanceof Date ? order.archivedAt : (order.archivedAt as unknown as { toDate: () => Date }).toDate(), 'd MMM yyyy')})`}
+        </div>
+      )}
       {editingOrder && order && (
         <EditOrderModal
           order={order}
@@ -1143,6 +1149,38 @@ function RdPanel({ order, onSaved }: { order: Order; onSaved: () => void }) {
             </div>
           )}
         </div>
+
+        {/* The reconciliation: what it is worth, what has been billed, what is left */}
+        {(order.rdAgreedValueGbp !== undefined || order.rdDecision || order.rdCategory) && (
+          <div style={{ borderTop: '1px solid #f3f4f6', padding: '16px 20px' }}>
+            <p style={{ fontSize: '10px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 12px' }}>
+              Reconciliation{order.rdSource ? ` — ${order.rdSource}` : ''}
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', fontSize: '13px' }}>
+              {([
+                ['Category', order.rdCategory ? `${order.rdCategory}${order.rdCategoryConfirmed && order.rdCategoryConfirmed !== 'Yes' ? ` (${order.rdCategoryConfirmed})` : ''}` : null],
+                ['Reference', order.rdReference],
+                ['Invoice month', order.rdInvoiceMonth],
+                ['Invoiced', order.rdInvoicedGbp !== undefined ? `£${order.rdInvoicedGbp.toLocaleString()}` : null],
+                ['Agreed value', order.rdAgreedValueGbp !== undefined ? `£${order.rdAgreedValueGbp.toLocaleString()}` : order.rdAgreedValueNote],
+                ['% to bill', order.rdPercentToBill !== undefined ? `${Math.round(order.rdPercentToBill * 100)}%` : null],
+                ['Revenue to date', order.rdRevenueToDateGbp !== undefined ? `£${order.rdRevenueToDateGbp.toLocaleString()}` : null],
+                ['To invoice', order.rdToInvoiceGbp !== undefined ? `${order.rdToInvoiceGbp < 0 ? '(£' + Math.abs(order.rdToInvoiceGbp).toLocaleString() + ')' : '£' + order.rdToInvoiceGbp.toLocaleString()}` : null],
+                ['Status on the sheet', order.rdStatusLabel],
+              ] as [string, string | null | undefined][]).filter(([, v]) => v).map(([k, v]) => (
+                <div key={k}>
+                  <span style={{ display: 'block', fontSize: '11px', color: '#9ca3af' }}>{k}</span>
+                  <span style={{ fontWeight: 600, color: '#111827' }}>{v}</span>
+                </div>
+              ))}
+            </div>
+            {order.rdDecision && (
+              <p style={{ margin: '12px 0 0', padding: '10px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', fontSize: '12.5px', color: '#92400e' }}>
+                <strong>Decision:</strong> {order.rdDecision}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Outcomes / Recipes */}

@@ -262,7 +262,7 @@ export default function FinancesPage() {
   async function exportAllOrders() {
     setExporting(true)
     try {
-      const allOrders = await getAllOrders()
+      const allOrders = (await getAllOrders()).filter(o => !o.archived)
       const active = allOrders.filter(o => o.status !== 'cancelled')
       const esc = (v: string | number) => {
         const s = String(v)
@@ -372,7 +372,7 @@ export default function FinancesPage() {
   useEffect(() => {
     async function load() {
       const [ords, prods] = await Promise.all([getAllOrders(), getProducts()])
-      setOrders(ords.filter(o => o.status !== 'cancelled'))
+      setOrders(ords.filter(o => o.status !== 'cancelled' && !o.archived))
       setProductMap(new Map(prods.map(p => [p.id, p])))
       setLoading(false)
     }
